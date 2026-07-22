@@ -80,6 +80,7 @@ router.get(
         userId: req.auth.userId,
         deviceUid: req.auth.deviceUid,
         jti: req.auth.jti,
+        role: req.auth.role,
         // No cursor = fresh install / device-loss recovery: send everything.
         sinceMs: req.query.since !== undefined ? parseInt(req.query.since, 10) : 0,
       });

@@ -14,6 +14,7 @@
 const pool = require('../db/pool');
 const { ServiceError } = require('./errors');
 const { TABLES, sanitise, maskSensitive } = require('../sync/registry');
+const { FINANCIAL_ROLES } = require('../lib/roles');
 
 const SYNC_DEBUG = process.env.SYNC_DEBUG === 'true';
 
@@ -130,8 +131,13 @@ async function pushRecord({ orgId, userId, deviceUid, surface, wireName, operati
  * Return all changes for this org since the cursor.
  * @returns {Promise<{last_sync_at:number, changes:Array}>}
  */
-async function pullDeltas({ orgId, userId, deviceUid, jti, sinceMs }) {
+async function pullDeltas({ orgId, userId, deviceUid, jti, sinceMs, role }) {
   const actor = { orgId, userId, deviceUid };
+  // Financial redaction: money columns never reach a session whose role cannot see
+  // money. This is NOT a per-table pull allowlist (that decision stays locked) — the
+  // payload is still the whole row; only registry-declared financial columns are
+  // withheld, and only from non-financial roles.
+  const seesMoney = FINANCIAL_ROLES.has(role);
   try {
     // Cursor: an epoch-ms value the DB computes BEFORE the row queries. Comparing
     // UNIX_TIMESTAMP epochs is timezone-independent — it does not matter what the
@@ -171,6 +177,9 @@ async function pullDeltas({ orgId, userId, deviceUid, jti, sinceMs }) {
         // Strip: password_hash (secret), _su_ms (internal), server_updated_at (a
         // DATETIME string the client neither needs nor can store in its ms column).
         const { password_hash, _su_ms, server_updated_at, ...rowData } = row;
+        if (!seesMoney && entry.financialColumns) {
+          for (const col of entry.financialColumns) delete rowData[col];
+        }
         changes.push({
           table_name: wireName,
           operation: row.is_deleted ? 'delete' : 'create',

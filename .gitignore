@@ -22,6 +22,8 @@
 **/.dart_tool/
 **/dist/
 **/coverage/
+**/.next/
+**/.turbo/
 
 # ── Local tooling ─────────────────────────────────────────────────────────────
 .claude/settings.local.json

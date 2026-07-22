@@ -205,8 +205,12 @@ async function respondWithSession(req, res, user, device, ip, { provider, isNewU
       handoffPending,
       authoritative: session.authoritative,
       isNewUser,
-      // The app routes to the AU onboarding screen when this is true.
+      // The app routes to the AU onboarding screen when this is true. Returned under
+      // BOTH names: the contract says `onboardingRequired` (projman-01 §1.8), the app
+      // team originally proposed `needsOnboarding` — the alias costs nothing and
+      // whichever the client coded against works. Remove the loser once confirmed.
       onboardingRequired: !user.onboarding_complete,
+      needsOnboarding: !user.onboarding_complete,
     },
   });
 }

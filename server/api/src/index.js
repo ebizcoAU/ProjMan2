@@ -24,6 +24,8 @@ const devicesRoutes  = require('./routes/devices');
 const pairingRoutes  = require('./routes/pairing');
 const syncRoutes     = require('./routes/sync');
 const orgRoutes      = require('./routes/organisation');
+const projectsRoutes = require('./routes/projects');
+const customersRoutes = require('./routes/customers');
 
 const app = express();
 
@@ -117,6 +119,8 @@ app.use('/api/v1/devices',       devicesRoutes);
 app.use('/api/v1/pairing',       pairingRoutes);
 app.use('/api/v1/sync',          syncRoutes);
 app.use('/api/v1/organisation',  orgRoutes);
+app.use('/api/v1/projects',      projectsRoutes);
+app.use('/api/v1/customers',     customersRoutes);
 
 // ── 404 / error ───────────────────────────────────────────────
 app.use((req, res) =>

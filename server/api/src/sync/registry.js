@@ -16,9 +16,18 @@
 //              org_id pointing at itself.
 //   scope      'org'  → rows filtered by the tenant
 //              'self' → additionally filtered to the calling user
+//   unprotect  (optional) columns exempted from PROTECTED_COLUMNS for THIS table
+//              only. Exists for exactly one case so far: `project_stages.status` is
+//              site progress the app must push, while `status` stays protected
+//              everywhere else (user/device/org status are admin actions).
+//   financialColumns  (optional) columns stripped from pull payloads for sessions
+//              whose role is not in FINANCIAL_ROLES. A supervisor runs the site and
+//              never sees what it costs — that rule has to hold on the wire, not
+//              just in the app's UI.
 //
-// Phase 1 syncs organisations, users and devices only. Domain tables land in Phase 2
-// once schema v1 is agreed.
+// Phase 1 synced organisations, users and devices. v003 adds the construction core
+// (customers, projects, project_stages, tasks) — PROPOSED to the app team in
+// projman-01 §2.2, built ahead of schema v1 sign-off on the owner's instruction.
 
 const TABLES = {
   // The org profile is edited at a desk, deliberately, by someone who knows what an
@@ -63,6 +72,71 @@ const TABLES = {
       'device_name', 'platform', 'model', 'os_version', 'app_version',
       'last_seen_at', 'is_deleted', 'updated_at',
     ]),
+  },
+
+  // ── Construction core (migration_v003) ── proposed in projman-01 §2.2 ──────
+
+  // Customers are desk work: the console creates them, the field app rings them.
+  customers: {
+    table: 'customers',
+    owner: 'web',
+    pull: true,
+    scope: 'org',
+    orgColumn: 'org_id',
+    idColumn: 'id',
+    columns: new Set([
+      'name', 'abn', 'contact_name', 'phone', 'email', 'address', 'notes',
+      'is_deleted', 'updated_at',
+    ]),
+  },
+
+  // A project is created and budgeted at a desk by someone who can see money.
+  // The app reads it; contract_value never reaches a non-financial device.
+  projects: {
+    table: 'projects',
+    owner: 'web',
+    pull: true,
+    scope: 'org',
+    orgColumn: 'org_id',
+    idColumn: 'id',
+    columns: new Set([
+      'customer_id', 'code', 'name', 'site_address', 'lot_plan',
+      'contract_value', 'contract_type', 'start_date', 'due_date',
+      'template_id', 'pm_user_id', 'is_deleted', 'updated_at',
+    ]),
+    financialColumns: new Set(['contract_value']),
+  },
+
+  // Split-by-field (projman-01 §4): the office draws the programme (seq, codes,
+  // names, budgets — via the REST route), the site marks progress. So the app owns
+  // the sync surface but may push only the progress fields.
+  project_stages: {
+    table: 'project_stages',
+    owner: 'app',
+    pull: true,
+    scope: 'org',
+    orgColumn: 'org_id',
+    idColumn: 'id',
+    columns: new Set(['status', 'start_date', 'end_date', 'is_deleted', 'updated_at']),
+    unprotect: new Set(['status']),
+    financialColumns: new Set(['budget_amount']),
+  },
+
+  // Tasks are the PM's working tool in the field — the app owns them outright,
+  // budgets excepted (web-written, financially redacted).
+  tasks: {
+    table: 'tasks',
+    owner: 'app',
+    pull: true,
+    scope: 'org',
+    orgColumn: 'org_id',
+    idColumn: 'id',
+    columns: new Set([
+      'project_id', 'stage_id', 'parent_id', 'name', 'completion',
+      'start_date', 'end_date', 'assigned_to', 'predecessor_id',
+      'is_deleted', 'updated_at',
+    ]),
+    financialColumns: new Set(['budget_hours', 'budget_amount']),
   },
 };
 
@@ -111,7 +185,7 @@ function sanitise(data, entry) {
 
   for (const [rawKey, value] of Object.entries(data)) {
     const key = toSnakeCase(rawKey);
-    if (PROTECTED_COLUMNS.has(key)) continue;
+    if (PROTECTED_COLUMNS.has(key) && !entry.unprotect?.has(key)) continue;
     if (!entry.columns.has(key)) continue;
     if (value !== undefined) safe[key] = value;
   }

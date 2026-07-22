@@ -35,7 +35,9 @@ const config = require('../config');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { audit, clientIp } = require('../lib/audit');
 const { ROLES } = require('../lib/roles');
-const { readDevice, issueSession } = require('../lib/tokens');
+const { readDevice } = require('../lib/tokens');
+const AuthService = require('../services/AuthService');
+const { ServiceError } = require('../services/errors');
 
 const hashNonce = (raw) => crypto.createHash('sha256').update(String(raw)).digest('hex');
 
@@ -419,15 +421,16 @@ router.get('/status/:request_id', async (req, res) => {
       [token.assign_user_id]
     );
 
-    const session = await issueSession({
+    // Through AuthService like every other session issue (Step C). authority:'never'
+    // keeps the prior behaviour exactly: a newly paired device does not seize the
+    // writer role — if it needs it, it asks through the normal handoff.
+    const { session } = await AuthService.startSession({
       user,
       device: { device_uid: token.device_uid },
       ip: clientIp(req),
       userAgent: req.headers['user-agent'],
       role: token.role,
-      // A newly paired device does not seize the writer role from a device already
-      // holding it; it asks, through the normal handoff.
-      grantAuthority: false,
+      authority: 'never',
     });
 
     await audit(req, 'pairing.session_issued', {
@@ -455,6 +458,11 @@ router.get('/status/:request_id', async (req, res) => {
       },
     });
   } catch (err) {
+    // AuthService refuses a session for a device revoked between confirm and this
+    // poll — that refusal must reach the device as itself, not as a 500.
+    if (err instanceof ServiceError) {
+      return res.status(err.status).json({ success: false, message: err.message, code: err.code });
+    }
     console.error('[PAIRING/STATUS] Error:', err.message);
     return res.status(500).json({ success: false, message: 'Failed to read pairing status' });
   }

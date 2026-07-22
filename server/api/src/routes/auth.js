@@ -30,7 +30,7 @@ const config = require('../config');
 const { authenticate } = require('../middleware/auth');
 const { audit, clientIp } = require('../lib/audit');
 const { validateAbn } = require('../lib/abn');
-const { issueSession, upsertDevice, readDevice, signAccess } = require('../lib/tokens');
+const { readDevice, signAccess } = require('../lib/tokens');
 const AuthService = require('../services/AuthService');
 const { ServiceError, sendError } = require('../services/errors');
 
@@ -184,19 +184,21 @@ router.post(
         [userId]
       );
 
+      // Session issue goes through AuthService like every other path (Step C). A
+      // brand-new user can have no other authority holder, so the 'auto' policy
+      // grants the writer role — same behaviour as before, one implementation.
+      const { session, deviceRow } = await AuthService.startSession({
+        user, device, ip, userAgent: req.headers['user-agent'],
+      });
+
       // The registering device is the org's primary by definition — it is the one
       // that will later issue pairing QRs for every other device.
-      const deviceRow = await upsertDevice({
-        orgId, userId, device, role: 'org_admin', ip,
-      });
       if (deviceRow) {
         await pool.query(
           `UPDATE devices SET is_primary = 1, paired_at = NOW(), paired_by = ? WHERE id = ?`,
           [userId, deviceRow.id]
         );
       }
-
-      const session = await issueSession({ user, device, ip, userAgent: req.headers['user-agent'] });
 
       await audit(req, 'auth.register', {
         orgId, userId, deviceId: device.device_uid,

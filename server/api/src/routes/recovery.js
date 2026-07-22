@@ -28,7 +28,8 @@ const config = require('../config');
 const { authenticate } = require('../middleware/auth');
 const { audit, clientIp } = require('../lib/audit');
 const { sendRecoveryCode, maskEmail } = require('../lib/email');
-const { issueSession, upsertDevice, readDevice } = require('../lib/tokens');
+const { readDevice } = require('../lib/tokens');
+const AuthService = require('../services/AuthService');
 
 function validation(req, res) {
   const errors = validationResult(req);
@@ -301,19 +302,25 @@ router.post(
       );
       await pool.query('DELETE FROM recovery_tokens WHERE id = ?', [row.id]);
 
-      const deviceRow = await upsertDevice({
-        orgId: user.org_id, userId: user.id, device, role: user.role, ip,
+      // Reclaiming a previously revoked device is legitimate here — the recovery
+      // token IS the proof of ownership — so reactivate its row first, or
+      // AuthService would refuse it as DEVICE_REVOKED.
+      await pool.query(
+        `UPDATE devices SET status = 'active', revoked_at = NULL
+          WHERE org_id = ? AND device_uid = ?`,
+        [user.org_id, device.device_uid]
+      );
+
+      // Every other session was just revoked above, so the 'auto' policy grants
+      // this device the single-writer authority — same behaviour as before.
+      const { session, deviceRow } = await AuthService.startSession({
+        user, device, ip, userAgent: req.headers['user-agent'], role: user.role,
       });
       await pool.query(
         `UPDATE devices SET status = 'active', revoked_at = NULL, paired_at = NOW(), paired_by = ?
           WHERE id = ?`,
         [user.id, deviceRow.id]
       );
-
-      const session = await issueSession({
-        user, device, ip, userAgent: req.headers['user-agent'],
-        role: user.role, grantAuthority: true,
-      });
 
       await audit(req, 'recovery.device_loss', {
         orgId: user.org_id, userId: user.id, deviceId: device.device_uid,
@@ -335,7 +342,7 @@ router.post(
             id: user.org_id, name: user.org_name,
             timezone: user.timezone, currency: user.currency,
           },
-          authoritative: true,
+          authoritative: session.authoritative,
           // The replacement device has no local database. It must pull from since=0.
           requiresFullSync: true,
           sessionsRevoked: revoked.affectedRows,
