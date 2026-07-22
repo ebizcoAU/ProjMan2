@@ -1,0 +1,85 @@
+name: projman2
+description: "ProjMan2 — field app for building and construction project management."
+publish_to: 'none'
+
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.11.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # Navigation & Routing
+  go_router: ^12.0.0
+
+  # State Management
+  flutter_riverpod: ^2.4.0
+
+  # Database
+  sqflite: ^2.3.0
+
+  # Real-time — device pairing, handoff, sync nudges
+  web_socket_channel: ^2.4.0
+  mqtt_client: ^10.11.11
+
+  # QR — device pairing payloads
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^5.2.3
+
+  # Storage & Security
+  flutter_secure_storage: ^9.0.0
+  shared_preferences: ^2.2.0
+
+  # Connectivity — drives the offline queue
+  connectivity_plus: ^5.0.0
+
+  # UI
+  google_fonts: ^6.1.0
+
+  # HTTP
+  http: ^1.2.0
+
+  # Crypto / hashing
+  crypto: ^3.0.3
+
+  # Capture — site photos, dockets, supplier invoices
+  image_picker: ^1.0.7
+  image: ^4.8.0
+
+  # Utilities
+  path: ^1.9.0
+  path_provider: ^2.1.0
+  intl: ^0.20.2
+  cupertino_icons: ^1.0.8
+  uuid: ^4.0.0
+  package_info_plus: ^8.0.0
+  device_info_plus: ^10.0.0
+  share_plus: ^10.1.4
+  url_launcher: ^6.3.0
+
+# Deliberately not carried from ftpos at P1:
+#   flutter_tts / speech_to_text  — IVR voice, deferred (development.md §8.4)
+#   flutter_blue_plus / local_auth / ozkey_commissioner — doorlock, out of scope
+#   bonsoir / network_info_plus / wakelock_plus — LAN/KDS, dropped
+#   printing / pdf — returns at P9 with BAS/TPAR reporting
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+  build_runner: ^2.4.0
+  riverpod_generator: ^2.3.0
+  mockito: ^5.4.0
+  integration_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/data/

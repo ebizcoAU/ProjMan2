@@ -1,0 +1,33 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../services/db_service.dart';
+
+// ── Field-app tab sub-page toggles ────────────────────────────────────────────
+// Each of the five bottom tabs cycles its sub-pages by tapping the header title
+// (development.md §4). 0 = the tab's default page.
+//   Projects → 0 Projects · 1 Programme · 2 Costs
+//   Site     → 0 Today · 1 Site Diary · 2 Attendance
+//   Safety   → 0 Safety · 1 Incidents · 2 Inductions
+//   Quality  → 0 Inspections · 1 Defects · 2 Certificates
+//   Profile  → 0 Profile · 1 Device & Sync
+final projectsPageProvider = StateProvider<int>((ref) => 0);
+final sitePageProvider = StateProvider<int>((ref) => 0);
+final safetyPageProvider = StateProvider<int>((ref) => 0);
+final qualityPageProvider = StateProvider<int>((ref) => 0);
+final profilePageProvider = StateProvider<int>((ref) => 0);
+
+// ── Active org (tenant) ───────────────────────────────────────────────────────
+// Resolved from the is_primary organisation on load. '' until first resolved.
+final orgIdProvider = StateProvider<String?>((ref) => null);
+
+// ── Database service singleton ────────────────────────────────────────────────
+final databaseServiceProvider = FutureProvider<DatabaseService>((ref) async {
+  final db = DatabaseService();
+  await db.initialize();
+  return db;
+});
+
+// ── App initialisation — DB ready; sync wiring arrives at P3 ──────────────────
+final appInitializationProvider = FutureProvider<bool>((ref) async {
+  await ref.watch(databaseServiceProvider.future);
+  return true;
+});

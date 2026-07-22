@@ -1,0 +1,30 @@
+{
+  "name": "projman2-api",
+  "version": "0.1.0",
+  "description": "ProjMan2 server — identity, device pairing and sync for the construction field app. Ported from Nexus.",
+  "main": "src/index.js",
+  "private": true,
+  "scripts": {
+    "dev": "nodemon src/index.js",
+    "start": "node src/index.js",
+    "db:migrate": "node scripts/migrate.js",
+    "test:isolation": "node tests/isolation.test.js"
+  },
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.3.1",
+    "express-validator": "^7.1.0",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "mysql2": "^3.10.1",
+    "nodemailer": "^8.0.1",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}

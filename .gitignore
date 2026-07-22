@@ -1,0 +1,33 @@
+# ProjMan2 monorepo — root ignore.
+# Per-stack ignores also apply: app/.gitignore (Flutter), server/api/.gitignore (Node).
+# The patterns below are belt-and-braces so a secret or build artifact can never
+# slip in from a path a sub-ignore doesn't cover (development.md §9 — the legacy
+# repo leaked live credentials; that must never be repeated here).
+
+# ── Secrets — never commit ────────────────────────────────────────────────────
+**/.env
+**/.env.local
+**/.env.*.local
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.jks
+# .env.example templates are intentionally NOT ignored.
+
+# ── Dependencies & build artifacts ────────────────────────────────────────────
+**/node_modules/
+**/build/
+**/.dart_tool/
+**/dist/
+**/coverage/
+
+# ── Local tooling ─────────────────────────────────────────────────────────────
+.claude/settings.local.json
+
+# ── OS / editor ───────────────────────────────────────────────────────────────
+.DS_Store
+*.log
+*.swp
+.idea/
