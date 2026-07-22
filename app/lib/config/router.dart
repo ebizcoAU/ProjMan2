@@ -7,6 +7,8 @@ import '../screens/login_screen.dart';
 import '../screens/register_screen.dart';
 import '../screens/recovery_screen.dart';
 import '../screens/onboarding_screen.dart';
+import '../screens/pairing/pair_device_screen.dart';
+import '../screens/pairing/join_device_screen.dart';
 import '../screens/home_screen.dart';
 
 class AppRoutes {
@@ -15,8 +17,10 @@ class AppRoutes {
   static const String register = '/register';
   static const String recovery = '/recovery';
   static const String onboarding = '/onboarding';
+  static const String pairDevice = '/pair-device'; // primary shows QR
+  static const String joinDevice = '/join-device'; // new device scans
   static const String home = '/home';
-  // Pairing + handoff land here later in P2.
+  // Handoff lands here later in P2.
 }
 
 /// Boot route decision. Ported from ftpos `config/router.dart` and stripped of
@@ -65,6 +69,16 @@ final goRouterProvider = FutureProvider<GoRouter>((ref) async {
         path: AppRoutes.onboarding,
         name: 'onboarding',
         builder: (context, state) => const OnboardingScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.pairDevice,
+        name: 'pairDevice',
+        builder: (context, state) => const PairDeviceScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.joinDevice,
+        name: 'joinDevice',
+        builder: (context, state) => const JoinDeviceScreen(),
       ),
       GoRoute(
         path: AppRoutes.home,

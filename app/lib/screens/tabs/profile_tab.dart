@@ -180,14 +180,8 @@ class _ProfileTabState extends State<ProfileTab> {
           style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
           icon: const Icon(Icons.qr_code_2),
           label: const Text('Pair a device'),
-          // Intra-org device pairing (projman-01 §1.3) — buildable now
-          // (projman-02 §9). The pairing flow lands in the next increment.
-          onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Device pairing arrives in the next update.'),
-              behavior: SnackBarBehavior.floating,
-            ),
-          ),
+          // Intra-org device pairing (projman-01 §1.3 / projman-02 §9).
+          onPressed: () => context.push(AppRoutes.pairDevice),
         ),
       ],
     );

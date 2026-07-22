@@ -72,6 +72,46 @@ class NexusService {
     }
   }
 
+  /// Low-level GET returning the decoded body + success flag + error code.
+  static Future<ApiResult> _get(String path, {String? bearer}) async {
+    final uri = Uri.parse('$API_BASE_URL$path');
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15);
+    try {
+      final req = await client.getUrl(uri);
+      if (bearer != null) {
+        req.headers.set(HttpHeaders.authorizationHeader, 'Bearer $bearer');
+      }
+      final resp = await req.close();
+      final text = await resp.transform(utf8.decoder).join();
+      final Map<String, dynamic> json =
+          text.isEmpty ? {} : jsonDecode(text) as Map<String, dynamic>;
+      final ok = resp.statusCode >= 200 &&
+          resp.statusCode < 300 &&
+          json['success'] != false;
+      return ApiResult(
+        success: ok,
+        status: resp.statusCode,
+        data: json,
+        code: json['code']?.toString(),
+        message: json['message']?.toString(),
+      );
+    } on SocketException {
+      return const ApiResult(
+          success: false,
+          status: 0,
+          data: {},
+          code: 'NETWORK',
+          message: 'Cannot reach the server.');
+    } catch (e) {
+      return ApiResult(
+          success: false, status: 0, data: const {}, code: 'CLIENT_ERROR',
+          message: e.toString());
+    } finally {
+      client.close(force: true);
+    }
+  }
+
   // ── Auth ───────────────────────────────────────────────────────────────────
 
   /// POST /auth/register — create org + first user (Org Admin). On success the
@@ -205,6 +245,74 @@ class NexusService {
     if (res.success && org is Map<String, dynamic>) {
       await SessionService.updateOrg(org);
     }
+    return res;
+  }
+
+  // ── Device pairing (projman-01 §1.3) ───────────────────────────────────────
+  // The primary (authenticated) initiates → shows a QR → polls pending →
+  // confirms with a role. The joining device (no session yet — the nonce is its
+  // credential) requests → polls status → receives its role + tokens.
+
+  /// POST /pairing/initiate (Bearer) — primary starts pairing for [role].
+  /// Returns `{request_id, qr_payload{v,org,id,nonce}, role, expires_in}`.
+  static Future<ApiResult> pairingInitiate({
+    required String role,
+    String? label,
+    int? ttlSeconds,
+  }) async {
+    final token = await SessionService.accessToken();
+    return _post('/pairing/initiate', bearer: token, body: {
+      'role': role,
+      'label': ?label,
+      'ttl_seconds': ?ttlSeconds,
+    });
+  }
+
+  /// GET /pairing/pending (Bearer) — primary polls for join requests.
+  static Future<ApiResult> pairingPending() async {
+    final token = await SessionService.accessToken();
+    return _get('/pairing/pending', bearer: token);
+  }
+
+  /// POST /pairing/confirm (Bearer) — approve + assign role.
+  static Future<ApiResult> pairingConfirm({
+    required String requestId,
+    String? role,
+  }) async {
+    final token = await SessionService.accessToken();
+    return _post('/pairing/confirm', bearer: token, body: {
+      'request_id': requestId,
+      'role': ?role,
+    });
+  }
+
+  /// POST /pairing/reject (Bearer).
+  static Future<ApiResult> pairingReject({required String requestId}) async {
+    final token = await SessionService.accessToken();
+    return _post('/pairing/reject',
+        bearer: token, body: {'request_id': requestId});
+  }
+
+  /// POST /pairing/request (no auth) — joining device submits the scanned nonce.
+  static Future<ApiResult> pairingRequest({
+    required String requestId,
+    required String nonce,
+  }) async {
+    return _post('/pairing/request', body: {
+      'request_id': requestId,
+      'nonce': nonce,
+      'device': await DeviceService.describe(),
+    });
+  }
+
+  /// GET /pairing/status/:id (no auth) — joining device polls until confirmed.
+  /// On confirm the response may carry `{role, device_id, accessToken?,
+  /// refreshToken?, requiresLogin}`; if tokens are present this persists them.
+  static Future<ApiResult> pairingStatus({required String requestId}) async {
+    final uid = await DeviceService.deviceUid();
+    final res = await _get(
+        '/pairing/status/$requestId?device_uid=${Uri.encodeQueryComponent(uid)}');
+    await _persistSession(res); // no-op unless tokens are present
     return res;
   }
 
