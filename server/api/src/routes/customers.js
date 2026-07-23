@@ -11,14 +11,15 @@
 const router = require('express').Router();
 const { body, validationResult } = require('express-validator');
 
-const { authenticate, requireRole } = require('../middleware/auth');
+const { authenticate, requirePermission } = require('../middleware/auth');
 const { sendError } = require('../services/errors');
 const { audit } = require('../lib/audit');
 const CustomerService = require('../services/CustomerService');
 
 router.use(authenticate);
 
-const canEdit = requireRole('org_admin', 'project_developer');
+const canRead = requirePermission('customers.read');
+const canEdit = requirePermission('customers.write');
 
 function validation(req, res) {
   const errors = validationResult(req);
@@ -29,7 +30,7 @@ function validation(req, res) {
 }
 
 // ── GET /customers ────────────────────────────────────────────
-router.get('/', async (req, res) => {
+router.get('/', canRead, async (req, res) => {
   try {
     const data = await CustomerService.listCustomers({ orgId: req.auth.orgId });
     return res.json({ success: true, data });

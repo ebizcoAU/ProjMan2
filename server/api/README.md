@@ -47,6 +47,16 @@ GET   /api/v1/organisation/users
 POST  /api/v1/organisation/users      (org_admin)
 PATCH /api/v1/organisation/users/:id  (org_admin)
 GET   /api/v1/organisation/audit      (org_admin)
+
+GET   /api/v1/projects                list (?status=, paginated; money redacted per role)
+POST  /api/v1/projects                (org_admin | project_developer)
+GET   /api/v1/projects/:id            detail + stages + tasks
+PATCH /api/v1/projects/:id            (org_admin | project_developer)
+POST  /api/v1/projects/:id/stages     (admin | developer | manager)
+PATCH /api/v1/projects/:id/stages/:stageId
+GET   /api/v1/customers               list with project counts
+POST  /api/v1/customers               (org_admin | project_developer)
+PATCH /api/v1/customers/:id           (org_admin | project_developer)
 ```
 
 ## Run it
@@ -62,7 +72,9 @@ npm run dev                   # http://localhost:4100/api/v1
 Confirm the acceptance boundary — a token from org A cannot touch org B:
 
 ```bash
-node tests/isolation.test.js
+node tests/isolation.test.js     # 16 tenant-isolation checks
+node tests/domain.test.js        # 24 construction-core checks (v003): CRUD scoping,
+                                 # ownership refusals, financial redaction, web-never-writer
 ```
 
 ## Deployment shape

@@ -113,21 +113,60 @@ Gantt editing and financial work belong on the web console, not the phone.
 
 ## 3. Roles
 
-| Role | Scope |
-|---|---|
-| **Org Admin** | Tenant owner. Billing, users, org settings. |
-| **Project Developer** | Creates projects and customers, sets budgets, approves variations and claims. Financial visibility across the portfolio. |
-| **Project Manager** | Runs assigned projects: programme, staff, attendance, safety, inspections, reports. Sees project costs, not portfolio finance. |
-| **Supervisor / Foreman** | Site subset of PM: attendance, diary, hazards, defects, photos. No financials. |
-| **Tradie / Subcontractor** | Self check-in/out, own assigned tasks, upload own certificates and dockets. Sees nothing else. |
-| **Customer / Client** | Read-only progress view of *their own* project. Web only. |
+**Role model v2 — LOCKED 2026-07-22.** Two decisions taken: **(1) Keep + Add** —
+`project_developer` stays a builder-side role (it is *not* reassigned to the
+client); `construction_manager` is **added** as a new role. **(2) Scoped v1** —
+the target model is 12 roles; the rows flagged ✅ ship in v1, the rest arrive
+post-v1 as their modules come online (gated server-side by `ROLE_NOT_ASSIGNABLE`).
+
+| # | Role | `role` enum | v1 | Surface | Scope |
+|---|---|---|---|---|---|
+| 1 | **Org Admin** | `org_admin` | ✅ | Web | Tenant owner. Billing, users, org settings, device admin. |
+| 2 | **Project Developer** | `project_developer` | ✅ | Web | Builder-side principal. Creates projects and customers, sets budgets, approves variations and claims. Financial visibility across the portfolio. |
+| 3 | **Project Manager** | `project_manager` | ✅ | Web + App | Runs assigned projects: programme, staff, attendance, safety, inspections, reports. Sees project costs, not portfolio finance. |
+| 4 | **Site Supervisor** | `supervisor` | ✅ | App + Web | Site subset of PM: attendance, diary, hazards, defects, photos. No financials. |
+| 5 | **Foreperson / Leading Hand** | `foreperson` | ✅ | App | Crew-level subset of Supervisor: crew attendance, task progress, hazards, photos. No diary sign-off, no financials. |
+| 6 | **Tradie** (individual) | `tradie` | ✅ | App | Self check-in/out, own assigned tasks, upload own certificates and dockets. Sees nothing else. |
+| 7 | **Inspector / Certifier** | `inspector` | ✅ | App + Web | First-class but **temporary + project-scoped**; Quality tab only (appspec Decision 3). Engagement per projman-02 (external C1 or in-house paired device C2). |
+| 8 | **Client** | `customer` | ✅ | Portal | Read-only progress view of *their own* project; approve/decline variations, view claims. Portal only — never a sync writer. |
+| 9 | **Construction Manager** | `construction_manager` | ⚠️ post-v1 | Web | Cross-project delivery oversight: programme and resources across the portfolio. Not org admin, not portfolio finance approval. |
+| 10 | **Estimator / QS** | `estimator` | ⚠️ post-v1 | Web | Cost library, estimates, tenders, quotes. No site operations. |
+| 11 | **Subcontractor** (business) | `subcontractor` | ⚠️ post-v1 | App + Web | Engaged business entity with own crew: own POs, claims and dockets, engagement-scoped (projman-02). Distinct from the individual Tradie. |
+| 12 | **Labourer / Apprentice** | `labourer` | ⚠️ post-v1 | App | Attendance, assigned tasks, inductions only. Apprentice variant accrues CPC evidence (§12). |
+
+**Enum note.** v001 shipped `org_admin | project_developer | project_manager |
+supervisor | tradie | customer`. Role model v2 **adds** `inspector` + `foreperson`
+(v1) and `construction_manager` + `estimator` + `subcontractor` + `labourer`
+(post-v1, refused at assignment until enabled). Additive only — no existing value
+is renamed or reassigned, so no data migration. The enum change is a projman-01
+contract amendment owned by NexusPM (see projman-01 §9).
 
 **Device roles.** Reuse MAOI's secondary-device pairing model (ftpos XF-06/07/41):
 a device is paired to the org and **bound to a role**, so a shared site tablet
 *is* the supervisor device without a shared password. Role lives on the
-`device_registry` row, not on a login the crew passes around.
+`devices` row, not on a login the crew passes around.
 
-> Open: whether Tradie and Customer get real logins in v1 — see §8.
+**App UI shortlist — LOCKED 2026-07-22.** The 12-role model is a **server**
+concern (enforcement, permissions, future-proofing). The **pairing screen shows
+exactly 5 roles** — the ones that answer "what am I doing on this site?":
+
+| Pairing screen label | `role` enum | Who uses this |
+|---|---|---|
+| Site Manager | `supervisor` | Runs the site daily |
+| Foreman | `foreperson` | Leads a crew |
+| Tradie | `tradie` | Does the work |
+| Inspector | `inspector` | Checks quality/compliance |
+| Project Manager | `project_manager` | Office + site oversight |
+
+Never shown on the pairing screen: `org_admin`, `project_developer`,
+`construction_manager`, `estimator`, `subcontractor` (web console — a subbie
+principal manages the business on web; their crew pairs as **Tradie**),
+`labourer` (pairs as **Tradie** — one label covers both on site), `customer`
+(portal only, never a device role).
+
+**Enforcement.** The permission matrix is **server-enforced** (see §13.2); the
+app's `RoleVisibility` provider only thins CONTENT cosmetically (appspec
+Decision 2) and is never a security boundary.
 
 ---
 
@@ -504,9 +543,11 @@ role is refused by every write guard server-side.
 
 Recorded rather than guessed. Each becomes a `PM2-NN` decision record.
 
-1. **Tradie and Customer logins in v1?** Drives whether self check-in and the client
-   portal are P5/P8 or later. Assumed **no** for v1 — supervisor records attendance —
-   pending confirmation.
+1. ~~**Tradie and Customer logins in v1?**~~ **CLOSED 2026-07-22** by role model
+   v2 (§3): **Tradie is v1 on the app** (paired device / QR self check-in — no
+   open self-service registration until the projman-02 identity domain lands)
+   and **Client is v1 on the portal** (read-only, invited). Supervisor-recorded
+   attendance remains the fallback where a crew has no paired devices.
 2. **Legacy `c1projman` data** — migrate the existing MySQL data, or start clean?
    Assumed **start clean**.
 3. ~~**AU tax** — what replaces the VN engine?~~ **CLOSED 2026-07-22:** accounting
@@ -821,3 +862,61 @@ folding compliance into Quality and environment into Safety:
 Every new feature keeps the framework's two rules: **offline-first capture** on the
 field app, and **AU compliance** (data residency, TPAR-aware, ABN-validated) in the
 ledger.
+---
+
+## 13. Data flow — the project lifecycle (role model v2)
+
+### 13.1 The authoritative lifecycle — the 18-stage matrix
+
+**The project lifecycle is `docs/18StageProjectMangementMatrix.md`** — the owner-
+authored `WA_RESIDENTIAL_18` standard template and the app's declared **Core Logic
+Driver**. It supersedes an earlier 17-step reconstruction that stood here. Do not
+re-derive the steps; read that file. How it lands in the app:
+
+- **Template-driven, not hard-coded.** Every project instantiates `WA_RESIDENTIAL_18`;
+  four **optional modules** layer on per project (Cross-Border / precast, TT Payment
+  Milestones, BIM > $5M, Sustainability / BASIX).
+- **App's slice.** Stage **1** (PM creates project + land-doc **camera capture** — the
+  app's front door), Stage **6** (material selection), Stage **7** (DA review +
+  digital signature) are app capture/review; Stages **10–18** are **app-primary** site
+  execution. The rest (2–5, 8–9, and all OCR / NLP / 3D, council routing, TT finance)
+  are **Portal + Dashboard + Python** — NexusPM's, not the field app.
+- **Stages are the Projects-tab backbone** (appspec §4, §5.2): project detail is the
+  18-stage tracker with per-stage gate status — active / blocked-awaiting-inspection /
+  complete / incomplete-tag. Site / Safety / Quality tabs are the **capture surfaces**
+  that feed the active stage. Safety data is stage-independent (log a hazard anytime);
+  Quality inspections unlock blocked stages at their hold points.
+- **Stage advancement is manual + tagged (LOCKED decision, 2026-07-23):** the PM taps
+  **"Complete & Next Stage"**; the server validates required data/docs; if any are
+  missing the stage is tagged **INCOMPLETE** (⚠️ red tag on the Projects tab) and
+  advance is blocked **unless the PM overrides with a reason** — the tag persists as a
+  record of the gap. The system guides; the PM decides.
+
+Entities the matrix references not yet in §5: **`leads`** (P7), **`client_feedback`**
+(P10 portal), stage-template + module-toggle tables (domain contract, NexusPM).
+`contracts` already lands at P4 (§12.5).
+
+### 13.2 Server enforcement points (9)
+
+The matrix in §3 is enforced **server-side only** — on both the sync-push path and
+dashboard/portal writes (the ComplianceService pattern, projman-03 R2). The app's
+`RoleVisibility` is cosmetic. Hold-point rows below map to the matrix's *Critical
+Hold Points* table (11→12, 12→13, 13→14, 15→16, 18→handover).
+
+### 13.2 Server enforcement points (9)
+
+The matrix in §3 is enforced **server-side only** — on both the sync-push path and
+dashboard/portal writes (the ComplianceService pattern, projman-03 R2). The app's
+`RoleVisibility` is cosmetic.
+
+| # | Enforcement | Rule |
+|---|---|---|
+| 1 | **org_id isolation** | Every query filtered by tenant; nothing crosses the org boundary (projman-01, 16/16). |
+| 2 | **Role RBAC** | CRUD per the §3 role matrix, evaluated per surface. |
+| 3 | **Engagement scope** | An engaged external party sees only the granted slice of ONE project (projman-02). |
+| 4 | **Hold-point block** | An open hold point blocks that stage's completion. |
+| 5 | **Invoice / claim gate** | No claim or invoice approval against a stage that fails its gate. |
+| 6 | **NCC block** | An open `ncc_register` item blocks stage completion (projman-03 R2). |
+| 7 | **Structural gate** | An incomplete structural inspection blocks completion (projman-03 R2). |
+| 8 | **TPAR flag** | Payments to construction subcontractors accumulate by ABN for TPAR. |
+| 9 | **Geofence** | Attendance and incident capture geo-validated against the site (anti-fraud; feeds trust score; degrades gracefully — never blocks capture, appspec Decision 4). |

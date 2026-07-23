@@ -31,6 +31,7 @@ const { authenticate } = require('../middleware/auth');
 const { audit, clientIp } = require('../lib/audit');
 const { validateAbn } = require('../lib/abn');
 const { readDevice, signAccess } = require('../lib/tokens');
+const access = require('../lib/access');
 const AuthService = require('../services/AuthService');
 const { ServiceError, sendError } = require('../services/errors');
 
@@ -162,10 +163,13 @@ router.post(
           ]
         );
 
+        // The registering user is the builder's top actor — projectManager (18-Stage
+        // Matrix Stage 1: projectManager creates projects). It is the portfolio role
+        // that also holds org.manage / users.manage / devices.manage.
         await conn.query(
           `INSERT INTO users
              (id, org_id, email, password_hash, full_name, mobile, role, status)
-           VALUES (?, ?, ?, ?, ?, ?, 'org_admin', 'active')`,
+           VALUES (?, ?, ?, ?, ?, ?, 'projectManager', 'active')`,
           [userId, orgId, person.email, passwordHash,
            person.full_name, person.mobile || null]
         );
@@ -484,6 +488,37 @@ router.get('/me', authenticate, async (req, res) => {
       device: req.auth.deviceUid
         ? { uid: req.auth.deviceUid, id: req.auth.deviceId, role: req.auth.role }
         : null,
+    },
+  });
+});
+
+// ============================================================================
+// GET /auth/permissions   (authenticated)
+//
+// The server side of "roles as data" (§9.7). The app's RoleVisibility and the
+// pairing screen render from THIS — the 5-role shortlist and the effective
+// permission set become server data, so the client stops hard-coding a copy that
+// drifts (which is how `inspector` shipped ahead of the server enum).
+//
+//   matrixVersion    bump it and the app knows its cached copy is stale
+//   permissions      what THIS session's role may do (drives UI enablement only —
+//                    the server still enforces every one server-side)
+//   scopeClass       portfolio | assigned | self | engagement | portal
+//   pairableRoles    the device-pairable shortlist (label + enum) for the QR screen
+//   assignableRoles  roles a user may currently be given (user-management UI)
+// ============================================================================
+router.get('/permissions', authenticate, async (req, res) => {
+  const role = req.auth.role;
+  const meta = access.roleMeta(role);
+  return res.json({
+    success: true,
+    data: {
+      matrixVersion: access.matrixVersion(),
+      role,
+      scopeClass: meta?.scopeClass || null,
+      permissions: [...access.permissionsFor(role)],
+      pairableRoles: access.pairableRoles(),
+      assignableRoles: access.assignableRoles(),
     },
   });
 });

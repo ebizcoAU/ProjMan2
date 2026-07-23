@@ -28,8 +28,8 @@ async function audit(req, action, opts = {}) {
   try {
     await pool.query(
       `INSERT INTO audit_log
-         (org_id, user_id, device_id, action, entity, entity_id, detail, ip)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         (org_id, user_id, device_id, action, entity, entity_id, detail, ip, user_agent)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         opts.orgId    ?? req?.auth?.orgId    ?? null,
         opts.userId   ?? req?.auth?.userId   ?? null,
@@ -39,6 +39,9 @@ async function audit(req, action, opts = {}) {
         opts.entityId != null ? String(opts.entityId) : null,
         opts.detail ? JSON.stringify(opts.detail) : null,
         clientIp(req),
+        // Captured per event now (was only on successful-login sessions) — the login
+        // log wants device/OS on every row, including failures. Truncate to the column.
+        (req?.headers?.['user-agent'] || null)?.slice(0, 255) ?? null,
       ]
     );
   } catch (err) {

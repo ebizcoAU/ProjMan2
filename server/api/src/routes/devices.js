@@ -18,9 +18,9 @@ const router = require('express').Router();
 const { body, validationResult } = require('express-validator');
 
 const pool = require('../db/pool');
-const { authenticate, requireRole } = require('../middleware/auth');
+const { authenticate, requirePermission } = require('../middleware/auth');
 const { audit } = require('../lib/audit');
-const { ROLES } = require('../lib/roles');
+const access = require('../lib/access');
 
 function validation(req, res) {
   const errors = validationResult(req);
@@ -120,7 +120,7 @@ router.get('/:id', authenticate, async (req, res) => {
 router.post(
   '/:id/revoke',
   authenticate,
-  requireRole('org_admin', 'project_developer', 'project_manager'),
+  requirePermission('devices.manage'),
   async (req, res) => {
     try {
       const [[device]] = await pool.query(
@@ -178,10 +178,20 @@ router.post(
 router.post(
   '/:id/role',
   authenticate,
-  requireRole('org_admin', 'project_developer'),
-  [body('role').isIn(ROLES).withMessage('A valid role is required')],
+  requirePermission('devices.manage'),
+  [body('role').notEmpty().withMessage('A role is required')],
   async (req, res) => {
     if (validation(req, res)) return;
+
+    // Defined AND device-pairable — the same data-driven gate as pairing.
+    // `customer` is a defined role but device_pairable=0, so it is refused here by
+    // data, exactly as §9.2 requires (ROLE_NOT_ASSIGNABLE for the pairability sense).
+    if (!access.roleMeta(req.body.role)) {
+      return res.status(422).json({ success: false, message: 'A valid role is required', code: 'VALIDATION_ERROR', field: 'role' });
+    }
+    if (!access.isPairable(req.body.role)) {
+      return res.status(403).json({ success: false, message: `The role "${req.body.role}" cannot be assigned to a device`, code: 'ROLE_NOT_ASSIGNABLE' });
+    }
 
     try {
       const [[device]] = await pool.query(

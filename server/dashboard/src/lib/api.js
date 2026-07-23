@@ -99,8 +99,9 @@ export const authApi = {
       email, password,
       device: { device_uid: webDeviceUid(), device_name: 'Office console', platform: 'web' },
     }),
-  logout: () => request('POST', '/auth/logout'),
-  me:     () => request('GET',  '/auth/me'),
+  logout:      () => request('POST', '/auth/logout'),
+  me:          () => request('GET',  '/auth/me'),
+  permissions: () => request('GET',  '/auth/permissions'),
 };
 
 export const devicesApi = {
@@ -115,10 +116,15 @@ export const syncApi = {
 };
 
 export const organisationApi = {
-  get:   ()      => request('GET',   '/organisation'),
-  patch: (body)  => request('PATCH', '/organisation', body),
-  users: ()      => request('GET',   '/organisation/users'),
-  audit: ()      => request('GET',   '/organisation/audit'),
+  get:        ()          => request('GET',   '/organisation'),
+  patch:      (body)      => request('PATCH', '/organisation', body),
+  users:      ()          => request('GET',   '/organisation/users'),
+  createUser: (body)      => request('POST',  '/organisation/users', body),
+  patchUser:  (id, body)  => request('PATCH', `/organisation/users/${id}`, body),
+  audit:      (params={}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request('GET', `/organisation/audit${qs ? `?${qs}` : ''}`);
+  },
 };
 
 export const projectsApi = {
@@ -129,6 +135,20 @@ export const projectsApi = {
   detail: (id)        => request('GET',   `/projects/${id}`),
   create: (body)      => request('POST',  '/projects', body),
   patch:  (id, body)  => request('PATCH', `/projects/${id}`, body),
+
+  // Programme (18-stage engine)
+  instantiate: (id, templateId) => request('POST', `/projects/${id}/programme`, { template_id: templateId }),
+  advanceStage: (id, stageId, toStatus, milestone) =>
+    request('POST', `/projects/${id}/stages/${stageId}/advance`, { to_status: toStatus, milestone }),
+  validateStage: (id, stageId, result, reference) =>
+    request('POST', `/projects/${id}/stages/${stageId}/validate`, { result, reference }),
+  // Cost plan — per-stage structure/cost edit (programme.write)
+  patchStage: (id, stageId, body) => request('PATCH', `/projects/${id}/stages/${stageId}`, body),
+};
+
+export const stageTemplatesApi = {
+  list:   ()   => request('GET', '/stage-templates'),
+  detail: (id) => request('GET', `/stage-templates/${id}`),
 };
 
 export const customersApi = {
@@ -137,15 +157,38 @@ export const customersApi = {
   patch:  (id, body) => request('PATCH', `/customers/${id}`, body),
 };
 
+// ── System Admin dashboard (platform-admin allowlist; account + billing only) ──
+export const adminApi = {
+  stats:   ()           => request('GET', '/admin/stats'),
+  health:  ()           => request('GET', '/admin/system/health'),
+  users:   (params={})  => request('GET', `/admin/users${qs(params)}`),
+  userAction: (id, act) => request('POST', `/admin/users/${id}/${act}`),
+  devices: (params={})  => request('GET', `/admin/devices${qs(params)}`),
+  orgs:    (params={})  => request('GET', `/admin/orgs${qs(params)}`),
+  loginLog:(params={})  => request('GET', `/admin/logs/login${qs(params)}`),
+  billing: {
+    subscriptions: (params={}) => request('GET', `/admin/billing/subscriptions${qs(params)}`),
+    revenue:       ()          => request('GET', '/admin/billing/revenue'),
+    recordPayment: (body)      => request('POST', '/admin/billing/payments', body),
+    changePlan:    (orgId, body) => request('PATCH', `/admin/orgs/${orgId}/plan`, body),
+  },
+};
+function qs(params) {
+  const s = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null && v !== '')).toString();
+  return s ? `?${s}` : '';
+}
+
 // ── Default export ────────────────────────────────────────────────────────────
 const api = {
   ...http,
-  auth:         authApi,
-  devices:      devicesApi,
-  sync:         syncApi,
-  organisation: organisationApi,
-  projects:     projectsApi,
-  customers:    customersApi,
+  auth:           authApi,
+  devices:        devicesApi,
+  sync:           syncApi,
+  organisation:   organisationApi,
+  projects:       projectsApi,
+  customers:      customersApi,
+  stageTemplates: stageTemplatesApi,
+  admin:          adminApi,
 };
 
 export default api;

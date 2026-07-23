@@ -24,6 +24,7 @@ const { body, validationResult } = require('express-validator');
 const pool   = require('../db/pool');
 const config = require('../config');
 const { authenticate } = require('../middleware/auth');
+const access = require('../lib/access');
 const { audit, clientIp } = require('../lib/audit');
 const { validateAbn } = require('../lib/abn');
 const { verify: verifyOAuth, OAuthError } = require('../lib/oauth');
@@ -131,10 +132,12 @@ router.post(
           [orgId, identity.name ? `${identity.name}'s organisation` : 'My organisation',
            config.server.timezone, config.server.currency]
         );
+        // First OAuth sign-in = the builder's top actor, projectManager (as with
+        // password register). Same portfolio role that holds org/users/devices admin.
         await conn.query(
           `INSERT INTO users
              (id, org_id, email, password_hash, full_name, role, status, onboarding_complete)
-           VALUES (?, ?, ?, NULL, ?, 'org_admin', 'active', 0)`,
+           VALUES (?, ?, ?, NULL, ?, 'projectManager', 'active', 0)`,
           [userId, orgId, identity.email, identity.name || identity.email.split('@')[0]]
         );
         await conn.query(
@@ -151,7 +154,7 @@ router.post(
       }
 
       const [[user]] = await pool.query('SELECT * FROM users WHERE id = ? LIMIT 1', [userId]);
-      const dev = await upsertDevice({ orgId, userId, device, role: 'org_admin', ip });
+      const dev = await upsertDevice({ orgId, userId, device, role: 'projectManager', ip });
       if (dev) {
         await pool.query('UPDATE devices SET is_primary = 1, paired_at = NOW(), paired_by = ? WHERE id = ?', [userId, dev.id]);
       }
@@ -235,10 +238,10 @@ router.post(
   async (req, res) => {
     if (validation(req, res)) return;
 
-    // Onboarding configures the org, so it is an org_admin action. An OAuth first
-    // sign-in makes the new user org_admin, so this holds for the intended caller.
-    if (req.auth.role !== 'org_admin') {
-      return res.status(403).json({ success: false, message: 'Only the organisation owner can complete onboarding', code: 'FORBIDDEN_ROLE' });
+    // Onboarding configures the org — an org.manage action. The first OAuth sign-in
+    // creates a projectManager (which holds org.manage), so this holds for the caller.
+    if (!access.hasPermission(req.auth.role, 'org.manage')) {
+      return res.status(403).json({ success: false, message: 'Only the organisation owner can complete onboarding', code: 'FORBIDDEN' });
     }
 
     try {

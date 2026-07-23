@@ -19,13 +19,21 @@ record lands.
 A professional tool for the **building & construction** trade, used **outdoors, one-
 handed, in gloves, in sunlight, often with no signal**. Not a consumer app.
 
-| Field role | On the app for | Not on the app for |
+**Role model v2 (LOCKED 2026-07-22, development.md §3):** the server enforces a
+**12-role** model; the app surfaces a **5-role shortlist** — the pairing screen
+offers exactly **Site Manager · Foreman · Tradie · Inspector · Project Manager**
+and nothing else. Labourers pair as Tradie; a subcontractor principal manages
+their business on web while their crew pairs as Tradie; admin/finance/estimating
+roles and the Client never pair a device.
+
+| Field role (pairing label → enum) | On the app for | Not on the app for |
 |---|---|---|
-| **Project Manager** | programme for today, attendance, safety, quality, diary; glance at costs | editing Gantt, cost plans, payroll (web) |
-| **Supervisor / Foreman** | the daily driver — sign the crew in, diary, hazards, defects, photos | anything financial |
-| **Tradie / Subcontractor** | *their* assigned tasks, self check-in, raise a hazard, upload own certs/dockets, mark progress | other trades, costs, the wider programme |
-| **Inspector** | run an inspection checklist, pass/fail, hold points — **Quality tab only** | site diary, attendance, safety, financials |
-| Org Admin · Project Developer · Customer | *(web-primary; minimal or no app surface)* | |
+| **Project Manager** (`project_manager`) | programme for today, attendance, safety, quality, diary; glance at costs | editing Gantt, cost plans, payroll (web) |
+| **Site Manager** (`supervisor`) | the daily driver — sign the crew in, diary, hazards, defects, photos | anything financial |
+| **Foreman** (`foreperson`) | crew-level capture — crew attendance, task progress, hazards, photos | diary sign-off, anything financial |
+| **Tradie** (`tradie`) | *their* assigned tasks, self check-in, raise a hazard, upload own certs/dockets, mark progress | other trades, costs, the wider programme |
+| **Inspector** (`inspector`) | run an inspection checklist, pass/fail, hold points — **Quality tab only** | site diary, attendance, safety, financials |
+| Org Admin · Project Developer · Construction Manager · Estimator · Subcontractor (principal) · Client | *(web/portal-primary; never pair a device)* | |
 
 **Inspector is a first-class role (LOCKED)** but a *temporary, project-scoped*
 engagement: paired as "Inspector — [Project]", Quality-only, expiring on stage
@@ -103,18 +111,26 @@ sub-pages; back returns to the tab's default (MAOI pattern).
 tradie still has Safety (raise a hazard — safety is everyone's) and Quality (their
 defects + upload certs), just without the management views.
 
-| Tab | PM / Supervisor | Tradie | Inspector |
-|---|---|---|---|
-| Projects | full | their tasks only | — (hidden content) |
-| Site | full | self check-in only | — |
-| Safety | full | raise hazard · my inductions | — |
-| Quality | full | my defects · upload certs | **full (only tab)** |
-| Profile | full | full | full |
+Content visibility per field role (role model v2, development.md §3 — the five
+pairing-shortlist roles):
+
+| Tab | Project Manager | Site Manager | Foreman | Tradie | Inspector |
+|---|---|---|---|---|---|
+| Projects | full incl. Costs (read-only) | programme + tasks, **no Costs** | crew tasks | their tasks only | — (hidden content) |
+| Site | full | full — diary sign-off | crew attendance · task progress · diary contribute (**no sign-off**) | self check-in only | — |
+| Safety | full | full | raise hazards · crew inductions | raise hazard · my inductions | — |
+| Quality | full | full | raise defects + photos | my defects · upload certs | **full (only tab)** |
+| Profile | full | full | full | full | full |
 
 - **`RoleVisibility` is UI-only.** A provider maps the **effective role** (device
   role wins over user role — projman-01 §1.7) to visible tabs/sub-pages/actions.
   **It is cosmetic — the server enforces isolation.** Client-side hiding is never a
-  security boundary.
+  security boundary: the authorization layer is the 9 server enforcement points of
+  development.md §13.2 (role RBAC per the §3 matrix, evaluated on the sync-push
+  path and every web/portal write).
+- Post-v1 app roles slot into this matrix without new columns: **Labourer pairs as
+  Tradie**; a **Subcontractor** crew appears as Tradie under an engagement scope
+  (projman-02).
 - **Header sync chip** (§6) and a **disabled mic** (§7) are always present.
 
 ---
@@ -130,12 +146,149 @@ Welcome → OAuth-first (Google/Microsoft/Facebook) or email → Login / Registe
 GST, ABN-optional) after a first sign-in. *Next: wire OAuth to the server dev-bypass
 + the onboarding screen; map `business_type` to the server's snake_case enum.*
 
-### 5.2 Projects tab
-Purpose: the jobs this person is on; drill to stages/tasks + % complete. Sub-pages:
-Projects (list) · Programme (stages, hold points) · Costs (**read-only**:
-estimated/committed/actual/claimed per stage). Inputs: mark task progress, tick
-done. Offline: reads cache, edits queue. Evidence: task completion, on-time signal.
-**⟨projman-02⟩** "Join Project" via QR lives here for cross-org parties.
+### 5.2 Projects tab — the stage backbone
+Purpose: the jobs this person is on; project detail = the **18-stage lifecycle
+tracker** (`docs/18StageProjectMangementMatrix.md`, `WA_RESIDENTIAL_18`). Sub-pages:
+Projects (list) · Programme (the 18 stages + hold points) · Costs (**read-only**:
+estimated/committed/actual/claimed per stage).
+
+**Stage tracker states** (Programme sub-page, one row per stage):
+
+| State | Display |
+|---|---|
+| active | ✅ "Framing — in progress" |
+| blocked (hold point) | 🔒 "Framing — awaiting inspection" |
+| complete | ✅ "Framing — passed" |
+| incomplete (validation tag) | ⚠️ "Framing — missing final check" |
+
+**Stage advancement — Decision b LOCKED (2026-07-23):** the PM manually taps
+**"Complete & Next Stage"**; the server validates required data/docs; if missing, the
+stage is tagged **INCOMPLETE** (⚠️ red tag, visible on the list) and advance is
+blocked **unless the PM overrides with a reason** — the tag persists as a record. The
+system guides; the PM decides.
+
+**Create Project — the app's front door (Stage 1, PM only).** A pushed screen, light
+operational theme, **capture-first** mobile order (fields stack to one column in
+portrait; tablet/landscape may use two):
+
+1. **Documents** — 📷 Take Photo / 📁 Upload land title, survey, contour. Stored on
+   the **device filesystem + a metadata row** (MAOI image-queue pattern — **no blobs
+   in SQLite**), queued for sync. OCR runs server/Python-side.
+2. **Site & land vectors** — address, suburb, postcode, state, title Volume/Folio,
+   area (m²). **OCR auto-fills these; the PM can always override.**
+3. **Customer profile** — search existing or **+ New Customer**; auto-linked.
+4. Bottom action bar: **Save Draft** (local-only) · **Submit** (create + queue).
+
+**OCR never blocks — Decision a LOCKED (2026-07-23):** OCR success → auto-populate,
+PM can override; OCR failed/offline → PM types manually, OCR re-runs later; OCR
+pending → field shows "Processing…" with manual entry still available. **OCR never
+overwrites a manual entry** unless the PM confirms. A "⚠️ OCR pending" line is a
+*tag*, not a gate — **Submit stays enabled**. The PM is never blocked by signal or AI.
+
+⚠ **Ownership dependency (projman-01 §10):** an app-originated project/customer create
+needs the ownership change (create = APP **or** WEB; update/delete WEB-only).
+**Save Draft (local-only) is buildable now; the Submit/sync path waits on that
+delivery.**
+
+Inputs: mark task progress, tick done. Offline: reads cache, edits queue. Evidence:
+task completion, on-time signal. **⟨projman-02⟩** "Join Project" via QR lives here
+for cross-org parties.
+
+#### 5.2.1 Stage 2 — Environment, Utility & Hazard Audit (PM)
+A **risk audit** screen (the matrix's Stage 2), pushed from the stage tracker.
+Purpose: the PM captures four spatial boundaries; the server **Python NLP** evaluates
+them against WA planning law / NCC and emails the client a risk summary. On the app
+this is **capture**; the analysis + email are server/Python. Feeds `compliance_register`
++ `risk_register`.
+
+**The risk profile is the spine** — each of the four sections carries a risk chip
+(🟢 clear / 🟠 caution / 🔴 critical — **colour + icon + label**), rolled up in a header
+overview. Portrait single-column, collapsible sections:
+
+1. **Utilities** — DBYD ref + lodged date (PM lodges Dial-Before-You-Dig externally;
+   app captures the ref and **attaches the response doc** — it can't fetch it), sewer
+   depth (m), overhead power clearance (m), notes.
+2. **Zoning** — council R-code (dropdown), planned density, density-check result,
+   zoning certificate attach.
+3. **Legal** — easements / covenants / design guidelines (yes/no + describe); **reuses
+   the Stage-1 title** (`↗ view`) rather than re-uploading.
+4. **Environment** — flood zone, heritage, **bushfire BAL rating** (LOW/12.5/19/29/40/FZ),
+   hazard-map attach.
+
+**Compliance Assessment (AI) card** at the bottom: offline → **⏳ Pending**; the PM can
+**Complete Stage 2 anyway** (client email sends on sync). **Risk flags follow the same
+manual + AI rule as OCR (Decision a):** the PM may set a section's chip manually; the
+NLP eval **suggests/fills** flags when it runs and **never overwrites** a manual flag
+without confirm. AI never blocks.
+
+Documents: filesystem + metadata row, **no SQLite blobs** (MAOI image-queue). Advance
+via **Complete & Next Stage** (Decision b — validates, tags INCOMPLETE on gaps, PM may
+override with a reason). ⚠ Another **PM-creates-from-app offline** case — rides the
+same **projman-01 §10** ownership change as Stage 1. AU value sets (R-codes, BAL) are
+structured fields.
+
+#### 5.2.2 Stage 3 — Concept Design Generation (PM)
+A deliberately **thin app surface** — the matrix's Stage 3 is a **one-click AI
+trigger + results viewer**; all generation (geometric block model, footprint,
+open-space, elevation, floor areas, setback rationale, the 3 client PDFs) is
+**server/Python**. Heavy concept review stays on the Portal.
+
+- **Inputs-ready checklist** reads Stage 1 boundaries + Stage 2 zoning/area; if a
+  prerequisite is missing the **Generate** button is disabled with a tag pointing back.
+- **Generate Concept Design** (one-click) fires the Python job. This is the **honest
+  offline exception** — generation is server-only. Offline → the trigger **queues**,
+  RESULT shows ⏳ Pending, and the PM may still Complete & Next with a `concept pending`
+  tag (decision-a spirit: never trap the PM); results arrive on sync.
+- **Results = Plan Viewer** (development.md §12): block diagram + 3 PDFs (Footprint /
+  Elevation / Area Summary) open in the PDF viewer and are **cached after first
+  download** for offline viewing. **Regenerate** keeps prior versions (evidence trail).
+- **Client email** is auto-composed + sent **server/Python-side**; the app shows the
+  sent receipt, never composes it.
+
+**No new capture tables** — Stage 3 *consumes* Stage 1/2 data and *produces*
+server-side artefacts (`concept_designs` + documents, WEB/Python-owned). Because
+nothing is app-authored, **Stage 3 does NOT need the projman-01 §10 ownership change.**
+
+#### 5.2.3 Stage 4 — Town Planner / Council Screening (PM) · client sign-off pattern
+Thin app surface: **capture client acceptance → pick the route → trigger**; server
+packages the Stage-3 assets and emails the appointed Town Planner **or** the local
+council. This stage settles the **client sign-off pattern reused at Stages 7, 8, 18.**
+
+**Client sign-off — LOCKED (2026-07-23):** the client is **Portal-only**, so
+acceptance is captured **two ways, both supported**:
+- **Portal approval (primary)** — the client taps Approve on the Public Portal
+  (WEB/portal-authored).
+- **In-person capture (fallback)** — the **PM captures the client's acceptance on the
+  PM's device as a digital signature** (common in AU residential; app-authored, works
+  offline/queues). **The digital-signature-capture component is born here** and reused
+  at every later sign-off (7/8/18).
+
+Both write a `client_approvals` row (portal-era table pulled forward). The in-person
+path is **app-authored → rides projman-01 §10**; the portal path is WEB-authored.
+Acceptance is **evidence** (feeds Verified Work History / client-satisfaction).
+
+**Route:** PM picks Town Planner or Council (disabled until accepted); **Send package**
+is server-side + **needs signal** (offline → queues, `not sent` tag). Advance per
+Decision (b), override-with-reason.
+
+#### 5.2.4 Stage 5 — Budget-Based Style Generation (PM) · the await-external gate
+Thin surface: **gate → trigger → comparison viewer → selection**. Server/Python
+generates the three cost-calibrated options and costs them; the app displays and
+tracks selection.
+
+**Envelope-confirmed gate — LOCKED (2026-07-23):** Stage 5 is 🔒 blocked until the
+council/planner **envelope confirmation** is recorded — the template's first real
+"await-external" hold. **The PM records it** (date + confirmation doc), or a
+portal/server event records the council response; that unlocks the generate trigger.
+The confirmation is **app-authored → rides projman-01 §10**.
+
+- **Generate Style Options** — one-click AI trigger (server-only; offline → queues).
+- **3-option comparison** — Budget / Deluxe / Premium cards (cost figure + spec),
+  each opens in the Plan Viewer, cached for offline view. Server-owned (`style_options`).
+- **Client tier selection — same sign-off pattern as Stage 4 (LOCKED):**
+  portal-primary (client picks a tier) + **in-person fallback** (PM records the chosen
+  tier, app-authored → §10). Selection kicks off Stage 6.
+- Advance per Decision (b), gated on "options generated + sent".
 
 ### 5.3 Site tab — the daily driver
 **Site Diary** — the most important screen; single-purpose, linear:

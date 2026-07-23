@@ -18,8 +18,9 @@ function parseJwt(token) {
 
 // Page titles keyed by first path segment
 const PAGE_TITLES = {
-  devices:  'Devices',
-  projects: 'Projects',
+  devices:      'Devices',
+  projects:     'Projects',
+  organisation: 'Organisation',
 };
 
 // ── Responsive font scale (same floors as PortalNav) ─────────────────────────

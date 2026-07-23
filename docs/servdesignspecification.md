@@ -207,3 +207,447 @@ schema v1 sign-off.
 **Review ask:** approve §3 (architecture) + §5 (porting plan) + §7 (build order), and
 answer §8. Then I start with steps B/C, which unblock the dashboard without waiting on
 the domain schema.
+
+---
+
+## 9. Access control — permissions, scope, and roles-as-data  ✅ BUILT
+
+> **⚠️ Superseded in one respect — 2026-07-23.** The mechanism below (permissions as
+> the enforcement unit · `project_members` resource scope · roles-as-data · financial
+> redaction · `GET /auth/permissions`) is **built and verified**. But the **role LIST
+> and matrix in §9.3/§9.5 below describe the retired 12-role model.** The authoritative
+> role model is now the **6-role** set from `18StageProjectMangementMatrix.md`
+> (`projectManager`/`siteSupervisor`/`foreperson`/`tradie`/`inspector`/`client`,
+> camelCase, projectManager = portfolio). The **live matrix is `projman-04.md` §3**;
+> read that, not the tables here. This section is kept for the mechanism design; its
+> role tables are historical. Delivered as migration_v004 (mechanism) + migration_v005
+> (6-role correction).
+
+**Status: ✅ BUILT — approved 2026-07-22, corrected to 6 roles 2026-07-23.**
+This section is the design behind `development.md` §13.2 enforcement point #2
+("Role RBAC"). It replaced the Phase-1 mechanism (`requireRole` lists +
+`FINANCIAL_ROLES`), now deleted.
+
+### 9.1 The flaw being fixed
+
+Three defects, all currently live:
+
+1. **Role is the enforcement unit.** Every guarded route hard-codes a role list
+   (`requireRole('org_admin','project_developer')`). At 6 roles this was tolerable;
+   at 12 (§3) every new role or capability change means auditing every guard in the
+   codebase — including the two new v003 route files, which added more lists the day
+   the flaw was flagged. This is how permission drift and privilege escalation are
+   born.
+2. **No resource-level scoping.** The §3 matrix promises "PM runs *assigned*
+   projects", "Tradie sees *own* tasks only", "Inspector is *project-scoped*" — but
+   the only scoping primitive on the wire is `org_id`. Today any supervisor pulls
+   and reads **every project in the org**. Role answers *what kinds of things you
+   can do*; nothing answers *on which things*.
+3. **Roles are baked into MySQL ENUMs** in three tables, plus `lib/roles.js`, plus
+   validator lists, plus the app's pairing screen. The app already ships
+   `inspector`, which the v001 enum 422s — the flaw demonstrating itself.
+
+### 9.2 Design overview — three primitives
+
+```
+role (a row, not an enum)
+  ├── scope_class          WHICH rows this role reaches   (resource dimension)
+  └── permission set       WHAT it may do to them         (capability dimension)
+
+enforcement = requirePermission(<capability>) + scopeFilter(<scope_class>)
+```
+
+- A **permission** is a dotted capability string (`projects.write`, `money.read`).
+  Routes and services check permissions, never role names.
+- A **scope class** says which slice of the org's rows the role reaches:
+  `portfolio` (org-wide) · `assigned` (member projects only, via
+  `project_members`) · `self` (own rows) · `engagement` (projman-02 slice) ·
+  `portal` (own project, read-only).
+- A **role** is a row in a `roles` reference table binding a label to a scope
+  class + a permission set + assignability/pairability flags. Adding role #13 —
+  or changing what a foreperson may do — is a data change. **Zero route edits.**
+
+The app's `RoleVisibility` stays cosmetic (appspec Decision 2); it now mirrors the
+server matrix by **fetching it** (`GET /auth/permissions`, §9.7) instead of
+hard-coding a copy that drifts.
+
+### 9.3 Permission catalogue — v1
+
+Dotted `<domain>.<verb>[.<modifier>]`. v1 ships the rows needed by the surfaces
+that exist (identity, devices, sync, construction core, dashboard); P5–P9 names
+are **reserved now** so modules land as matrix rows, not new mechanisms.
+
+| Permission | Meaning (v1 surface it guards) |
+|---|---|
+| `org.manage` | org profile, plan, settings (`PATCH /organisation`) |
+| `users.manage` | create users, change roles/status |
+| `devices.manage` | revoke, re-role, pairing initiate/confirm |
+| `customers.read` / `customers.write` | customer list / CRUD |
+| `projects.read` / `projects.write` | project list+detail / create+edit+status |
+| `programme.write` | stage/task **structure**: seq, codes, names, templates |
+| `progress.write` | stage status + actual dates, task completion — the site's pen |
+| `money.read` | see `contract_value`, `budget_*` (replaces `FINANCIAL_ROLES`); drives sync + REST redaction |
+| `money.write` | set budgets, contract values |
+| *(reserved)* `diary.write`, `attendance.write.own`, `attendance.write.site`, `safety.write`, `quality.write`, `quality.signoff`, `claims.approve`, `variations.approve`, `engagement.manage`, `portal.view` | P5–P10 modules; named here so their guards are matrix rows on arrival |
+
+### 9.4 Scope classes and their resolution
+
+| Scope class | Reaches | Resolution |
+|---|---|---|
+| `portfolio` | every row in the org | filter by `org_id` only (today's behaviour) |
+| `assigned` | member projects only | `org_id` **AND** `project_id IN (SELECT project_id FROM project_members WHERE user_id = actor)` |
+| `self` | assigned scope ∩ own rows | assigned filter **AND** row-level `user_id`/`assigned_to = actor` on self tables (tasks, attendance) |
+| `engagement` | the granted slice of ONE project | projman-02; refused until that record is BUILT |
+| `portal` | own project, read-only | customer linkage; lands at P10 |
+
+Applied at **three** places, or it is theatre:
+1. **REST reads/writes** — a `scopeFilter(auth)` helper in the service layer
+   returns the SQL fragment + params; every domain service query composes it.
+2. **Sync pull** — registry entries gain `projectColumn` (`'project_id'`, or
+   `'id'` on `projects` itself). Assigned/self-scope sessions pull only member
+   projects' rows. A tradie's tablet no longer even *receives* the org's other
+   jobs.
+3. **Sync push** — `pushRecord` refuses a row whose `project_id` is outside the
+   pusher's membership (assigned/self scopes). NOT_MEMBER, 403.
+
+**Membership change vs the cursor (the trap):** rows older than a device's cursor
+never re-pull, so granting membership would leave the device blind to the
+project's history. Fix: membership grant/revoke sets `needs_full_resync = 1` on
+the affected user's live sessions; the next `/sync/pull` or `/sync/status`
+response carries `requiresFullSync: true` (same signal device-loss recovery
+already uses) and the app re-pulls from `since=0`. Cheap, uses an existing client
+behaviour, no server-side row touching.
+
+### 9.5 The matrix — roles × permissions (the contract artifact)
+
+Scope class + v1 permission set per §3 role. ✅ = has permission. This table is
+the thing the app team signs off; it becomes seed data, and its version is served
+with it.
+
+| Role | Scope | org. manage | users. manage | devices. manage | customers r / w | projects r / w | programme. write | progress. write | money r / w |
+|---|---|---|---|---|---|---|---|---|---|
+| `org_admin` | portfolio | ✅ | ✅ | ✅ | ✅ / ✅ | ✅ / ✅ | ✅ | ✅ | ✅ / ✅ |
+| `project_developer` | portfolio | — | — | ✅ | ✅ / ✅ | ✅ / ✅ | ✅ | ✅ | ✅ / ✅ |
+| `project_manager` | assigned | — | — | ✅ | ✅ / — | ✅ / — | ✅ | ✅ | ✅ / — |
+| `supervisor` | assigned | — | — | — | ✅ / — | ✅ / — | — | ✅ | — / — |
+| `foreperson` | assigned | — | — | — | — / — | ✅ / — | — | ✅ | — / — |
+| `tradie` | self | — | — | — | — / — | ✅ / — | — | ✅ *(own tasks)* | — / — |
+| `inspector` | assigned | — | — | — | — / — | ✅ / — | — | — *(quality.* at P6)* | — / — |
+| `customer` | portal | — | — | — | — | ✅ *(portal read)* | — | — | — / — |
+| `construction_manager` ⚠post-v1 | portfolio | — | — | — | ✅ / — | ✅ / ✅ | ✅ | ✅ | — / — |
+| `estimator` ⚠post-v1 | portfolio | — | — | — | ✅ / ✅ | ✅ / — | — | — | ✅ / ✅ |
+| `subcontractor` ⚠post-v1 | engagement | — | — | — | — | ✅ *(slice)* | — | ✅ *(slice)* | — |
+| `labourer` ⚠post-v1 | self | — | — | — | — | ✅ / — | — | ✅ *(own)* | — |
+
+Notes: PM's `money.read`-not-`money.write` and project-scoped money is exactly §3
+("sees project costs, not portfolio finance") — scope class does the portfolio
+cut, the permission does the read/write cut. Reserved P5–P9 permissions get their
+matrix column when their module lands, as a projman-01 amendment each time.
+
+### 9.6 Schema — migration v004
+
+```sql
+roles             role VARCHAR(40) PK, label, scope_class ENUM('portfolio','assigned',
+                  'self','engagement','portal'), surface ENUM('web','app','both','portal'),
+                  is_assignable TINYINT, device_pairable TINYINT, sort INT,
+                  is_system TINYINT DEFAULT 1
+role_permissions  role FK→roles, permission VARCHAR(64), PK(role, permission)
+project_members   id CHAR(36), org_id, project_id FK, user_id FK, added_by,
+                  + the five sync columns  (owner: WEB, pull: yes — devices use it
+                  for "who's on this job"; server uses it for scope)
+users.role / devices.role / pairing_tokens.role
+                  ENUM → VARCHAR(40) (+ FK to roles where cheap)  — roles become data
+```
+
+Seeded: the 12 §3 roles (8 with `is_assignable=1` in v1; the 5-role shortlist with
+`device_pairable=1`; `customer` `is_assignable=1` but `device_pairable=0` —
+**refused at `/pairing/initiate` and `/devices/:id/role` by data, not by code**).
+Backfill: `project_members` rows created from existing `projects.pm_user_id`;
+ProjectService keeps auto-membershipping the PM on create/reassign. Org-custom
+roles are **out of v1** (`is_system=1` everywhere) but the shape supports them
+later without migration.
+
+### 9.7 Enforcement mechanics
+
+- **`requirePermission(perm)` middleware** replaces `requireRole` route-by-route.
+  Resolver: role → permission set from an in-process cache of `role_permissions`
+  (load at boot; the table is seed data, so restart = reload; a `matrix_version`
+  row lets the app cache-bust).
+- **JWT unchanged** (§1.7 — `role` is a string claim, resolved to permissions
+  server-side per request). No stale-token problem when the matrix changes; no
+  wire change for the app.
+- **`GET /auth/permissions`** (authenticated): `{ matrixVersion, role, scopeClass,
+  permissions: [...], pairableRoles: [{role,label}...], assignableRoles: [...] }`.
+  The app's `RoleVisibility` and the pairing screen render from this — the 5-role
+  shortlist becomes server data, and the pairing screen stops hard-coding roles
+  (which is how `inspector` slipped out ahead of the enum).
+- **Financial redaction** keys off `money.read` (not `FINANCIAL_ROLES`), same
+  strip points as today: sync pull + REST reads.
+- **§13.2 gates 4–7** (hold points, claim gates, NCC, structural) attach later as
+  the same shape — service-layer checks that compose with `scopeFilter` — via
+  ComplianceService (projman-03 R2). This layer is deliberately their foundation.
+
+### 9.8 What changes for existing code (migration path, no big-bang)
+
+| Today | Becomes | Risk |
+|---|---|---|
+| `requireRole(...)` in 7 route files | `requirePermission(...)`; `requireRole` kept one release as sugar, then deleted | mechanical, per-route |
+| `FINANCIAL_ROLES` in roles.js + SyncService + ProjectService | `money.read` matrix rows | one seed row per role |
+| org-wide pull for everyone | scoped pull for assigned/self roles | **behaviour change the app must expect** — fewer rows + `requiresFullSync` on membership change (projman-01 §9.5 tells the app team) |
+| v001 ENUMs | VARCHAR + `roles` table | additive migration; existing values unchanged, tokens stay valid |
+| app pairing screen hard-codes 5 labels | renders `pairableRoles` from `/auth/permissions` | app change, theirs to schedule |
+
+Isolation/acceptance/domain suites all re-run; `tests/domain.test.js` grows:
+PM-assigned-scope sees only member projects · tradie pull excludes non-member
+rows · push to non-member project refused (NOT_MEMBER) · `inspector` pairs ·
+`customer` pairing refused · redaction driven by matrix.
+
+### 9.9 Open decisions for the owner
+
+1. **Strict assigned scope from day one?** My recommendation: **yes** — an
+   assigned-scope user with no memberships sees no projects (correct, and the
+   backfill + PM auto-membership means nobody real starts empty). Alternative: a
+   transition flag that falls back to org-wide until the console ships membership
+   management UI.
+2. **Membership management surface, v1:** web console only (Users page + a
+   project's team tab), per lifecycle step 7 being a Web action. PM-on-app
+   membership editing can come with P5. Recommend: **web-only v1**.
+3. **Inspector before projman-02:** in-house inspectors (C2, paired device) work
+   now via `assigned` scope + `project_members`; external inspectors (C1) wait for
+   engagements. Recommend: **ship C2 path now**.
+4. **`GET /auth/permissions` in Phase-1 surface or with v004?** Recommend: with
+   v004 — it is meaningless before the matrix exists.
+
+**Review ask (§9):** approve 9.3 (catalogue), 9.5 (matrix — the app team must
+countersign this table in projman-01), 9.6 (schema), and answer 9.9. Then the
+build order is: migration v004 + seed → resolver + `requirePermission` →
+`scopeFilter` in services + sync → `/auth/permissions` → route migration → tests.
+
+---
+
+## 10. The 18-stage template & progression engine  ✅ BUILT
+
+**Status: ✅ BUILT + verified 2026-07-23 — approved same day, all §10.10 recommendations
+locked (estimator = projectManager sub-function · status+milestone split · web-first
+instantiation · inspector-only validation · cost columns now). Delivered as
+migration_v006 + `StageProgressionService` + `StageTemplateService` + `stageHooks` +
+the `/programme` `/advance` `/validate` `/stage-templates*` endpoints + the dashboard
+Programme tab. `tests/stages.test.js` 15/15 (incl. sync-path parity + inspector-only
+validation).** This is the server realization of
+`18StageProjectMangementMatrix.md` (the workflow of record) and development.md §5.3
+(stage templates) + §5.6 (quality) + §5.10 (cost model). It sits on the construction
+core already built (migration_v003: `projects`/`project_stages`/`tasks`) and the
+access layer (§9): every rule here is a service-layer guard invoked from **both** the
+REST surface and the sync-push path, exactly like scope and redaction.
+
+### 10.1 What it delivers
+
+1. **Templates as data** — the 18-stage WA residential lifecycle ships as a *system*
+   `stage_template` (`WA_RESIDENTIAL_18`), cloneable per org, not hardcoded schema.
+2. **Programme instantiation** — a project's `project_stages` are stamped from a
+   template (development.md §5.3; matrix Stage 9 "project_stages from
+   WA_RESIDENTIAL_18").
+3. **A progression state machine** — a stage advances only when its gate passes; the
+   gate is enforced on every write path so the interlocks can't be bypassed by the
+   sync client.
+4. **Hold-point interlocks** — the CRITICAL HOLD POINTS table (matrix): a stage
+   blocks the next until an **independent inspector** validates it.
+5. **Stage cost tracking** — estimated / committed / actual / claimed per stage
+   (matrix "each stage gets its … columns"; §5.10), money-redacted per §9.
+6. **Event hooks** — the "algorithmic event-chaining" (Stage 13 → schedule Stage 14;
+   Stage 18 → capitalise + depreciate) declared as hook points; their bodies (Python
+   OCR/email, accounting) attach as those modules land.
+
+### 10.2 Two layers — definition vs instance
+
+```
+stage_templates ─┐ (the LIBRARY: WA_RESIDENTIAL_18 + org clones)
+                 │  one row per template
+stage_template_items ─ 18 rows: seq, code, name, part, actor_role, hold-point, gate
+                 │
+   instantiate   ▼  (POST /projects/:id/programme — copies items → stages)
+project_stages ─── the INSTANCE: one project's live programme (already exists, v003)
+                    + progression status, is_validated, cost columns
+```
+
+The template is the reusable definition; `project_stages` is the running instance a
+site actually advances. Editing a template never touches a project already
+instantiated (matrix "builders clone and edit templates").
+
+### 10.3 Schema — migration v006
+
+**Extend `stage_template_items`** (development.md §5.3 columns + the matrix's actor &
+gate):
+```
+stage_template_items  (existing: seq, stage_code, name, default_duration_days,
+                       requires_inspection, requires_certificate)
+  + part            ENUM('A','B','C','D','E')   the matrix's five lifecycle parts
+  + actor_role      VARCHAR(40)  primary owner from the registry (projectManager,
+                                 siteSupervisor, …) — informational; enforcement is
+                                 by permission, not this label
+  + is_hold_point   TINYINT      completion needs an inspector validation
+  + gate_prev       TINYINT      cannot start until the previous stage is complete
+                                 (+validated if that one is a hold point)
+  + milestone_vocab JSON NULL    optional stage-specific status labels the app shows
+                                 (e.g. WAITING_FOR_CUSTOMER_FEEDBACK, DA_PENDING_…)
+```
+
+**Extend `project_stages`** (on top of v003's id/org_id/project_id/seq/stage_code/
+name/status/is_validated/start_date/end_date/budget_amount):
+```
+  + part            ENUM('A'..'E')
+  + actor_role      VARCHAR(40)
+  + template_item_id CHAR(36)     provenance: which template row this came from
+  + is_hold_point   TINYINT
+  + gate_prev       TINYINT
+  + milestone       VARCHAR(64)   the current stage-specific label (display/workflow)
+  + validated_by    CHAR(36)      users.id of the inspector who validated (server-set)
+  + validated_at    DATETIME
+  + estimated_amount DECIMAL(14,2) 𝗙   (budget_amount backfills into this)
+  + committed_amount DECIMAL(14,2) 𝗙   POs raised against the stage
+  + actual_amount    DECIMAL(14,2) 𝗙   costs booked
+  + claimed_amount   DECIMAL(14,2) 𝗙   progress-claimed to the client
+```
+𝗙 = money-redacted on pull + REST for roles without `money.read` (§9). `budget_amount`
+is kept and backfilled into `estimated_amount`; new code reads the four-column model.
+
+**`status`** stays the generic gate enum — extend it from v003's
+`pending|in_progress|complete|skipped` to `not_started|in_progress|blocked|complete|
+skipped`. The rich, stage-specific states from the matrix
+(`WAITING_FOR_CUSTOMER_FEEDBACK`, `DA_APPROVED`, …) live in `milestone` (free-text,
+template-vocab-driven) so the engine gates on a small, closed enum while the app
+still shows the exact workflow state.
+
+**Seed** `WA_RESIDENTIAL_18` as one `is_system` template + 18 `stage_template_items`
+transcribed from the matrix's SUMMARY table (parts A–E, primary owners, and the five
+hold points at stages 11/12/13/15/18).
+
+### 10.4 The progression engine (`StageProgressionService`)
+
+One service, the projman-03 R2 "ComplianceService pattern", holding every rule that
+gates a stage. Invoked from the REST advance endpoint **and** from `SyncService`
+when a device pushes a `project_stages.status` change — so the interlock is identical
+on both paths and a client cannot skip it.
+
+`checkTransition({ orgId, actor, stage, toStatus })` throws a `ServiceError` unless:
+
+1. **Permission + scope.** The actor holds `progress.write` and is a member of the
+   stage's project (§9.4). Portfolio roles pass scope automatically.
+2. **Sequential gate.** `toStatus='in_progress'` is refused while a `gate_prev` stage's
+   predecessor is not `complete` (and `is_validated` if that predecessor is a hold
+   point). → `STAGE_GATE_PREV`.
+3. **Hold-point gate.** `toStatus='complete'` on an `is_hold_point` stage is refused
+   until `is_validated = 1`. → `STAGE_NOT_VALIDATED`. This is the matrix's
+   "milestone cannot advance until the independent Inspector uploads …".
+4. **Validation is not a device write.** `is_validated`, `validated_by`, `validated_at`
+   stay in the sync `PROTECTED_COLUMNS` — a tablet can move `status`, never flip its
+   own hold point. Validation happens only via 10.5.
+
+On an accepted transition the service records the change, stamps
+`server_updated_at` (so it syncs), writes an `audit_log` row, and fires any
+registered **event hooks** for that stage (10.6).
+
+### 10.5 Validation — the inspector's gate
+
+```
+POST /projects/:id/stages/:stageId/validate   (quality.validate → inspector)
+     { result: 'pass'|'fail', reference?, note?, document_id? }
+```
+- Guarded by `requirePermission('quality.validate')` + project scope. Only the
+  `inspector` role holds it; `projectManager` deliberately does **not** — the matrix's
+  "independent Inspector" is a separation of duties, and the engine enforces it.
+- `pass` sets `is_validated=1`, `validated_by`, `validated_at`, and (when the
+  inspections module lands, §5.6) links an `inspections`/`certificates` row
+  (Form BA2 at stage 12, Form BA3/OC at stage 18). For v1 the gate + provenance land;
+  the full inspection checklist is a later module behind the same endpoint.
+- `fail` records the result and leaves the hold point closed, blocking completion.
+
+### 10.6 Event hooks (declared now, bodies deferred)
+
+The matrix's automation is real but depends on services not yet built (Python
+OCR/email, accounting). Model each as a **named hook** the progression service fires
+on a validated transition, with a no-op default:
+
+| Trigger | Hook | Body lands with |
+|---|---|---|
+| Stage 1 create (already live) | `onProjectCreated` → OCR land docs, client receipt email | Python service |
+| Stage 13 validated | `onStageValidated('frame')` → schedule Stage 14, notify trades | scheduler + IVR/notify |
+| Stage 18 OC validated | `onProjectCompleted` → capitalise costs, depreciation, ATO | accounting module |
+| any claim/invoice | `assertClaimAllowed(stage)` → block if a gating stage unvalidated | accounting module |
+
+v1 ships the hook points + the audit trail; wiring a body is additive and never
+reopens the engine. The **payment-freeze interlock** (matrix Stage 18: invoice blocked
+if Stage 12/15 not validated) is `assertClaimAllowed`, specified here, enforced when
+the claims module exists.
+
+### 10.7 Ownership & sync mapping
+
+| Data | App | Web | Server | Notes |
+|---|:-:|:-:|:-:|---|
+| `stage_templates` / `_items` | R | **W** | R | System templates seeded server-side; org clones via web. Pull-only to the app so it can render the programme. |
+| `project_stages` structure (seq, name, cost, part, gate) | R | **W** | R | Office draws the programme (matrix Stage 9, Dashboard). |
+| `project_stages.status` / dates | **W** | R | R | The site advances stages (progress.write) — through the engine's gates. |
+| `project_stages.is_validated`+ | R | R | **W** | Inspector validation only (10.5); in `PROTECTED_COLUMNS`. |
+| cost columns | R | **W** | R | 𝗙 money-redacted on pull. |
+
+New registry entries: `stage_templates`, `stage_template_items` (owner web, pull true,
+no app-writable columns). `project_stages` already exists; add the new server/web
+columns to its protected set and the cost columns to `financialColumns`.
+
+### 10.8 Endpoints
+
+```
+GET   /stage-templates                     list system + org templates
+GET   /stage-templates/:id                 template + its items
+POST  /stage-templates                     clone/create an org template   (programme.write)
+
+POST  /projects/:id/programme              instantiate stages from a template
+      { template_id }                                                     (programme.write)
+PATCH /projects/:id/stages/:stageId        structure edit (programme.write) OR
+                                           progress edit (progress.write) — service splits
+POST  /projects/:id/stages/:stageId/advance
+      { to_status, milestone? }            run the progression gates      (progress.write)
+POST  /projects/:id/stages/:stageId/validate
+      { result, reference?, note? }        inspector hold-point gate      (quality.validate)
+```
+The field app can also advance a stage through the existing `/sync/push`
+(`project_stages` update) — the same `StageProgressionService.checkTransition` guards
+it, so REST and sync behave identically.
+
+### 10.9 Build order
+
+| Step | Deliverable | Depends on |
+|---|---|---|
+| 1 | migration_v006: extend the two tables, add cost columns, seed `WA_RESIDENTIAL_18` | — |
+| 2 | `StageProgressionService` (checkTransition + advance) + wire into SyncService push and a REST `/advance` | 1 |
+| 3 | `/projects/:id/programme` instantiation + `/stage-templates*` | 1 |
+| 4 | validation endpoint + `is_validated` gate + audit | 2 |
+| 5 | event-hook registry (no-op bodies) + `assertClaimAllowed` stub | 2 |
+| 6 | dashboard: a project's Programme tab (stage list, status, validate, cost roll-up) | 2–4 |
+| 7 | `tests/stages.test.js`: gate refusals, inspector-only validation, redaction, sync-path parity | 2–4 |
+
+Steps 1–4 are the spine; 5–6 are additive.
+
+### 10.10 Open decisions for the owner
+
+1. **`estimator` (Stage 9).** Named in the matrix but absent from the 6-role
+   registry. Recommend: **projectManager sub-function in v1** (Stage 9 tender/BOQ is a
+   projectManager Dashboard action); revisit if you want tendering delegated. Confirm.
+2. **Status vs milestone split.** I recommend the small gate-enum + free-text
+   `milestone` (10.3) so the engine stays simple while the app shows the matrix's exact
+   states. Alternative: one big status enum with all ~25 states — simpler wire, but the
+   gate logic then hard-codes the vocabulary. Your call.
+3. **Programme instantiation surface.** Matrix Stage 9 is a Dashboard action, so I'd
+   make `/programme` **web-first** in v1 (the PM instantiates from the office). The
+   app renders the resulting stages. Confirm, or do you want offline instantiation too?
+4. **Inspector independence.** I've kept `quality.validate` off `projectManager`
+   (separation of duties per the matrix). Confirm the PM should not be able to
+   self-validate a hold point.
+5. **Cost columns now or with accounting?** The four columns + roll-up are cheap to
+   add now (they're just money-redacted fields); the *claim/invoice interlock* waits
+   for the accounting module. Recommend: **add the columns now**, wire the interlock
+   later. Confirm.
+
+**Review ask (§10):** approve 10.3 (schema), 10.4 (the gate rules), 10.7 (ownership),
+and answer 10.10. Then I build steps 1–4 and bring `tests/stages.test.js` green before
+touching the dashboard.

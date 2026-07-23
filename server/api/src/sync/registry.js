@@ -21,9 +21,16 @@
 //              site progress the app must push, while `status` stays protected
 //              everywhere else (user/device/org status are admin actions).
 //   financialColumns  (optional) columns stripped from pull payloads for sessions
-//              whose role is not in FINANCIAL_ROLES. A supervisor runs the site and
+//              without the `money.read` permission. A supervisor runs the site and
 //              never sees what it costs — that rule has to hold on the wire, not
 //              just in the app's UI.
+//   projectColumn  (optional) the column carrying the project id, for RESOURCE
+//              scoping (§9.4). Present → an `assigned`/`self` session pulls only the
+//              rows whose project it is a member of, and a push into a non-member
+//              project is refused. 'id' on `projects` itself. Absent → the table is
+//              not project-scoped (org-scope only, as before).
+//   selfColumn  (optional) with projectColumn, the row-owner column for `self`
+//              scope (e.g. 'assigned_to' on tasks) — a tradie sees only own rows.
 //
 // Phase 1 synced organisations, users and devices. v003 adds the construction core
 // (customers, projects, project_stages, tasks) — PROPOSED to the app team in
@@ -76,10 +83,13 @@ const TABLES = {
 
   // ── Construction core (migration_v003) ── proposed in projman-01 §2.2 ──────
 
-  // Customers are desk work: the console creates them, the field app rings them.
+  // Web owns edits; the field app may CREATE (Stage 1 captures the customer profile
+  // on-site alongside the project — projman-01 §4 change). Same reasoning as projects.
   customers: {
     table: 'customers',
     owner: 'web',
+    appCreate: true,
+    createPermission: 'customers.write',
     pull: true,
     scope: 'org',
     orgColumn: 'org_id',
@@ -90,21 +100,40 @@ const TABLES = {
     ]),
   },
 
-  // A project is created and budgeted at a desk by someone who can see money.
-  // The app reads it; contract_value never reaches a non-financial device.
+  // Web owns UPDATE/DELETE (single-writer for edits), but the field app may CREATE —
+  // 18-Stage Matrix Stage 1: a projectManager creates a project on-site, offline,
+  // from land documents (projman-01 §4 change, 2026-07-23). A create is a brand-new
+  // row with a client UUID, so there is no single-writer conflict to protect; edits,
+  // where the conflict lives, stay WEB-only. appCreate is gated by createPermission.
   projects: {
     table: 'projects',
     owner: 'web',
+    appCreate: true,
+    createPermission: 'projects.write',
     pull: true,
     scope: 'org',
     orgColumn: 'org_id',
     idColumn: 'id',
+    projectColumn: 'id', // a project row IS its own project, for membership scoping
     columns: new Set([
       'customer_id', 'code', 'name', 'site_address', 'lot_plan',
       'contract_value', 'contract_type', 'start_date', 'due_date',
       'template_id', 'pm_user_id', 'is_deleted', 'updated_at',
     ]),
     financialColumns: new Set(['contract_value']),
+  },
+
+  // Membership itself is web-owned and pulled (the app renders "who's on this job")
+  // AND it is the scope source, so it is deliberately NOT project-scoped on pull —
+  // a device must receive its own membership rows to know what it may reach.
+  project_members: {
+    table: 'project_members',
+    owner: 'web',
+    pull: true,
+    scope: 'org',
+    orgColumn: 'org_id',
+    idColumn: 'id',
+    columns: new Set(['is_deleted', 'updated_at']),
   },
 
   // Split-by-field (projman-01 §4): the office draws the programme (seq, codes,
@@ -117,9 +146,13 @@ const TABLES = {
     scope: 'org',
     orgColumn: 'org_id',
     idColumn: 'id',
-    columns: new Set(['status', 'start_date', 'end_date', 'is_deleted', 'updated_at']),
+    projectColumn: 'project_id',
+    columns: new Set(['status', 'milestone', 'start_date', 'end_date', 'is_deleted', 'updated_at']),
     unprotect: new Set(['status']),
-    financialColumns: new Set(['budget_amount']),
+    // Money on a stage — redacted on pull for roles without money.read (§9, §10.3).
+    financialColumns: new Set([
+      'budget_amount', 'estimated_amount', 'committed_amount', 'actual_amount', 'claimed_amount',
+    ]),
   },
 
   // Tasks are the PM's working tool in the field — the app owns them outright,
@@ -131,6 +164,8 @@ const TABLES = {
     scope: 'org',
     orgColumn: 'org_id',
     idColumn: 'id',
+    projectColumn: 'project_id',
+    selfColumn: 'assigned_to', // a `self`-scope tradie pulls only own tasks
     columns: new Set([
       'project_id', 'stage_id', 'parent_id', 'name', 'completion',
       'start_date', 'end_date', 'assigned_to', 'predecessor_id',
@@ -159,6 +194,11 @@ const PROTECTED_COLUMNS = new Set([
   'abn',
   'abn_validated',
   'plan',
+  // A device advances a stage's `status`, but never flips its own hold point —
+  // validation is the inspector's server-mediated action only (§10.4/§10.5).
+  'is_validated',
+  'validated_by',
+  'validated_at',
 ]);
 
 // Masked in log output. Not blocked — just never printed.

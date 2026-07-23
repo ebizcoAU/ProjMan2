@@ -26,6 +26,8 @@ const syncRoutes     = require('./routes/sync');
 const orgRoutes      = require('./routes/organisation');
 const projectsRoutes = require('./routes/projects');
 const customersRoutes = require('./routes/customers');
+const stageTemplatesRoutes = require('./routes/stageTemplates');
+const adminRoutes = require('./routes/admin');
 
 const app = express();
 
@@ -44,12 +46,18 @@ if (config.server.env !== 'test') app.use(morgan('dev'));
 //
 // So: a generous global limit that skips the polling endpoints, and a tight one on
 // the endpoints that actually accept credentials.
+//
+// DISABLE_RATE_LIMIT=true turns both off — for the local acceptance suites, which run
+// several orgs' worth of register/login/pairing back-to-back and would otherwise trip
+// the credential bucket. It is a test-only escape hatch; never set it in production.
+const rateLimitOff = process.env.DISABLE_RATE_LIMIT === 'true';
 const globalLimiter = rateLimit({
   windowMs: config.rateLimit.windowMs,
   max: config.rateLimit.max,
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => {
+    if (rateLimitOff) return true;
     const path = req.originalUrl.split('?')[0];
     return (
       path.startsWith('/api/v1/sync/') ||
@@ -74,6 +82,7 @@ const credentialLimiter = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => rateLimitOff,
   handler: (req, res) => {
     console.warn(`[AUTH RATE LIMIT] 429 path=${req.originalUrl} ip=${req.ip}`);
     res.status(429).json({
@@ -121,6 +130,10 @@ app.use('/api/v1/sync',          syncRoutes);
 app.use('/api/v1/organisation',  orgRoutes);
 app.use('/api/v1/projects',      projectsRoutes);
 app.use('/api/v1/customers',     customersRoutes);
+app.use('/api/v1/stage-templates', stageTemplatesRoutes);
+// System Admin dashboard — a SEPARATE mount (not the tenant surface). Platform-admin
+// allowlist only; account & billing layer; cross-tenant by design (dashboardspec §2).
+app.use('/api/v1/admin',         adminRoutes);
 
 // ── 404 / error ───────────────────────────────────────────────
 app.use((req, res) =>
@@ -136,12 +149,27 @@ app.use((err, req, res, _next) => {
   });
 });
 
-app.listen(config.server.port, '0.0.0.0', () => {
-  console.log(`\n🏗  ProjMan2 API → http://localhost:${config.server.port}/api/v1`);
-  console.log(`   DB:  ${config.db.name} on ${config.db.host}`);
-  console.log(`   ENV: ${config.server.env}  ·  ${config.server.timezone}  ·  ${config.server.currency}`);
-  console.log(`   Email: ${config.email.enabled ? 'enabled' : 'DISABLED (codes log to console in dev)'}`);
-  console.log(`   ABN:   ${config.abn.abrGuid ? 'checksum + ABR lookup' : 'checksum only (no ABR_GUID)'}\n`);
+// The access matrix (roles → permissions, scope classes) is seed data loaded once
+// into an in-process cache — every requirePermission() check reads it, so it MUST be
+// warm before the first request. Fail fast if it can't load: an empty matrix would
+// silently 403 everything.
+const access = require('./lib/access');
+
+async function start() {
+  await access.loadMatrix();
+  app.listen(config.server.port, '0.0.0.0', () => {
+    console.log(`\n🏗  ProjMan2 API → http://localhost:${config.server.port}/api/v1`);
+    console.log(`   DB:  ${config.db.name} on ${config.db.host}`);
+    console.log(`   ENV: ${config.server.env}  ·  ${config.server.timezone}  ·  ${config.server.currency}`);
+    console.log(`   Access: matrix v${access.matrixVersion()} loaded (${access.allRoles().length} roles)`);
+    console.log(`   Email: ${config.email.enabled ? 'enabled' : 'DISABLED (codes log to console in dev)'}`);
+    console.log(`   ABN:   ${config.abn.abrGuid ? 'checksum + ABR lookup' : 'checksum only (no ABR_GUID)'}\n`);
+  });
+}
+
+start().catch((err) => {
+  console.error('FATAL: failed to start —', err.message);
+  process.exit(1);
 });
 
 module.exports = app;

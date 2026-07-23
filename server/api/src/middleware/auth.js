@@ -15,7 +15,7 @@
 const jwt    = require('jsonwebtoken');
 const pool   = require('../db/pool');
 const config = require('../config');
-const { FINANCIAL_ROLES } = require('../lib/roles');
+const access = require('../lib/access');
 
 const deny = (res, status, message, code) =>
   res.status(status).json({ success: false, message, code });
@@ -134,26 +134,25 @@ async function authenticate(req, res, next) {
   }
 }
 
-/** Allow only the named roles. */
-function requireRole(...allowed) {
+/**
+ * The enforcement primitive (§9.7). A route declares the CAPABILITY it needs, not a
+ * list of roles — so adding role #13 or changing what a foreperson may do is a matrix
+ * change (data), never an edit to every guard.
+ */
+function requirePermission(...perms) {
   return (req, res, next) => {
     if (!req.auth) return deny(res, 401, 'Not authenticated', 'NO_AUTH');
-    if (!allowed.includes(req.auth.role)) {
-      return deny(res, 403, `Requires one of: ${allowed.join(', ')}`, 'FORBIDDEN_ROLE');
+    const missing = perms.find((p) => !access.hasPermission(req.auth.role, p));
+    if (missing) {
+      return deny(res, 403, `Requires permission: ${missing}`, 'FORBIDDEN');
     }
     next();
   };
 }
 
-const requireOrgAdmin = requireRole('org_admin');
-
-/** Anything that exposes money. Supervisors and tradies never see it. */
-function requireFinancial(req, res, next) {
-  if (!req.auth) return deny(res, 401, 'Not authenticated', 'NO_AUTH');
-  if (!FINANCIAL_ROLES.has(req.auth.role)) {
-    return deny(res, 403, 'Financial access required', 'FORBIDDEN_ROLE');
-  }
-  next();
+// org.manage is the "tenant owner" capability — only org_admin holds it in the matrix.
+function requireOrgAdmin(req, res, next) {
+  return requirePermission('org.manage')(req, res, next);
 }
 
-module.exports = { authenticate, requireRole, requireOrgAdmin, requireFinancial };
+module.exports = { authenticate, requirePermission, requireOrgAdmin };

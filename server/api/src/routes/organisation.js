@@ -24,7 +24,22 @@ const config = require('../config');
 const { authenticate, requireOrgAdmin } = require('../middleware/auth');
 const { audit } = require('../lib/audit');
 const { validateAbn } = require('../lib/abn');
-const { ROLES } = require('../lib/roles');
+const access = require('../lib/access');
+
+// Assignability lives in the roles table now (§9.2): a role a user may be given must
+// be is_assignable=1. The post-v1 four (construction_manager/estimator/subcontractor/
+// labourer) are refused with ROLE_NOT_ASSIGNABLE until enabled, by data not by code.
+function assertAssignable(res, role) {
+  if (!access.roleMeta(role)) {
+    res.status(422).json({ success: false, message: 'A valid role is required', code: 'VALIDATION_ERROR', field: 'role' });
+    return false;
+  }
+  if (!access.isAssignable(role)) {
+    res.status(403).json({ success: false, message: `The role "${role}" is not assignable in this version`, code: 'ROLE_NOT_ASSIGNABLE' });
+    return false;
+  }
+  return true;
+}
 
 router.use(authenticate);
 
@@ -143,8 +158,8 @@ router.get('/users', async (req, res) => {
                 WHERE d.user_id = u.id AND d.status = 'active' AND d.is_deleted = 0) AS device_count
          FROM users u
         WHERE u.org_id = ? AND u.is_deleted = 0
-        ORDER BY FIELD(u.role, ${ROLES.map(() => '?').join(', ')}), u.full_name`,
-      [req.auth.orgId, ...ROLES]
+        ORDER BY FIELD(u.role, ${access.allRoles().map(() => '?').join(', ')}), u.full_name`,
+      [req.auth.orgId, ...access.allRoles()]
     );
     return res.json({ success: true, data: { users: rows } });
   } catch (err) {
@@ -162,12 +177,13 @@ router.post(
   [
     body('email').isEmail().normalizeEmail().withMessage('A valid email address is required'),
     body('full_name').trim().notEmpty().withMessage('Full name is required'),
-    body('role').isIn(ROLES).withMessage('A valid role is required'),
+    body('role').notEmpty().withMessage('A role is required'),
     body('password').isLength({ min: config.password.minLength })
       .withMessage(`Password must be at least ${config.password.minLength} characters`),
   ],
   async (req, res) => {
     if (validation(req, res)) return;
+    if (!assertAssignable(res, req.body.role)) return;
 
     try {
       const [[existing]] = await pool.query('SELECT id FROM users WHERE email = ? LIMIT 1', [req.body.email]);
@@ -214,11 +230,12 @@ router.patch(
   '/users/:id',
   requireOrgAdmin,
   [
-    body('role').optional().isIn(ROLES),
+    body('role').optional().notEmpty(),
     body('status').optional().isIn(['active', 'suspended', 'disabled']),
   ],
   async (req, res) => {
     if (validation(req, res)) return;
+    if (req.body.role !== undefined && !assertAssignable(res, req.body.role)) return;
 
     try {
       const [[target]] = await pool.query(
@@ -229,19 +246,25 @@ router.patch(
         return res.status(404).json({ success: false, message: 'User not found', code: 'NOT_FOUND' });
       }
 
-      // An org with no admin is an org nobody can administer, and there is no
-      // self-service route back from it.
-      if (target.id === req.auth.userId &&
-          (req.body.role && req.body.role !== 'org_admin')) {
+      // An org with nobody holding org.manage is an org nobody can administer, and
+      // there is no self-service route back. Guard against demoting the last such
+      // user — expressed as the permission, not a role literal, so it survives the
+      // role model (any role that grants org.manage counts).
+      const adminRoles = access.allRoles().filter((r) => access.hasPermission(r, 'org.manage'));
+      const demotingSelf = target.id === req.auth.userId &&
+        req.body.role && !adminRoles.includes(req.body.role);
+      if (demotingSelf && adminRoles.length) {
+        const placeholders = adminRoles.map(() => '?').join(', ');
         const [[{ n }]] = await pool.query(
           `SELECT COUNT(*) AS n FROM users
-            WHERE org_id = ? AND role = 'org_admin' AND status = 'active' AND is_deleted = 0`,
-          [req.auth.orgId]
+            WHERE org_id = ? AND role IN (${placeholders})
+              AND status = 'active' AND is_deleted = 0`,
+          [req.auth.orgId, ...adminRoles]
         );
         if (n <= 1) {
           return res.status(409).json({
             success: false,
-            message: 'You are the only org admin. Promote someone else first.',
+            message: 'You are the only administrator. Promote someone else first.',
             code: 'LAST_ADMIN',
           });
         }

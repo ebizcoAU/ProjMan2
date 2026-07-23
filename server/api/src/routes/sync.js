@@ -52,6 +52,7 @@ router.post(
         orgId: req.auth.orgId,
         userId: req.auth.userId,
         deviceUid: req.auth.deviceUid,
+        role: req.auth.role,
         surface: callerSurface(req),
         wireName: String(req.body.table_name).trim(),
         operation: req.body.operation,
@@ -75,7 +76,7 @@ router.get(
       return res.status(400).json({ success: false, message: errors.array()[0].msg, code: 'VALIDATION_ERROR' });
     }
     try {
-      const { last_sync_at, changes } = await SyncService.pullDeltas({
+      const { last_sync_at, changes, requiresFullSync } = await SyncService.pullDeltas({
         orgId: req.auth.orgId,
         userId: req.auth.userId,
         deviceUid: req.auth.deviceUid,
@@ -84,7 +85,7 @@ router.get(
         // No cursor = fresh install / device-loss recovery: send everything.
         sinceMs: req.query.since !== undefined ? parseInt(req.query.since, 10) : 0,
       });
-      return res.json({ success: true, last_sync_at, changes });
+      return res.json({ success: true, last_sync_at, changes, requiresFullSync });
     } catch (err) {
       return sendError(res, err);
     }

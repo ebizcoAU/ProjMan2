@@ -87,11 +87,10 @@ const NAV = [
   {
     group: 'ORGANISATION',
     items: [
-      { k: 'devices',  href: '/devices', label: 'Devices' },
-      { k: 'users',    href: '/devices', label: 'Users', mock: true,
-        tooltip: 'Coming: people, roles and invitations (API is live at /organisation/users)' },
-      { k: 'settings', href: '/devices', label: 'Settings', mock: true,
-        tooltip: 'Coming: organisation profile, ABN, GST' },
+      { k: 'users',    href: '/organisation/users',    label: 'Users' },
+      { k: 'devices',  href: '/devices',               label: 'Devices' },
+      { k: 'settings', href: '/organisation/settings', label: 'Settings' },
+      { k: 'audit',    href: '/organisation/audit',    label: 'Audit' },
     ],
   },
 ];
@@ -110,6 +109,7 @@ const ICONS = {
   devices:    <><rect x="4" y="1.5" width="7" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.3" fill="none"/><path d="M6.5 11.5h2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></>,
   users:      <><circle cx="5" cy="5" r="2.2" stroke="currentColor" strokeWidth="1.2" fill="none"/><circle cx="10.5" cy="5.5" r="1.8" stroke="currentColor" strokeWidth="1.2" fill="none"/><path d="M1.5 12.5c0-2.3 1.6-3.5 3.5-3.5s3.5 1.2 3.5 3.5M9.5 12.5c0-1.8 1-2.8 2.5-2.8s2 .9 2 2.8" stroke="currentColor" strokeWidth="1.15" strokeLinecap="round" fill="none"/></>,
   settings:   <><circle cx="7.5" cy="7.5" r="2" stroke="currentColor" strokeWidth="1.3" fill="none"/><path d="M7.5 1.5v2M7.5 11.5v2M1.5 7.5h2M11.5 7.5h2M3.3 3.3l1.4 1.4M10.3 10.3l1.4 1.4M11.7 3.3l-1.4 1.4M4.7 10.3l-1.4 1.4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></>,
+  audit:      <><path d="M2 3.5h11M2 6.5h8M2 9.5h5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><circle cx="11" cy="10.5" r="2.3" stroke="currentColor" strokeWidth="1.2" fill="none"/><path d="M12.7 12.2l1.3 1.3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></>,
 };
 
 function NavIcon({ k }) {

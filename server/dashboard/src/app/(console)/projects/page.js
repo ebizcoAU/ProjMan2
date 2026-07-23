@@ -4,6 +4,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { PortalCard }    from '@/components/portal/PortalCard';
 import { PortalKpi }     from '@/components/portal/PortalKpi';
 import { PortalTable }   from '@/components/portal/PortalTable';
@@ -114,8 +115,13 @@ export default function ProjectsPage() {
           <PortalTable
             headers={['Code', 'Name', 'Customer', 'Site', 'Contract', 'Start', 'Due', 'Status']}
             rows={projects.map((p) => [
-              <span key="c" style={{ fontFamily: 'var(--fm)', color: 'var(--text)', fontWeight: 600 }}>{p.code}</span>,
-              <span key="n" style={{ color: 'var(--text)' }}>{p.name}</span>,
+              <Link key="c" href={`/projects/${p.id}`}
+                style={{ fontFamily: 'var(--fm)', color: 'var(--brand)', fontWeight: 600, textDecoration: 'none' }}>
+                {p.code}
+              </Link>,
+              <Link key="n" href={`/projects/${p.id}`} style={{ color: 'var(--text)', textDecoration: 'none' }}>
+                {p.name}
+              </Link>,
               p.customer_name || '—',
               p.site_address || '—',
               fmtMoney(p.contract_value),

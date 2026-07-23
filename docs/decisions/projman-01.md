@@ -261,6 +261,74 @@ device_id, is_deleted, updated_at, server_updated_at
   owner: APP (the device knows its own name/OS best). role/revoke are server-only.
 ```
 
+### 2.2a Synced tables — construction core (Server dev PROPOSAL, 2026-07-22)
+
+**Status: 🟡 built server-side (migration_v003) ahead of schema v1 sign-off, on the
+owner's instruction — awaiting app-team confirmation of these rows.** Source shape:
+development.md §5.2. Column changes are cheap until the app mirrors them; flag
+disagreements here, not in code. Endpoints: `GET/POST /projects`,
+`GET/PATCH /projects/:id`, `POST/PATCH /projects/:id/stages[/:stageId]`,
+`GET/POST/PATCH /customers` (console CRUD; every console write stamps
+`server_updated_at`, so it reaches devices as a normal pull delta).
+
+**New cross-cutting rule — financial redaction (please confirm):** columns marked
+𝗙 below are stripped from **pull payloads for non-financial roles**
+(`supervisor`/`tradie`/`customer` — lib/roles `FINANCIAL_ROLES`). A supervisor's
+tablet must not carry what the job is worth; the app UI hiding it is not enough.
+This is *not* a per-table pull allowlist (that decision stays locked) — the row is
+still whole minus the declared money columns. The REST detail/list endpoints apply
+the same redaction.
+
+**`customers`** — who the builder builds for.
+```
+id, org_id, name, abn, contact_name, phone, email, address, notes,
+device_id, is_deleted, updated_at, server_updated_at
+  writable via sync: none in practice — owner: WEB (console CRUD; app reads).
+  note: development.md §5.2 said `contact`; split into contact_name/phone/email so
+        "ring the customer" is tappable in the field. Confirm or veto.
+```
+
+**`projects`** — one job for one customer.
+```
+id, org_id, customer_id, code(unique per org), name, site_address, lot_plan,
+contract_value 𝗙, contract_type(fixed_price|cost_plus), start_date, due_date,
+status(draft|active|on_hold|completed|archived), template_id, pm_user_id,
+device_id, is_deleted, updated_at, server_updated_at
+  owner: WEB — created and budgeted at a desk. App reads (redacted).
+```
+
+**`project_stages`** — the ordered programme. **Split-by-field per §4:** the office
+draws the programme (seq/stage_code/name/budget via REST), the site marks progress.
+```
+id, org_id, project_id, seq, stage_code, name,
+status(pending|in_progress|complete|skipped), is_validated, start_date, end_date,
+budget_amount 𝗙, device_id, is_deleted, updated_at, server_updated_at
+  writable via sync (owner: APP): status, start_date, end_date, is_deleted
+  server/web-owned: seq, stage_code, name, budget_amount, is_validated
+  note: `status` is globally protected in the push sanitiser; this table carries a
+        per-table exemption (the one and only) so "mark stage complete" works.
+```
+
+**`tasks`** — arbitrary nesting under a stage; the PM's field tool.
+```
+id, org_id, project_id, stage_id, parent_id, name, budget_hours 𝗙,
+budget_amount 𝗙, completion(0–100), start_date, end_date, assigned_to,
+predecessor_id, device_id, is_deleted, updated_at, server_updated_at
+  writable via sync (owner: APP): project_id, stage_id, parent_id, name,
+    completion, start_date, end_date, assigned_to, predecessor_id, is_deleted
+  server/web-owned: budget_hours, budget_amount
+```
+
+Proposed §4 matrix rows (append on confirmation):
+
+| Table | App (device) | Web console | Server | Rule |
+|---|---|---|---|---|
+| `customers`, `projects` | R | **W** | R | Desk work; budgets are financial-role territory. |
+| `project_stages` (progress) | **W** | R | R | The site marks what happened. |
+| `project_stages` (structure, budget) | R | **W** | R | The office draws the programme. |
+| `tasks` (except budgets) | **W** | R | R | The PM plans from the field app. |
+| `tasks.budget_*` | R | **W** | R | Money is web-written, redacted downstream. |
+
 ### 2.3 Server-only tables (never sync to the device)
 
 `sessions` · `pairing_tokens` · `recovery_tokens` · `audit_log` · `sync_history` ·
@@ -455,7 +523,7 @@ node tests/acceptance.js          # the §5 transcript, printed
 | Who | Now | Next |
 |---|---|---|
 | **App team (us)** | P2 auth UI SHIPPED (builds clean): welcome/login/register/recovery screens, OAuth-first per auth-strategy, email register+login+recovery wired to §1; SQLite mirror reconciled to §2.2; tolerant-reader pull filter built (`filterToTableColumns`, §5) | Wire pairing/handoff + sync once §8 asks land. **See §8 for new server asks (OAuth, SMS, org columns, AU residency).** |
-| **Server dev** | Phase 1 done ✅ · **§8 delivered** (migration_v002): 3-provider OAuth, SMS mobile verification, `business_type`/`gst_registered`, AU onboarding — built + verified, see §8.5 | Awaiting 2 confirmations (§8.5): OAuth endpoint shape (token-exchange vs redirect) + SMS scope (verification vs also-recovery). Then ProjMan-03 domain tables (projects → stages → tasks); ProjMan-02 architecture signed off. Serves all three surfaces (§1.9). |
+| **Server dev** | Phase 1 done ✅ · §8 delivered ✅ · **Dashboard scaffolded** (`server/dashboard`: ported Nexus portal kit, login + Devices + Projects pages, builds clean) · **Construction core built** (migration_v003 + registry + ProjectService/CustomerService + REST; §2.2a PROPOSAL — awaiting your row-by-row confirm; `tests/domain.test.js` 24/24) · `needsOnboarding` alias added (§8.5) · web sessions never authoritative (§7 log) | §2.2a sign-off from you; §9 role model v2 (next build — see owner's access-control concern); OAuth token-exchange treated as confirmed (you're wiring against it). |
 | **Web console** | Scaffolding (Next.js) | Consume `/organisation*` + `/devices*`; it is the **W** for `organisations`/`users`. |
 
 **Blocking questions returned to the brief (unchanged assumptions):**
@@ -477,6 +545,11 @@ node tests/acceptance.js          # the §5 transcript, printed
 | 2026-07-22 | App team accepted the `server_updated_at` pull fix and **resolved the §5 pull-column action app-side**: built `filterToTableColumns` (tolerant reader over `PRAGMA table_info`); every P2 pull applies through it. **Declined** the offered server `pullColumns` allowlist — keep `/sync/pull` generic; reasoning in §5. No server change requested. | App team |
 | 2026-07-22 | App team built the P2 auth UI (welcome/login/register/recovery) against §1, OAuth-first per the new auth strategy. **Opened §8 — new server asks:** 3 OAuth providers (Google/Microsoft/Facebook only), SMS verification for +61 mobiles, `organisations.business_type` + `gst_registered` columns, and AU data-residency. Email register/login/recovery need no server change. | App team |
 | 2026-07-22 | Server dev **delivered §8** (migration_v002): `POST /auth/oauth/:provider` (token-exchange; Google/MS via JWKS ID-token, FB via Graph), `/auth/onboarding`, `/auth/sms/request`+`/verify` (+61); `auth_identities` + `sms_verifications` tables; `users.onboarding_complete`/`mobile_verified` + nullable `password_hash`; `organisations.business_type`/`gst_registered`. Full flow verified via dev-bypass; 16/16 isolation still green. Added §1.8 (AU sign-in), §1.9 (three surfaces: app/dashboard/portal), §8.5 (response). **2 confirmations wanted:** OAuth shape + SMS recovery-or-just-verification. **Residency:** code region-agnostic, PII stays in `c1projman2`; hosting to AU is a deploy commitment (§8.5). | Server dev |
+| 2026-07-22 | **Role model v2 locked** owner-side (development.md §3): keep + add (`project_developer` stays builder-side; no client flip), 12-role target / 8-role v1 / 5-role app pairing shortlist. **Opened §9** — additive enum ask (`inspector` + `foreperson` v1-assignable; `construction_manager`/`estimator`/`subcontractor`/`labourer` behind `ROLE_NOT_ASSIGNABLE`), `customer` never device-pairable, 9 enforcement points → servdesignspecification. ⚠ flagged: the app pairing UI already sends `inspector`, outside the v001 enum. | App team |
+| 2026-07-22 | Server dev **built the construction core** (migration_v003: `customers`/`projects`/`project_stages`/`tasks`) ahead of schema v1 sign-off on the owner's instruction — **§2.2a added as a PROPOSAL**, including the split-by-field ownership for stages/tasks and a new **financial-redaction rule** (money columns stripped from pulls + REST reads for non-financial roles — NOT a pull allowlist; that decision stands). REST: `/projects*`, `/customers*`. Fixed a latent push bug the first create-push exposed (`updated_at` named twice in the INSERT). Re-verified: 16/16 isolation, acceptance green, new `tests/domain.test.js` 24/24. | Server dev |
+| 2026-07-22 | Server dev, smaller items: **(a)** `POST /auth/oauth/:provider` now returns `needsOnboarding` as an alias of `onboardingRequired` — whichever the client coded against works; token-exchange shape treated as **confirmed** (you are wiring against it). **(b)** Session issue for register / device-loss recovery / pairing now flows through `AuthService.startSession` (Step C completion; behaviour unchanged, one implementation — pairing keeps its never-seize rule via `authority:'never'`). **(c)** New rule: **web-surface sessions are never the single writer** — a console login can no longer strand the field app behind a handoff nobody will complete. **(d)** Dashboard scaffolded at `server/dashboard` (owner's location call): ported Nexus portal kit + login + Devices (PoC) + Projects pages. | Server dev |
+| 2026-07-22 | **Access-control redesign drafted** after the owner flagged the structural flaw (role-as-enforcement-unit, no resource scoping, roles-as-ENUM). Full design: `servdesignspecification.md` §9 (permissions catalogue, roles × permissions matrix, scope classes, `project_members`, roles-as-data, `GET /auth/permissions`). **§9.5 added here** — accepts the §9 role ask, answers the `inspector` question (currently 422), flags the camelCase display names as wire-hazard, and previews the scoped-pull behaviour change + `requiresFullSync` semantics. ⏳ Build gated on owner approval of the design. | Server dev |
+| 2026-07-23 | **§10 opened — Stage-1 create-ownership ask.** The 18-stage matrix (`docs/18StageProjectMangementMatrix.md`) starts at PM-creates-project **offline**; asked that `projects`/`customers` **create** be APP-or-WEB (update/delete stay WEB-only), for the offline Draft(local)/Submit(queued push) pattern, and for the server to **auto-enrol the creating PM into `project_members`** on accepting an APP-authored create (reconciling §9.5). Note: §2.2a already ships `/projects`+`/customers` REST + a create-push path — this pins the **offline-first** requirement and the ownership split. Locked owner-side; app builds Draft (local-only) now, Submit path waits on delivery. | App team |
 
 ---
 
@@ -592,3 +665,197 @@ one-line `/health` region tag once you tell me the target so it's auditable.
 (per-platform, comma-sep), `MICROSOFT_CLIENT_ID`, `FACEBOOK_APP_ID`/`SECRET`, and an
 AU SMS sender (`SMS_PROVIDER=messagemedia` + creds). Until then the app builds the whole
 flow against `OAUTH_DEV_BYPASS=true` (dev only).
+
+---
+
+## 9. Role model v2 — App team → Server dev (enum extension + enforcement)
+
+**Status: 🟡 ASK — decisions locked owner-side 2026-07-22 (development.md §3);
+server work below is yours.** Additive only — nothing in the frozen Phase-1
+contract is renamed or reassigned.
+
+### 9.1 The decisions (context)
+
+1. **Keep + Add.** `project_developer` stays a **builder-side** role; the RBAC
+   review's "Developer = client" flip was **rejected**. `construction_manager` is
+   added as a new role instead. `customer` remains the client (portal-only).
+2. **12-role target, scoped v1.** v1 ships 8 roles; 4 arrive post-v1 as their
+   modules come online. Full matrix: development.md §3.
+3. **5-role app UI shortlist.** The pairing screen offers exactly Site Manager
+   (`supervisor`) · Foreman (`foreperson`) · Tradie (`tradie`) · Inspector
+   (`inspector`) · Project Manager (`project_manager`). Labourers pair as Tradie;
+   a subbie principal uses web while their crew pairs as Tradie.
+
+### 9.2 Enum change (migration ask)
+
+Current (v001): `org_admin | project_developer | project_manager | supervisor |
+tradie | customer`.
+
+**Add six values** to `users.role` / `devices.role` / pairing + user-create
+validation — recommend one migration now, with an **assignability gate** rather
+than a second migration later:
+
+| New value | v1 assignable? | Notes |
+|---|---|---|
+| `inspector` | ✅ yes | ⚠ the app pairing screen **already sends this today** (`pair_device_screen.dart` offers Inspector) — it is outside the v001 enum, so please confirm what the server currently does with it, and make it assignable. Device-pairable. |
+| `foreperson` | ✅ yes | Device-pairable; crew-level subset of supervisor. |
+| `construction_manager` | ❌ `ROLE_NOT_ASSIGNABLE` | Web-only when enabled. |
+| `estimator` | ❌ `ROLE_NOT_ASSIGNABLE` | Web-only when enabled. |
+| `subcontractor` | ❌ `ROLE_NOT_ASSIGNABLE` | Ties to the projman-02 engagement domain. |
+| `labourer` | ❌ `ROLE_NOT_ASSIGNABLE` | On-site users pair as `tradie` in v1. |
+
+Invariants: `customer` is **never a device role** — refuse at `/pairing/initiate`
+and `/devices/:id/role`. Device-pairable set in v1 = the 5-role shortlist above.
+JWT `role` claim (§1.7) is a string — no shape change. No existing value is
+renamed; no data migration.
+
+### 9.3 Enforcement rules (for servdesignspecification)
+
+The role matrix is **server-enforced on every surface** (sync-push path AND
+dashboard/portal writes — the ComplianceService pattern, projman-03 R2); the
+app's `RoleVisibility` is cosmetic. Nine enforcement points, detailed in
+development.md §13.2: org_id isolation · role RBAC per the §3 matrix ·
+engagement scope (projman-02) · hold-point block · invoice/claim gate · NCC
+block (projman-03 R2) · structural gate (projman-03 R2) · TPAR accumulation by
+ABN · geofence validation on attendance/incidents. Please fold these into
+servdesignspecification §3 as the authorization layer spec, and the CRUD-by-role
+matrix into the domain-tables contract as tables land.
+
+### 9.4 App-side follow-up (ours, after you deliver)
+
+Re-map `pairingRoles` in `pair_device_screen.dart` to the 5-role shortlist
+(relabel Supervisor → "Site Manager", add "Foreman" → `foreperson`) — gated on
+the enum landing so the Foreman option doesn't 4xx at initiate.
+
+### 9.5 Server dev response — ACCEPTED, delivered through an access-control layer (design drafted 2026-07-22, build awaits owner approval)
+
+The §9.2 ask is accepted in full — with one structural upgrade, prompted by the
+owner flagging the underlying flaw the same day: **the enum ask will be delivered
+as roles-as-data, not as a bigger ENUM.** Full design:
+`servdesignspecification.md` §9 (🟠 DRAFT under owner review). What lands on the
+wire and in this contract:
+
+1. **Your question answered — what the server does with `inspector` today:** it is
+   refused, `422 VALIDATION_ERROR`, at `/pairing/initiate` (and everywhere else a
+   role is validated) because it is outside the v001 enum + `lib/roles.js` list.
+   Nothing is stored. So the pairing screen's Inspector option 4xxes at initiate —
+   your §9.4 gating is right to wait for this delivery.
+2. **Roles become rows** (`roles` reference table; `users.role`/`devices.role`/
+   `pairing_tokens.role` go ENUM→VARCHAR, values unchanged, tokens stay valid).
+   All 12 §3 roles are seeded at once; `is_assignable` and `device_pairable` are
+   **columns**, so your assignability gate (`ROLE_NOT_ASSIGNABLE` for the post-v1
+   four) and "`customer` is never a device role" are data the server enforces —
+   refused at `/pairing/initiate` and `/devices/:id/role` exactly as §9.2 asks.
+3. **Wire values are the snake_case enums of development.md §3** (`supervisor`,
+   `project_manager`, `org_admin`, `customer`, …). ⚠ The shortlist table you
+   circulated used display-style names (`siteSupervisor`, `projectManager`,
+   `orgAdmin`, `client`) — treat those as labels only; if the client sends them as
+   `role` values every pairing fails. Better: stop hard-coding the list at all —
+   see 4.
+4. **New endpoint: `GET /auth/permissions`** (authenticated) →
+   `{ matrixVersion, role, scopeClass, permissions:[…],
+   pairableRoles:[{role,label}…], assignableRoles:[…] }`. The pairing screen and
+   `RoleVisibility` render from this instead of hard-coding — the 5-role shortlist
+   becomes server data (which is how `inspector` stops shipping ahead of the
+   server again).
+5. **Resource scoping arrives with it** — the part of the flaw that affects your
+   client: a `project_members` table (WEB-owned, synced — §2.2a-style row to
+   follow) plus a scope class per role (`portfolio`/`assigned`/`self`/
+   `engagement`/`portal`). **Behaviour change to expect on the app:**
+   assigned/self-scope sessions (PM, supervisor, foreperson, tradie, inspector)
+   will **pull only member projects' rows**, and a push into a non-member project
+   is refused (`403 NOT_MEMBER`). On a membership grant/revoke the next pull/
+   status response carries `requiresFullSync: true` — same signal device-loss
+   recovery already uses; the app re-pulls from `since=0`. Your tolerant reader
+   needs no change; row *counts* just get smaller and correcter.
+6. **Countersign ask:** the roles × permissions matrix
+   (servdesignspecification §9.5) is the contract artifact replacing per-endpoint
+   role lists. Once the owner approves the design I will mirror that table here
+   for your sign-off, with the migration (v004) and `matrixVersion: 1`.
+
+Sequencing: owner approval of servdesignspecification §9 → migration v004 +
+seed + `/auth/permissions` → this section gets the final matrix + a change-log
+row → your §9.4 re-map unblocks.
+
+---
+
+## 10. Domain create-ownership — App team → Server dev (projects & customers)
+
+**Status: 🟡 ASK — locked owner-side 2026-07-23. Gates the app's Stage-1 create
+screen.**
+
+Context: the 18-stage lifecycle (`docs/18StageProjectMangementMatrix.md`, the app's
+**Core Logic Driver**) begins at **Stage 1 = PM creates the project** — customer
+profile + site vectors + camera-captured land docs — **and it must work offline**
+(Stage-1 decision (a): the PM is never blocked by signal or AI). The current
+ownership matrix (§4 / development2 §3.1) makes `projects`/`customers` **WEB
+single-writer**, which forbids an app-originated create. Requested change:
+
+### 10.1 Split ownership by operation
+
+| Table | Create | Update | Delete |
+|---|---|---|---|
+| `projects` | **APP or WEB** | WEB only | WEB only |
+| `customers` | **APP or WEB** | WEB only | WEB only |
+
+The app **originates** (INSERT) a project/customer; WEB owns every subsequent edit
+and the delete/tombstone. Single-writer holds for *updates* — only the create opens
+to the app. The push guard changes from "reject any APP write to these tables
+(`NOT_OWNER`)" to "accept an **APP-authored INSERT** (new id), reject an APP UPDATE".
+
+### 10.2 Offline create pattern (the screen's Draft/Submit)
+
+- **Save Draft** — local-only row (`is_dirty = 0`, a `draft` status); never pushed;
+  the PM finishes later on app or Portal.
+- **Submit** — local write (Stage-1 complete) + **queued create** via the normal
+  `/sync/push` (`is_dirty = 1`). The server accepts the app-authored row, then owns
+  it. The Stage-1 client email + OCR are **server/Python side-effects fired on
+  receipt**, not by the app.
+
+The app already generates `id` (uuid v4) for every synced table (§2.1), so the create
+is just a push the server must now accept for these two tables from an APP writer.
+
+### 10.3 Reconcile with §9.5 scoping
+
+§9.5 adds `project_members` (WEB-owned) + scope classes + `403 NOT_MEMBER`. An
+app-created project must **auto-enrol its creator (the PM) as a member** in the same
+transaction that accepts the create — otherwise the PM can't pull the project they
+just made. **Confirm** you'll seed that `project_members` row server-side on accepting
+an APP-authored `projects` INSERT.
+
+### 10.4 App-side follow-up (ours)
+
+Build the Stage-1 Create Project screen (appspec §5.2) to the Draft/Submit pattern.
+**Save Draft (local-only) is safe to build now; do not ship the Submit/sync path
+until this section is delivered.**
+
+### 10.5 Server dev response — DELIVERED + verified 2026-07-23
+
+All of §10 is built and green (`tests/access.test.js` covers it end-to-end).
+
+- **§10.1 split ownership — done.** `projects` and `customers` now carry
+  `appCreate: true` in the sync registry: the push guard accepts an **APP-authored
+  INSERT** (new client id) and still refuses an **APP UPDATE/DELETE** with
+  `NOT_OWNER`. WEB remains sole writer for edits + tombstones. Create is additionally
+  **permission-gated** — the pushing session must hold `projects.write` /
+  `customers.write` (i.e. `projectManager`); a `tradie` tablet cannot invent a
+  project (test: `403 FORBIDDEN`).
+- **§10.2 Draft/Submit — server side ready.** Submit = a normal `/sync/push`
+  `create`; the server accepts it, stamps `server_updated_at`, and owns it thereafter.
+  Draft is local-only on your side (never pushed) — no server involvement, correct.
+  The Stage-1 client email + OCR fire as **server/Python side-effects on receipt**
+  (not built yet — they attach when the 18-stage engine lands; the create itself is
+  live now).
+- **§10.3 auto-enrol the creator — CONFIRMED + done.** Accepting an APP-authored
+  `projects` INSERT now seeds a `project_members` row for the **pushing user** in the
+  same push (no resync flag — the authoring device already holds the row). The REST
+  create path does the same for its caller. Verified: an assigned-scope session for
+  the creator pulls the project it just made. Stages/tasks inherit the project's
+  membership, so they need no separate enrolment.
+- **`code` uniqueness + FK ordering** (my §5 notes in `projman-04`): unchanged —
+  offline duplicate `code` → `409 DUPLICATE_CODE`; push the customer before the
+  project it references (FK). Both are app-queue concerns.
+
+**Wire status:** `projects`/`customers` create = **APP-or-WEB**, update/delete =
+**WEB-only** — please fold that into the §4 ownership matrix (I left §4 for you to
+edit). Your Submit path is unblocked.

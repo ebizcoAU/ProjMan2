@@ -32,9 +32,9 @@ const { body, validationResult } = require('express-validator');
 
 const pool   = require('../db/pool');
 const config = require('../config');
-const { authenticate, requireRole } = require('../middleware/auth');
+const { authenticate, requirePermission } = require('../middleware/auth');
 const { audit, clientIp } = require('../lib/audit');
-const { ROLES } = require('../lib/roles');
+const access = require('../lib/access');
 const { readDevice } = require('../lib/tokens');
 const AuthService = require('../services/AuthService');
 const { ServiceError } = require('../services/errors');
@@ -49,14 +49,9 @@ function validation(req, res) {
   return true;
 }
 
-// Who may hand out which role. An org admin can create another org admin; a project
-// manager can put a supervisor on a site tablet but cannot promote anyone above
-// themselves. Without this, pairing is a privilege-escalation route.
-const CAN_ASSIGN = {
-  org_admin:         ROLES,
-  project_developer: ['project_manager', 'supervisor', 'tradie', 'customer'],
-  project_manager:   ['supervisor', 'tradie'],
-};
+// Who may hand out which role is access.canPair (the pair_rank ceiling) — no map to
+// maintain here. projectManager pairs anyone; siteSupervisor pairs foreperson/tradie
+// only; inspector/foreperson/tradie hold no devices.manage so never reach this path.
 
 // ============================================================================
 // POST /pairing/initiate  { role, label?, assign_user_id?, ttl_seconds? }
@@ -65,9 +60,9 @@ const CAN_ASSIGN = {
 router.post(
   '/initiate',
   authenticate,
-  requireRole('org_admin', 'project_developer', 'project_manager'),
+  requirePermission('devices.manage'),
   [
-    body('role').isIn(ROLES).withMessage('A valid role is required'),
+    body('role').notEmpty().withMessage('A role is required'),
     body('label').optional({ nullable: true }).isString().isLength({ max: 255 }),
     body('assign_user_id').optional({ nullable: true }).isString(),
     body('ttl_seconds').optional().isInt({ min: 30 }),
@@ -78,8 +73,19 @@ router.post(
     const { orgId, userId, role: myRole } = req.auth;
     const role = req.body.role;
 
-    const allowed = CAN_ASSIGN[myRole] || [];
-    if (!allowed.includes(role)) {
+    // The target must be a defined, DEVICE-PAIRABLE role (`customer` is defined but
+    // never pairable — refused here by data, §9.2), and within the issuer's ceiling.
+    if (!access.roleMeta(role)) {
+      return res.status(422).json({ success: false, message: 'A valid role is required', code: 'VALIDATION_ERROR', field: 'role' });
+    }
+    if (!access.isPairable(role)) {
+      return res.status(403).json({
+        success: false,
+        message: `The role "${role}" cannot be paired to a device`,
+        code: 'ROLE_NOT_ASSIGNABLE',
+      });
+    }
+    if (access.pairRank(myRole) < access.pairRank(role)) {
       return res.status(403).json({
         success: false,
         message: `A ${myRole} cannot assign the role ${role}`,
@@ -239,7 +245,7 @@ router.get('/pending', authenticate, async (req, res) => {
 router.post(
   '/confirm',
   authenticate,
-  requireRole('org_admin', 'project_developer', 'project_manager'),
+  requirePermission('devices.manage'),
   [body('request_id').notEmpty().withMessage('request_id is required')],
   async (req, res) => {
     if (validation(req, res)) return;
@@ -264,15 +270,26 @@ router.post(
           success: false, message: 'No device is waiting on this request', code: 'NOT_AWAITING', status: token.status,
         });
       }
-      if (token.initiated_by !== userId && myRole !== 'org_admin') {
-        return res.status(403).json({ success: false, message: 'Only the issuer or an org admin can confirm', code: 'NOT_ISSUER' });
+      // Someone other than the issuer may confirm only if they administer the org
+      // (org.manage) — the projectManager. Expressed as the permission, not a role.
+      if (token.initiated_by !== userId && !access.hasPermission(myRole, 'org.manage')) {
+        return res.status(403).json({ success: false, message: 'Only the issuer or an org administrator can confirm', code: 'NOT_ISSUER' });
       }
 
       // The role may be changed at approval time — the operator sees the device in
       // front of them and may have picked the wrong one when generating the code.
+      // Same data-driven gate as initiate: defined, pairable, within the issuer's
+      // ceiling.
       const role = req.body.role || token.role;
-      const allowed = CAN_ASSIGN[myRole] || [];
-      if (!allowed.includes(role)) {
+      if (!access.roleMeta(role)) {
+        return res.status(422).json({ success: false, message: 'A valid role is required', code: 'VALIDATION_ERROR', field: 'role' });
+      }
+      if (!access.isPairable(role)) {
+        return res.status(403).json({
+          success: false, message: `The role "${role}" cannot be paired to a device`, code: 'ROLE_NOT_ASSIGNABLE',
+        });
+      }
+      if (access.pairRank(myRole) < access.pairRank(role)) {
         return res.status(403).json({
           success: false, message: `A ${myRole} cannot assign the role ${role}`, code: 'ROLE_NOT_ASSIGNABLE',
         });
@@ -336,7 +353,7 @@ router.post(
 router.post(
   '/reject',
   authenticate,
-  requireRole('org_admin', 'project_developer', 'project_manager'),
+  requirePermission('devices.manage'),
   [body('request_id').notEmpty().withMessage('request_id is required')],
   async (req, res) => {
     if (validation(req, res)) return;

@@ -5,10 +5,50 @@ construction project-management platform. You own **`server/api`** (Node/Express
 MySQL). A separate **app team** owns the Flutter app (`app/`) and the contract docs.
 This file is what a fresh session (after `/clear`) reads to resume.
 
-**One-line status (2026-07-22):** Phase 1 identity + the AU sign-in surface (OAuth/
-SMS/onboarding) are **built and verified**; the service layer is **extracted**. Next
-build is the **dashboard scaffold** (blocked on one location question) and, once the
-app signs off schema v1, the **domain tables**.
+**One-line status (2026-07-24):** Phase 1 + AU sign-in · **portal** (`server/dashboard`:
+login + Devices + Projects + Programme + **Cost Plan** + **Admin** Users/Settings/Audit
+— built 2026-07-24, endpoints verified) · **construction core** (v003) ·
+**access-control 6-ROLE model** (v004+v005) · **§10 per-op ownership** (app CREATEs
+projects/customers offline; creator auto-enrolled) · **18-STAGE ENGINE BUILT** (v006:
+StageProgressionService + StageTemplateService + stageHooks; gate on REST **and**
+sync-push; WA_RESIDENTIAL_18 seeded, hold points 11/12/13/15/18; inspector-only
+validation; stage cost cols estimated/committed/actual/claimed money-redacted).
+All 6 suites green: isolation 16 · domain 29 · access 19 · stages 15 · **admin 18** ·
+acceptance (run `DISABLE_RATE_LIMIT=true PORT=4199 node src/index.js`). Migrations at
+**v007** (next v008). **App-team progress board = `docs/decisions/projman-04.md`** — keep updated.
+
+**THE ROLE MODEL (authoritative, 2026-07-23):** 6 roles, camelCase, from
+`18StageProjectMangementMatrix.md` (NOT development.md §3's retired 12-role model):
+`projectManager`(portfolio, top-actor, CREATES projects) · `siteSupervisor`(assigned)
+· `foreperson`(assigned) · `tradie`(self) · `inspector`(assigned, quality.validate) ·
+`client`(portal, P10, not pairable/assignable). Matrix is DATA (roles/role_permissions
+tables, matrix_version=2); enforcement is `requirePermission(...)` + `scopeFilter`;
+pairing uses a `pair_rank` ceiling. Registration creates a `projectManager`.
+
+**SYSTEM ADMIN DASHBOARD BUILT** (2026-07-24, migration_v007 + server + UI):
+`platform_admins` allowlist (grant via `scripts/grant-platform-admin.js <email>`),
+`adminAuthenticate` gate, `AdminService` (cross-tenant stats/accounts/devices/login-log/
+orgs/health — ACCOUNT LAYER ONLY, no project/content), `BillingService` (subscriptions
+w/ org fallback + revenue + record-payment + change-plan), `lib/geo.js` (GeoLite2 local,
+graceful no-DB fallback — set GEOLITE2_DB + `npm i maxmind` to enable), `/api/v1/admin/*`
+routes, `audit_log.user_agent` now captured. UI = `/admin/*` route group (Overview,
+Accounts, Devices, Orgs, Billing, Login Log w/ CSV). `tests/admin.test.js` 18/18 incl.
+boundary proof (no /admin/* leaks project/user content). Tenant org-admin stays in the
+PORTAL. **Migrations now at v007.** Billing gateway (Stripe/eWAY) deferred — manual v1.
+(2) **Portal/web-console** spec WRITTEN = `docs/portaldesignspecification.md` — ONE
+Next.js app (`server/dashboard`) with 4 route groups (console/client/public/admin), NOT
+a new app; roles mapped to the 6-role permission model; ⚠ brief re-opens `estimator`
+(recommend NO new role — Estimating = money.write-gated module). Buildable-now: Cost
+Plan + Admin modules. Awaiting owner review + the estimator call.
+
+**NEXT after those (18-stage engine DONE):** wire event-hook bodies as their services arrive
+(`stageHooks` has the points + audit; Stage 1 OCR/email, Stage 13→14 chaining, Stage
+18 capitalise/depreciate) · then domain modules in P-order: site ops (P5:
+site_diary/attendance-geofenced/deliveries) → quality (P6: inspections/certificates/
+defects behind the existing `/validate` gate) → commercial (P7: estimates/POs/
+variations/claims; `stageHooks.assertClaimAllowed` stub already there for the payment
+freeze). Spec each into servdesignspec first. `estimator` resolved = projectManager
+sub-function (owner locked).
 
 ---
 
@@ -101,28 +141,25 @@ kill $(lsof -tiTCP:4199 -sTCP:LISTEN)   # stop ONLY your temp instance
 
 ## 6. Open decisions / immediate next actions
 
-1. **Step B — dashboard scaffold (approved, NOT started).** Port Nexus
-   `dashboard/src/app/portal/_components` (PortalTable/Kpi/Card/Filter/Pagination,
-   usePortalData, PortalNav-adapted) + the fetch API client + Next shell, and wire a
-   **Devices page** to `/devices` as the proof-of-concept. **BLOCKED on ONE answer:**
-   dashboard location — `server/dashboard/` (sibling of `server/api`, how the owner
-   refers to it) vs `web/` (development.md §1). Ask, then build. Porting plan is
-   `servdesignspecification.md` §5.
-2. **Step C leftovers (optional):** register/recovery/pairing still issue sessions
-   directly; migrate them through `AuthService` incrementally ("emerge per module").
-3. **Two OAuth confirmations still open** (projman-01 §8.5): endpoint shape (you kept
-   **token-exchange** — app is wiring against it, so effectively confirmed) and the
-   flag name **`onboardingRequired`** (app suggested `needsOnboarding`; offer an alias
-   if they've already coded it).
-4. **Domain tables (ProjMan-03-domain / a future record):** projects → stages →
-   tasks first, each = one `sync/registry.js` entry + migration + `<Module>Service` +
-   thin route + a projman-01 §2.2 row. **Waits on the app team's schema v1 sign-off**
-   of development.md §5.
-5. **Engagement mechanics (projman-02):** `engagements`/`identities`/`attestations`
-   land with the domain tables; your §10 decisions (Ed25519 org issuer key
-   server-held+encrypted; device key app-generated/public-only; verify signatures at
-   trust-score + share; on-demand trust score + 24h cache + event-invalidate;
-   revocation = stop-serving + session-invalidate + `engagement_revoked` tombstone).
+1. **ACCESS-CONTROL REDESIGN — design WRITTEN, awaiting owner approval.** Full
+   spec: `docs/servdesignspecification.md` **§9** (permission catalogue, roles ×
+   permissions matrix §9.5, scope classes portfolio/assigned/self/engagement/portal,
+   `project_members` + scoped pull/push + `requiresFullSync`-on-membership-change,
+   roles-as-data migration v004, `GET /auth/permissions`, migration path §9.8).
+   Contract side: projman-01 **§9.5** (accepts the app team's §9 role ask through
+   this layer; `inspector` currently 422s; camelCase names are display-only —
+   snake_case on the wire) + change-log row. **Owner must approve §9 and answer
+   §9.9 (strict assigned scope? membership UI web-only v1? inspector C2 path now?)
+   before ANY v004 code.** Build order once approved is at the §9 review ask.
+2. **projman-01 §2.2a** — construction core built (v003); awaiting app-team
+   row-by-row confirm (contact split, financial-redaction rule, stage split-by-field).
+3. **projman-01 §9** — role model v2 ask: fold into item 1's spec (additive roles +
+   assignability gate + customer-never-pairable all become matrix rows).
+4. **Engagement mechanics (projman-02):** unchanged — `engagements`/`identities`/
+   `attestations` land with the domain tables; §10 decisions stand (Ed25519 org
+   issuer key server-held+encrypted; device key app-generated/public-only; on-demand
+   trust score + 24h cache; revocation = stop-serving + session-invalidate +
+   tombstone).
 
 ## 7. Conventions & traps (the ones that bite)
 

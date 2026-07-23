@@ -88,7 +88,7 @@ async function run() {
   // 4 — pair a second device as supervisor, see the role in its session
   console.log('\n§5.4  Pair a site tablet, confirm as supervisor');
   const init = await api('POST', '/pairing/initiate', {
-    token, body: { role: 'supervisor', label: 'Site tablet — Lot 42' },
+    token, body: { role: 'siteSupervisor', label: 'Site tablet — Lot 42' },
   });
   const requestId = init.json?.data?.request_id;
   const nonce = init.json?.data?.qr_payload?.nonce;
