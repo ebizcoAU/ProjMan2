@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Projman2</string>
+	<string>ProjMan</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -66,5 +66,17 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- DEV ONLY: allow cleartext HTTP so the phone can reach the dev API at
+	     http://<mac-LAN-ip>:4100. Production uses https (ebizco.com.au) — tighten
+	     or remove this before any release build. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>ProjMan2 uses the camera to scan pairing QR codes and capture site photos, dockets and land documents.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>ProjMan2 attaches photos and documents from your library to projects, diary entries and inspections.</string>
 </dict>
 </plist>

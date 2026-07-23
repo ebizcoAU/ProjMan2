@@ -98,7 +98,7 @@ class _ProfileTabState extends State<ProfileTab> {
     if (confirm != true) return;
     await NexusService.logout();
     if (!mounted) return;
-    context.go(AppRoutes.welcome);
+    context.go(AppRoutes.login);
   }
 
   @override

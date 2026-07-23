@@ -97,6 +97,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget build(BuildContext context) {
     return AuthScaffold(
       title: _step == 0 ? 'Create your account' : 'About your business',
+      // Step 2 heading: 1px smaller, not bold (owner request).
+      titleStyle: _step == 1
+          ? const TextStyle(
+              color: Colors.white,
+              fontSize: 27,
+              fontWeight: FontWeight.w500,
+              letterSpacing: -0.3)
+          : null,
+      // Back on step 2 returns to step 1; on step 1 it exits (pop → welcome/login).
+      onBack: _step == 1 ? () => setState(() => _step = 0) : null,
       subtitle: _step == 0
           ? 'Sign up in a minute. Your details stay in Australia.'
           : 'A few Australian basics. ABN is optional for now.',
@@ -169,7 +179,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             Text('Already have an account?',
                 style: TextStyle(color: Colors.white.withValues(alpha: 0.6))),
             TextButton(
-              onPressed: () => context.pop(),
+              onPressed: () => context.pushReplacement(AppRoutes.login),
               child: const Text('Sign in',
                   style: TextStyle(color: Color(0xFF60A5FA))),
             ),
@@ -224,12 +234,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
           const SizedBox(height: 24),
           AuthButton(
               label: 'Create account', busy: _busy, onPressed: _submit),
-          const SizedBox(height: 12),
-          TextButton(
-            onPressed: _busy ? null : () => setState(() => _step = 0),
-            child: const Text('Back',
-                style: TextStyle(color: Color(0xFF60A5FA))),
-          ),
         ],
       ),
     );

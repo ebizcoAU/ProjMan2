@@ -9,6 +9,8 @@ import '../screens/recovery_screen.dart';
 import '../screens/onboarding_screen.dart';
 import '../screens/pairing/pair_device_screen.dart';
 import '../screens/pairing/join_device_screen.dart';
+import '../screens/projects/create_project_screen.dart';
+import '../screens/projects/project_detail_screen.dart';
 import '../screens/home_screen.dart';
 
 class AppRoutes {
@@ -20,6 +22,8 @@ class AppRoutes {
   static const String pairDevice = '/pair-device'; // primary shows QR
   static const String joinDevice = '/join-device'; // new device scans
   static const String home = '/home';
+  static const String projectCreate = '/project/create'; // Stage 1
+  static const String projectDetail = '/project/detail'; // 18-stage tracker
   // Handoff lands here later in P2.
 }
 
@@ -30,8 +34,15 @@ class AppRoutes {
 final bootRouteProvider = FutureProvider<String>((ref) async {
   try {
     final hasSession = await SessionService.hasSession();
-    debugPrint('[Router] boot — hasSession=$hasSession');
-    return hasSession ? AppRoutes.home : AppRoutes.welcome;
+    if (hasSession) {
+      debugPrint('[Router] boot — active session → home');
+      return AppRoutes.home;
+    }
+    // No active session: a device that has signed in before returns to Login;
+    // only a genuinely fresh install sees Welcome.
+    final returning = await SessionService.hasSignedInBefore();
+    debugPrint('[Router] boot — no session, returning=$returning');
+    return returning ? AppRoutes.login : AppRoutes.welcome;
   } catch (e) {
     debugPrint('⚠️ [Router] boot error: $e');
     return AppRoutes.welcome;
@@ -84,6 +95,17 @@ final goRouterProvider = FutureProvider<GoRouter>((ref) async {
         path: AppRoutes.home,
         name: 'home',
         builder: (context, state) => const HomeScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.projectCreate,
+        name: 'projectCreate',
+        builder: (context, state) => const CreateProjectScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.projectDetail,
+        name: 'projectDetail',
+        builder: (context, state) =>
+            ProjectDetailScreen(projectId: state.extra as String),
       ),
       GoRoute(
         path: '/error',

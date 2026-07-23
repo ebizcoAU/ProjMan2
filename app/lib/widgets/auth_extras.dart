@@ -156,7 +156,7 @@ class AuBadge extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const Text('🇦🇺', style: TextStyle(fontSize: 13)),
+        const Text('🇦🇺', style: TextStyle(fontSize: 39)),
         const SizedBox(width: 6),
         Text('Built for Australian builders',
             style: TextStyle(

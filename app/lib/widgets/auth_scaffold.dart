@@ -1,14 +1,26 @@
 import 'package:flutter/material.dart';
-import '../config/build_config.dart';
+import 'package:go_router/go_router.dart';
+import '../config/router.dart';
 
-/// Shared dark background + brand header for every auth screen. Keeps the MAOI
-/// auth aesthetic (deep navy, blue brand stub) but drops the IVR help button —
-/// IVR is deferred (development.md §8.4).
+/// Shared brand background + header for every auth screen (login, register,
+/// recovery). Uses the same hero photo as the welcome screen — its top ~15%
+/// carries the baked-in PROJMAN logo + wordmark, so these screens don't repeat
+/// a brand mark; a dark scrim over the lower half keeps the form readable.
 class AuthScaffold extends StatelessWidget {
   final String title;
   final String? subtitle;
   final Widget child;
   final bool showBack;
+
+  /// Overrides the back action (e.g. a multi-step screen going to the previous
+  /// step). When null, the button pops if possible, else falls back to welcome.
+  final VoidCallback? onBack;
+
+  /// Overrides the title style (e.g. a lighter, smaller heading on a sub-step).
+  final TextStyle? titleStyle;
+
+  /// Extra space above the title (nudges the heading further down the screen).
+  final double titleTopGap;
 
   const AuthScaffold({
     super.key,
@@ -16,6 +28,9 @@ class AuthScaffold extends StatelessWidget {
     this.subtitle,
     required this.child,
     this.showBack = true,
+    this.onBack,
+    this.titleStyle,
+    this.titleTopGap = 0,
   });
 
   static const bg = Color(0xFF0A0F18);
@@ -23,102 +38,91 @@ class AuthScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final h = MediaQuery.of(context).size.height;
     return Scaffold(
       backgroundColor: bg,
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: Row(
-                children: [
-                  if (showBack)
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
-                      onPressed: () => Navigator.of(context).maybePop(),
-                    )
-                  else
-                    const SizedBox(width: 8),
-                  const Spacer(),
-                  const _BrandStub(),
-                  const Spacer(),
-                  const SizedBox(width: 48),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Same hero photo as welcome — its top ~15% carries the baked-in logo.
+          Image.asset('assets/bgimage2.jpeg', fit: BoxFit.cover),
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                stops: [0.0, 0.34, 0.60, 1.0],
+                colors: [
+                  Colors.transparent,
+                  Color(0x330A0F18),
+                  Color(0xE60A0F18),
+                  bg,
                 ],
               ),
             ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const SizedBox(height: 8),
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 28,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        subtitle!,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.6),
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 28),
-                    child,
-                  ],
+          ),
+          SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Top band left for the baked-in logo/wordmark; the back button
+                // tucks into its empty top-left corner. go_router-safe: pop when
+                // possible, otherwise fall back to welcome so you can ALWAYS
+                // leave a screen you pushed into.
+                SizedBox(
+                  height: h * 0.15,
+                  child: showBack
+                      ? Align(
+                          alignment: Alignment.topLeft,
+                          child: IconButton(
+                            icon: const Icon(Icons.arrow_back,
+                                color: Colors.white),
+                            onPressed: onBack ??
+                                () => context.canPop()
+                                    ? context.pop()
+                                    : context.go(AppRoutes.welcome),
+                          ),
+                        )
+                      : null,
                 ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _BrandStub extends StatelessWidget {
-  const _BrandStub();
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            color: AuthScaffold.accent.withValues(alpha: 0.2),
-            borderRadius: BorderRadius.circular(9),
-            border: Border.all(
-              color: AuthScaffold.accent.withValues(alpha: 0.35),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(height: titleTopGap),
+                        Text(
+                          title,
+                          style: titleStyle ??
+                              const TextStyle(
+                                color: Colors.white,
+                                fontSize: 28,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.5,
+                              ),
+                        ),
+                        if (subtitle != null) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            subtitle!,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.6),
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 24),
+                        child,
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          alignment: Alignment.center,
-          child: const Text('P',
-              style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF60A5FA))),
-        ),
-        const SizedBox(width: 8),
-        const Text(APP_NAME,
-            style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-                letterSpacing: -0.3)),
-      ],
+        ],
+      ),
     );
   }
 }

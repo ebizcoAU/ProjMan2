@@ -15,6 +15,15 @@ import 'session_service.dart';
 class NexusService {
   // ── Generic result ─────────────────────────────────────────────────────────
 
+  /// The server wraps success payloads in an envelope: `{success, data:{…}}`
+  /// (projman-01). Unwrap `data` so callers read fields directly
+  /// (`res.data['accessToken']`, `res.data['user']`, …). Error bodies carry no
+  /// `data` object and pass through unchanged; `code`/`message` stay top-level.
+  static Map<String, dynamic> _payload(Map<String, dynamic> json) =>
+      json['data'] is Map
+          ? Map<String, dynamic>.from(json['data'] as Map)
+          : json;
+
   /// Low-level POST returning the decoded body + a success flag + error code.
   static Future<ApiResult> _post(
     String path, {
@@ -45,7 +54,7 @@ class NexusService {
       return ApiResult(
         success: ok,
         status: resp.statusCode,
-        data: json,
+        data: _payload(json),
         code: json['code']?.toString(),
         message: json['message']?.toString(),
       );
@@ -92,7 +101,7 @@ class NexusService {
       return ApiResult(
         success: ok,
         status: resp.statusCode,
-        data: json,
+        data: _payload(json),
         code: json['code']?.toString(),
         message: json['message']?.toString(),
       );
@@ -142,6 +151,17 @@ class NexusService {
     await _persistSession(res);
     return res;
   }
+
+  // ── Authed helpers (domain services build on these) ────────────────────────
+
+  /// Authenticated GET — attaches the stored access token; unwraps the envelope.
+  static Future<ApiResult> authedGet(String path) async =>
+      _get(path, bearer: await SessionService.accessToken());
+
+  /// Authenticated POST — attaches the stored access token; unwraps the envelope.
+  static Future<ApiResult> authedPost(
+          String path, Map<String, dynamic> body) async =>
+      _post(path, body: body, bearer: await SessionService.accessToken());
 
   /// POST /auth/refresh — refresh token → new access token. (projman-01 §1.1)
   static Future<bool> refresh() async {

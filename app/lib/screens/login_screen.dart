@@ -2,14 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../config/router.dart';
 import '../services/nexus_service.dart';
+import '../services/session_service.dart';
 import '../widgets/auth_scaffold.dart';
 import '../widgets/social_auth_buttons.dart';
 import '../widgets/auth_extras.dart';
 
-/// Sign in. Auth-strategy §UI: the three OAuth buttons are prominent; email +
-/// password sits below a subtle "or". MAOI logged in by 6-digit PIN — ProjMan2
-/// uses email + password (projman-01 §6), so that pattern is intentionally not
-/// carried.
+/// Sign in — returning users. Email + password first, with Google/Microsoft/
+/// Facebook sign-in below the "or". Unlike welcome, this screen never collects
+/// business info — an existing OAuth user is signed straight in, no onboarding.
+/// MAOI logged in by a 6-digit PIN — ProjMan uses email + password (projman-01 §6).
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -23,6 +24,16 @@ class _LoginScreenState extends State<LoginScreen> {
   final _password = TextEditingController();
   bool _obscure = true;
   bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Returning device: prefill the last email that signed in here.
+    SessionService.lastEmail().then((e) {
+      if (!mounted || e == null || _email.text.isNotEmpty) return;
+      setState(() => _email.text = e);
+    });
+  }
 
   @override
   void dispose() {
@@ -51,14 +62,17 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return AuthScaffold(
       title: 'Welcome back',
-      subtitle: 'Sign in to your ProjMan2 site.',
+      // 1px smaller, nudged ~30px south; subtitle removed (owner request).
+      titleStyle: const TextStyle(
+        color: Colors.white,
+        fontSize: 27,
+        fontWeight: FontWeight.w800,
+        letterSpacing: -0.5,
+      ),
+      titleTopGap: 30,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SocialAuthButtons(onTap: (p) => handleOAuth(context, p)),
-          const SizedBox(height: 20),
-          const OrDivider(),
-          const SizedBox(height: 20),
           Form(
             key: _formKey,
             child: Column(
@@ -103,19 +117,10 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
           const SizedBox(height: 20),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text('New to ProjMan2?',
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.6))),
-              TextButton(
-                onPressed: () => context.push(AppRoutes.register),
-                child: const Text('Create an account',
-                    style: TextStyle(color: Color(0xFF60A5FA))),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
+          const OrDivider(),
+          const SizedBox(height: 16),
+          SocialAuthButtons(onTap: (p) => handleOAuth(context, p)),
+          const SizedBox(height: 20),
           const AuBadge(),
         ],
       ),

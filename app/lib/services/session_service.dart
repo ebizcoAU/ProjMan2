@@ -18,6 +18,11 @@ class SessionService {
   static const _kUser = 'projman2_user_json';
   static const _kOrg = 'projman2_org_json';
 
+  // These two survive logout so a returning device boots to Login, not Welcome,
+  // and can prefill the last email. They are NOT removed by [clear].
+  static const _kReturning = 'projman2_returning';
+  static const _kLastEmail = 'projman2_last_email';
+
   static Future<void> save({
     required String accessToken,
     required String refreshToken,
@@ -27,6 +32,11 @@ class SessionService {
     await _secure.write(key: _kAccess, value: accessToken);
     await _secure.write(key: _kRefresh, value: refreshToken);
     await AsyncStorage.setItem(_kHasSession, '1');
+    await AsyncStorage.setItem(_kReturning, '1');
+    final email = user?['email']?.toString();
+    if (email != null && email.isNotEmpty) {
+      await AsyncStorage.setItem(_kLastEmail, email);
+    }
     if (user != null) await AsyncStorage.setItem(_kUser, jsonEncode(user));
     if (organisation != null) {
       await AsyncStorage.setItem(_kOrg, jsonEncode(organisation));
@@ -46,6 +56,14 @@ class SessionService {
     final flag = await AsyncStorage.getItem(_kHasSession);
     return flag == '1';
   }
+
+  /// True once this device has completed a sign-in — kept through logout, so a
+  /// returning-but-logged-out device boots to Login rather than Welcome.
+  static Future<bool> hasSignedInBefore() async =>
+      (await AsyncStorage.getItem(_kReturning)) == '1';
+
+  /// The last email that signed in on this device (to prefill the Login field).
+  static Future<String?> lastEmail() => AsyncStorage.getItem(_kLastEmail);
 
   static Future<Map<String, dynamic>?> currentUser() async {
     final raw = await AsyncStorage.getItem(_kUser);

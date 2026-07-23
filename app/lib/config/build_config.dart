@@ -30,7 +30,7 @@ const bool IS_PROD = BUILD_ENV == 'production';
 // Australia, WA first. These are not user preferences — they are what the
 // ledger, the BAS and every date on a site diary are denominated in.
 
-const String APP_NAME = 'ProjMan2';
+const String APP_NAME = 'ProjMan';
 const String COUNTRY_CODE = 'AU';
 const String CURRENCY_CODE = 'AUD';
 const String CURRENCY_SYMBOL = r'$';
