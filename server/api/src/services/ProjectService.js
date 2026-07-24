@@ -18,6 +18,9 @@ const MembershipService = require('./MembershipService');
 const PROJECT_FIELDS = [
   'customer_id', 'code', 'name', 'site_address', 'lot_plan', 'contract_value',
   'contract_type', 'start_date', 'due_date', 'status', 'template_id', 'pm_user_id',
+  // Site geofence (§11.5) — web-set config the server derives attendance geo_verified
+  // from. Not financial, not redacted; the app reads it to render "📍 Site".
+  'geofence_lat', 'geofence_lng', 'geofence_radius_m',
 ];
 // Structure fields only. `status` is deliberately NOT here — it moves solely through
 // StageProgressionService (the gated /advance endpoint or a gated sync push), never a

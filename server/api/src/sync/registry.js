@@ -173,6 +173,68 @@ const TABLES = {
     ]),
     financialColumns: new Set(['budget_hours', 'budget_amount']),
   },
+
+  // ── Site operations (migration_v008) ── servdesignspec §11 ─────────────────
+  // App-authored AND app-owned: the site CREATES this data and pushes it through
+  // /sync/push (offline-first). The rules the generic writer can't do — the
+  // append-only diary invariant, the geofence verdict, provenance stamping — live in
+  // SiteOpsService, invoked from pushRecord on BOTH write intents. No financial
+  // columns (a delivery has no value in v1). Project-scoped, so an assigned/self role
+  // pulls/pushes only its member projects.
+
+  // The legal record. `status` (draft/final) is globally protected — the app must push
+  // it, so it is unprotected here (like project_stages.status). Provenance columns
+  // (is_current/author_id/finalised_*) are server-set (PROTECTED) — see SiteOpsService.
+  site_diary: {
+    table: 'site_diary',
+    owner: 'app',
+    pull: true,
+    scope: 'org',
+    orgColumn: 'org_id',
+    idColumn: 'id',
+    projectColumn: 'project_id',
+    columns: new Set([
+      'project_id', 'entry_date', 'status', 'weather', 'temp_c', 'headcount',
+      'work_done', 'delays', 'delay_cause', 'notes', 'photo_ids',
+      'version', 'supersedes_id', 'is_deleted', 'updated_at',
+    ]),
+    unprotect: new Set(['status']),
+  },
+
+  // One-tap muster. `person_id` is app-written (who checked in); `geo_verified` is
+  // server-derived (PROTECTED). `self`-scope (a tradie) additionally sees only its own
+  // rows on pull via selfColumn.
+  site_attendance: {
+    table: 'site_attendance',
+    owner: 'app',
+    pull: true,
+    scope: 'org',
+    orgColumn: 'org_id',
+    idColumn: 'id',
+    projectColumn: 'project_id',
+    selfColumn: 'person_id',
+    columns: new Set([
+      'project_id', 'person_id', 'person_name', 'person_type', 'trade',
+      'check_in_at', 'check_out_at', 'check_in_lat', 'check_in_lng', 'method',
+      'induction_ok', 'is_deleted', 'updated_at',
+    ]),
+  },
+
+  // Delivery-proof evidence. `received_by` is server-stamped (PROTECTED); supplier/PO
+  // ids are nullable free-coupled until P7.
+  deliveries: {
+    table: 'deliveries',
+    owner: 'app',
+    pull: true,
+    scope: 'org',
+    orgColumn: 'org_id',
+    idColumn: 'id',
+    projectColumn: 'project_id',
+    columns: new Set([
+      'project_id', 'supplier_id', 'supplier_name', 'po_id', 'po_reference',
+      'received_at', 'docket_no', 'photo_ids', 'notes', 'is_deleted', 'updated_at',
+    ]),
+  },
 };
 
 // Never writable by a device push, on any table, whatever the registry says.
@@ -199,6 +261,15 @@ const PROTECTED_COLUMNS = new Set([
   'is_validated',
   'validated_by',
   'validated_at',
+  // Site-ops provenance — server-owned, never a device write (§11.4/§11.5/§11.8).
+  // The tablet writes the diary body / the attendance tap; the server names who it
+  // authenticated (author/finalised/received) and computes the geofence verdict.
+  'is_current',
+  'author_id',
+  'finalised_at',
+  'finalised_by',
+  'geo_verified',
+  'received_by',
 ]);
 
 // Masked in log output. Not blocked — just never printed.

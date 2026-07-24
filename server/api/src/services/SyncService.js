@@ -18,6 +18,7 @@ const access = require('../lib/access');
 const { projectScope, isProjectMember } = require('../lib/scope');
 const MembershipService = require('./MembershipService');
 const StageProgressionService = require('./StageProgressionService');
+const SiteOpsService = require('./SiteOpsService');
 
 const SYNC_DEBUG = process.env.SYNC_DEBUG === 'true';
 
@@ -115,6 +116,15 @@ async function pushRecord({ orgId, userId, deviceUid, role, surface, wireName, o
   const orgColumn = entry.orgColumn || 'org_id';
   const actor = { orgId, userId, deviceUid };
 
+  // Site-ops rules the generic writer can't do (§11): the append-only diary invariant
+  // and the per-permission write gates, enforced BEFORE the write on the same path the
+  // site actually uses (offline sync-push). A no-op for every other table.
+  if (SiteOpsService.isSiteOps(wireName)) {
+    await SiteOpsService.guardPush({
+      wireName, operation, id: incoming.id, safe, actor: { orgId, userId, role },
+    });
+  }
+
   try {
     if (operation === 'create') {
       // `organisations` is created at registration, never via sync — the tenant cannot
@@ -188,6 +198,14 @@ async function pushRecord({ orgId, userId, deviceUid, role, surface, wireName, o
         [deviceUid, nowMs, incoming.id, orgId]
       );
       if (result.affectedRows === 0) throw new ServiceError('NOT_FOUND', 'Record not found', 404);
+    }
+
+    // Site-ops: stamp the server-owned provenance the tablet may not set — diary
+    // author/finalise/supersede, the geofence verdict, the delivery receiver (§11).
+    if (SiteOpsService.isSiteOps(wireName)) {
+      await SiteOpsService.afterPush({
+        wireName, operation, id: incoming.id, safe, actor: { orgId, userId, role },
+      });
     }
 
     await logSync(actor, 'push', wireName, 1);

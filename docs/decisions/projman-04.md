@@ -25,12 +25,15 @@ for endpoint shapes) · `servdesignspecification.md` §9 (the access-control des
 | **Access control** (permissions + resource scope + roles-as-data) | ✅ built + verified | migration_v004/v005 · `tests/access.test.js` 19/19 |
 | **18-stage engine** (templates, progression gates, hold-point interlocks, cost cols) | ✅ built + verified | migration_v006 · `tests/stages.test.js` 15/15 |
 | **System Admin dashboard** (platform: accounts, login log, billing/fees) | ✅ built + verified | migration_v007 · `tests/admin.test.js` 18/18 |
+| **Site ops (P5)** (site_diary append-only+versioned, geofenced attendance, deliveries) | ✅ built + verified | migration_v008 · `tests/siteops.test.js` 28/28 |
 | **Office portal** (Next.js; login + Devices + Projects + Programme + **Cost Plan** + **Admin**: Users/Settings/Audit) | ✅ builds clean, endpoints verified | `server/dashboard` |
 | Public portal (client role) | ⏳ P10 — role seeded, surface not built | — |
 
-**All six suites pass together:** isolation 16 · domain 29 · access 19 · stages 15 ·
-**admin 18** · acceptance walk-through — from a fresh instance
-(`DISABLE_RATE_LIMIT=true PORT=4199 node src/index.js`).
+**All suites pass together:** isolation 16 · domain 29 · access 19 · stages 15 ·
+admin 18 · **siteops 28** — from a fresh instance
+(`DISABLE_RATE_LIMIT=true PORT=4199 node src/index.js`). (The `acceptance.js` transcript
+is stale against the current recovery-token + pairing-role-in-confirm contracts —
+unrelated to any domain module; refresh it when the identity flow next moves.)
 
 ---
 
@@ -187,7 +190,11 @@ approved steps delivered and green. What remains, in likely order:
    capitalise + depreciate (accounting). The hook *points* + audit trail exist now
    (`stageHooks`); a body is additive and never reopens the engine.
 2. **Site operations** (P5): site_diary, attendance (geofenced), deliveries — the
-   Part-C stages produce these (matrix "Data Created").
+   Part-C stages produce these (matrix "Data Created"). **✅ BUILT + verified
+   2026-07-24** (migration_v008 + `SiteOpsService` + registry + `tests/siteops.test.js`
+   28/28). App-authored/app-owned via `/sync/push`; diary append-only + versioned
+   (`DIARY_FINAL`); server-derived geofence; loose-coupled FKs. Portal Site tab (§11.9
+   step 4/5) is the only remainder — deferred with the review surface. See §7.
 3. **Quality module** (P6): full `inspections`/`inspection_items`/`certificates`/
    `defects` behind the existing `/validate` gate (Form BA2 at stage 12, BA3/OC at 18).
 4. **Commercial** (P7): estimates/POs/variations/progress claims — the
@@ -216,4 +223,6 @@ next and I'll write it into `servdesignspecification` first.
 | 2026-07-23 | **Spec written + refined: Admin/System dashboard** (`dashboarddesignspecification.md`). Owner refined: it is a **single-tier System-Admin (eBizco platform) surface** — account layer ONLY (**nothing about projects or user content**): user *accounts*, login/auth logs, device pairing status, and **fee-paying/SaaS billing as a real module** (subscriptions/payments schema, not placeholder). Access = `platform_admins` allowlist (not a tenant role). Tenant org-admin lives in the **portal**, not here. Awaiting owner review. | — (design) |
 | 2026-07-23 | **Spec written: Portal / Web Console** (`portaldesignspecification.md`) — reconciled the brief to ONE Next.js app (`server/dashboard`) with 4 route groups (console/client/public/admin), NOT a new app; mapped the brief's portal roles to the locked 6-role permission model; flagged that the brief **re-opens the `estimator` role** (recommend: no new role, Estimating is a `money.write`-gated module). Steps 5 (Cost Plan) + 6 (Admin) are buildable on today's server; rest tracks the P-plan. | — (design) |
 | 2026-07-24 | **Portal Cost Plan + Admin modules BUILT** (owner greenlit, no new migration). Cost Plan: `/projects/[id]/cost-plan` — per-stage est/committed/actual/claimed edit + variance + totals, money-gated, tabbed with Programme. Admin: `/organisation/users` (list/create/role+status), `/organisation/settings` (org profile + ABN revalidate), `/organisation/audit` (trail); nav wired. Builds clean; all 11 endpoints verified live. | portal-modules 11/11 · `next build` green |
+| 2026-07-24 | **Site operations (P5) BUILT + verified** (migration_v008 + `SiteOpsService` + registry + sync wiring). 3 app-owned tables (`site_diary`/`site_attendance`/`deliveries`) + a `projects` geofence; diary append-only/versioned enforced on the sync-push path (`409 DIARY_FINAL`, server-stamped author/finalise/is_current, supersede chain); attendance `geo_verified` server-derived by haversine vs the web-set geofence (pass/fail/degrade); per-permission write gates (`diary.write`/`diary.signoff`/`attendance.write.{own,site}`/`deliveries.write`, matrix_version→3); `received_by` stamped. Geofence made web-settable via `PATCH /projects/:id`. `tests/siteops.test.js` **28/28**; all suites green. Remaining: the portal Site tab (read-only review, step 5). | siteops 28/28 · isolation 16 · domain 29 · access 19 · stages 15 · admin 18 |
+| 2026-07-24 | **Spec written: Site operations (P5)** (`servdesignspecification.md` §11) — 3 app-owned tables (`site_diary`/`site_attendance`/`deliveries`) on migration_v008 + a `projects` geofence. Diary = append-only, versioned via `supersedes_id`/`is_current` (server-enforced `409 DIARY_FINAL`); attendance geofence `geo_verified` **server-derived** (anti-fraud, feeds trust-score); loose-coupled FKs (person_id→users when paired else free-text; supplier/PO nullable till P7; photos via image-queue). Activates reserved perms `diary.write`/`diary.signoff`/`attendance.write.{own,site}`/`deliveries.write`. Writes ride sync-push; REST = portal review reads only. Awaiting owner review (§11.10). | — (design) |
 | 2026-07-24 | **System Admin dashboard BUILT** (migration_v007 + server + UI). Migration: `platform_admins` allowlist, `audit_log.user_agent`, `subscriptions`+`payments`. Server: `adminAuthenticate` (allowlist gate), `AdminService` (cross-tenant stats/accounts/devices/login-log/orgs/health — account layer only), `BillingService` (subscriptions w/ org fallback, revenue, record-payment, change-plan), `lib/geo.js` (GeoLite2 local, graceful no-DB fallback), `/api/v1/admin/*` routes, `scripts/grant-platform-admin.js`. UI: `/admin/*` route group — Overview (KPIs+breakdowns+recent logins), Accounts (+suspend/reactivate/force-logout), Devices, Orgs, Billing (record payment/change plan/revenue), Login Log (filters+CSV export). **Boundary proven: no `/admin/*` endpoint returns project/user content.** | admin 18/18 · all 6 suites green · `next build` clean |

@@ -123,6 +123,9 @@ router.patch(
     body('name').optional().trim().notEmpty(),
     body('contract_type').optional({ nullable: true, checkFalsy: true }).isIn(['fixed_price', 'cost_plus']),
     body('status').optional().isIn(['draft', 'active', 'on_hold', 'completed', 'archived']),
+    body('geofence_lat').optional({ nullable: true }).isFloat({ min: -90, max: 90 }),
+    body('geofence_lng').optional({ nullable: true }).isFloat({ min: -180, max: 180 }),
+    body('geofence_radius_m').optional({ nullable: true }).isInt({ min: 10, max: 5000 }),
   ],
   async (req, res) => {
     if (validation(req, res)) return;

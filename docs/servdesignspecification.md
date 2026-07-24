@@ -651,3 +651,256 @@ Steps 1–4 are the spine; 5–6 are additive.
 **Review ask (§10):** approve 10.3 (schema), 10.4 (the gate rules), 10.7 (ownership),
 and answer 10.10. Then I build steps 1–4 and bring `tests/stages.test.js` green before
 touching the dashboard.
+
+---
+
+## 11. Site operations (P5) — diary · attendance · deliveries  ✅ BUILT
+
+**Status: ✅ BUILT + verified 2026-07-24 — approved same day (all §11.10 recommendations
+locked). Delivered as migration_v008 + `SiteOpsService` (guardPush/afterPush wired into
+SyncService on both write intents) + the three registry entries + the `projects`
+geofence (web-settable via `PATCH /projects/:id`). `tests/siteops.test.js` 28/28; all
+suites green. Remaining: the portal Site tab (read-only review, step 5) — deferred with
+the review surface. The spec below is the as-built contract.**
+
+**Original status (for history): ⏳ SPEC — written 2026-07-24, awaiting owner approval before any v008 code.**
+This is the field app's **daily driver** (appspec §5.3, development.md §5.4, P5.10). It
+is the first domain module that is **app-authored and app-owned**: unlike the programme
+(office draws it) or money (web writes it), the site *creates* this data — attendance
+taps, a delivery docket photographed at the gate, the end-of-day diary. The server's job
+is to receive it through the existing scoped/redacted sync path, and to enforce the one
+rule the site can't self-police: **the diary is a legal record, so it is append-only and
+its edits are versioned** (development.md §5.4, appspec Decision 4 lineage). It sits on
+the construction core (v003 `projects`) and the access layer (§9): every write is a
+`requirePermission` + `scopeFilter` guard on **both** REST and sync-push.
+
+### 11.1 What it delivers
+
+1. **Site diary** — one immutable legal entry per project per day; drafts are freely
+   editable, a **finalised** entry can only be *superseded by a new version* (the audit
+   chain is the point). Headcount derives from attendance; weather is app-cached and
+   never blocks (appspec §5.3).
+2. **Attendance** — one-tap check-in/out with a **geofence stamp** (anti-fraud, feeds the
+   future trust-score, projman-02 §60). Covers staff (paired → `users.id`),
+   subcontractors and visitors; capture is either self (a tradie) or site (a supervisor
+   mustering the crew). "All Out" = bulk end-of-day sign-out + evacuation muster.
+3. **Deliveries** — photograph a docket against the project (and, when P7 lands, a PO);
+   the delivery *proof* record. v1 is the evidence row; supplier/PO linkage is nullable
+   until the commercial module exists.
+
+### 11.2 Where the FKs point today (the constraint that shapes v1)
+
+`development.md` §5.4 writes `attendance.person_id`, `deliveries.supplier_id/po_id` as if
+those tables exist. **They don't yet** — there is no `persons`, `suppliers`,
+`purchase_orders` or `documents` table (checked: only v001–v007). So v1 is deliberately
+**loose-coupled**:
+
+- **People:** `person_id CHAR(36) NULL` → `users.id` **when the person is paired staff**;
+  otherwise NULL with a free-text `person_name` + `person_type` (`staff|subcontractor|
+  visitor`). A subbie chippie with no account still musters. When an HR/`persons` table
+  arrives it backfills; no rework of the wire.
+- **Suppliers/POs:** `supplier_id` / `po_id` **nullable**, plus free-text
+  `supplier_name` / `po_reference`. P7 wires the FKs; v1 captures the docket regardless.
+- **Photos:** attach through the ported **offline-first image queue** (development.md
+  §5.1, MAOI lineage) as a `documents` module lands. v1 stores a `photo_ids JSON NULL`
+  column so the app can queue image ids now; the actual image rows are that module's job.
+  No blocking dependency.
+
+This keeps P5 shippable now and additive later — the same move that let the stage engine
+declare hooks before their bodies existed.
+
+### 11.3 Schema — migration v008
+
+All three tables carry the five sync columns (`org_id`, `device_id`, `is_deleted`,
+`updated_at`, `server_updated_at`) + `id CHAR(36)` client-UUID PK + `created_at`.
+
+```
+site_diary        project_id CHAR(36) NOT NULL         (FK projects.id)
+                  entry_date  DATE    NOT NULL
+                  version     INT     NOT NULL DEFAULT 1
+                  supersedes_id CHAR(36) NULL           prior version this replaces
+                  is_current  TINYINT NOT NULL DEFAULT 1 server-maintained (see 11.4)
+                  status      ENUM('draft','final') NOT NULL DEFAULT 'draft'
+                  weather     VARCHAR(40)   temp_c DECIMAL(4,1)
+                  headcount   INT NULL       (app fills from attendance; advisory)
+                  work_done   TEXT   delays TEXT   delay_cause VARCHAR(120)
+                  notes       TEXT
+                  photo_ids   JSON NULL
+                  author_id   CHAR(36) NULL  (server-stamped from the session, see 11.4)
+                  finalised_at DATETIME NULL   finalised_by CHAR(36) NULL  (server-set)
+     UNIQUE (org_id, project_id, entry_date, version)
+
+site_attendance   project_id  CHAR(36) NOT NULL
+                  person_id   CHAR(36) NULL          (users.id when paired staff)
+                  person_name VARCHAR(120) NULL      person_type ENUM('staff','subcontractor','visitor')
+                  trade       VARCHAR(60)
+                  check_in_at DATETIME NULL   check_out_at DATETIME NULL
+                  check_in_lat DECIMAL(9,6) NULL   check_in_lng DECIMAL(9,6) NULL
+                  method      ENUM('self','supervisor','qr') NOT NULL DEFAULT 'self'
+                  geo_verified TINYINT NULL          server-derived (11.5); NULL = unknown
+                  induction_ok TINYINT NULL
+
+deliveries        project_id  CHAR(36) NOT NULL
+                  supplier_id CHAR(36) NULL   supplier_name VARCHAR(160) NULL
+                  po_id       CHAR(36) NULL   po_reference  VARCHAR(60)  NULL
+                  received_at DATETIME NOT NULL
+                  docket_no   VARCHAR(60)   photo_ids JSON NULL   notes TEXT
+                  received_by CHAR(36) NULL  (server-stamped)
+```
+
+**Add a geofence to `projects`** (needed so the server can *derive* `geo_verified`
+rather than trust the client's own verdict):
+```
+projects  + geofence_lat    DECIMAL(9,6) NULL
+          + geofence_lng    DECIMAL(9,6) NULL
+          + geofence_radius_m INT NULL DEFAULT 200
+```
+Web-set (office knows the site coordinates). Absent → `geo_verified` stays NULL (graceful
+degrade — appspec Decision 4: "never block check-in"). None of these are money columns,
+so **no `financialColumns` on any P5 table** — a delivery has no value in v1.
+
+### 11.4 The append-only diary rule (the one server-enforced invariant)
+
+The diary's legal weight comes from immutability (development.md §5.4 "diary is the legal
+record — append-only, edits versioned"). Enforced in `SiteOpsService`, on **both** the
+REST edit and the sync-push update path (parity, like the stage gates):
+
+- **A `draft` row is freely mutable** — the supervisor is still writing today's entry.
+- **Finalising** (`status: draft→final`) stamps `finalised_at` + `finalised_by` (server,
+  from the session) and freezes the row.
+- **Editing a `final` row is refused** on the wire → `409 DIARY_FINAL`. To correct a
+  finalised day the app **creates a new row**: same `(project_id, entry_date)`, `version =
+  prior + 1`, `supersedes_id = prior.id`. The service, in one transaction, inserts the new
+  version and flips the prior row's `is_current = 0`. The superseded row is **never
+  deleted** — the chain of what was recorded, and when, survives. `is_current` +
+  `is_deleted` are in `PROTECTED_COLUMNS` for this table (server maintains them).
+- `author_id` / `finalised_by` are **server-stamped from the session**, never trusted
+  from the body — the legal record must name who the server authenticated, not who the
+  client claims. (Same principle as `validated_by` in §10.5.)
+
+Reads (app pull, portal review) default to `is_current = 1`; the version history is
+available through a REST read for the portal's audit view.
+
+### 11.5 Attendance & the geofence
+
+- **Capture is app-side and must never block** (appspec Decision 4). The app stamps
+  `check_in_lat/lng` when permission is granted and omits them when it isn't — the server
+  accepts both.
+- **`geo_verified` is server-derived, not client-asserted.** At ingest, if the project
+  has a geofence and the row has coordinates, `SiteOpsService` computes the haversine
+  distance to `(geofence_lat, geofence_lng)` and sets `geo_verified = distance ≤
+  geofence_radius_m`. No geofence set, or no coordinates → `geo_verified = NULL`
+  (unknown, not "fail"). This is the anti-fraud signal that feeds the trust-score when
+  projman-02 is built; keeping the *verdict* server-side means a tampered client can't
+  self-certify a fraudulent check-in. `check_in_lat/lng` stay app-writable; `geo_verified`
+  is in `PROTECTED_COLUMNS`.
+- **Self vs site capture** is the permission split (11.6): a tradie writes only their own
+  check-in (`method='self'`, `person_id = self`); a supervisor/foreperson musters the crew
+  (`method='supervisor'`, any `person_id` on a member project). "All Out" is a bulk
+  check-out the app composes as N attendance updates — no special server verb.
+
+### 11.6 Ownership, scope & redaction
+
+All three tables: **owner `app`**, **pull true**, **project-scoped**
+(`projectColumn: 'project_id'`), **no financial columns**.
+
+| Permission (activates a §9.3 reserved name) | Grants | Roles |
+|---|---|---|
+| `diary.write` | create/edit a **draft** diary line | projectManager, siteSupervisor, foreperson |
+| `diary.signoff` | finalise the legal entry (draft→final) | projectManager, siteSupervisor |
+| `attendance.write.site` | muster the crew (any person on a member project) | projectManager, siteSupervisor, foreperson |
+| `attendance.write.own` | own check-in/out only (`self` scope ∩ `person_id=self`) | tradie |
+| `deliveries.write` | record a delivery on a member project | projectManager, siteSupervisor, foreperson |
+
+`foreperson` gets `diary.write` (contribute) but **not** `diary.signoff` — matches
+appspec §120/development.md §128 ("diary contribute, no sign-off"). Scope: `assigned` for
+supervisor/foreperson/inspector-none-here; `self` for the tradie's own attendance
+(`selfColumn: 'person_id'`); `portfolio` PM reaches all. `inspector` and `client` get no
+P5 write. **Read** of P5 data follows the same project scope on pull — a tradie's tablet
+receives only its member projects' diary/attendance/deliveries, and (self scope) only its
+own attendance rows.
+
+### 11.7 Endpoints
+
+The site writes P5 almost entirely through **`/sync/push`** (offline-first — a delivery is
+logged at the gate with no signal). REST exists for the **portal review surface** and for
+the two server-mediated actions:
+
+```
+GET   /projects/:id/diary            list current entries (portal review; ?date= , ?all_versions=)
+GET   /projects/:id/diary/:entryId   an entry + its version chain (audit view)
+GET   /projects/:id/attendance       muster / day roster (?date=)  — headcount source
+GET   /projects/:id/deliveries       delivery log (?from=&to=)
+```
+Writes ride sync-push; a finalise or a versioned correction pushed as a
+`site_diary` update runs the same `SiteOpsService` guard that a REST edit would. No
+bespoke REST write verbs in v1 (keeps the offline path canonical) — add them only if the
+portal needs to author, which appspec says it does not ("review, app-owned").
+
+### 11.8 Sync registry entries (v008)
+
+Three additions to `sync/registry.js`, no new mechanism — the pattern the file was built
+for (its own header names `site_diary` and `attendance` as the worked example):
+
+```js
+site_diary:      { owner:'app', pull:true, scope:'org', orgColumn:'org_id',
+                   projectColumn:'project_id',
+                   columns: entry_date, status, weather, temp_c, headcount, work_done,
+                            delays, delay_cause, notes, photo_ids, version, supersedes_id,
+                            is_deleted, updated_at
+                   /* is_current, author_id, finalised_at/by, org_id → PROTECTED */ }
+site_attendance: { owner:'app', pull:true, scope:'org', orgColumn:'org_id',
+                   projectColumn:'project_id', selfColumn:'person_id',
+                   columns: person_id, person_name, person_type, trade, check_in_at,
+                            check_out_at, check_in_lat, check_in_lng, method,
+                            induction_ok, is_deleted, updated_at
+                   /* geo_verified → PROTECTED (server-derived) */ }
+deliveries:      { owner:'app', pull:true, scope:'org', orgColumn:'org_id',
+                   projectColumn:'project_id',
+                   columns: supplier_id, supplier_name, po_id, po_reference, received_at,
+                            docket_no, photo_ids, notes, is_deleted, updated_at }
+```
+
+Add to `PROTECTED_COLUMNS` (table-agnostic, so they're safe everywhere): `is_current`,
+`author_id`, `finalised_at`, `finalised_by`, `geo_verified`, `received_by`. `status` is
+already protected globally; `site_diary` needs it in its `unprotect` set (like
+`project_stages`) so the app can push `draft`/`final` — the finalise/immutability logic
+then lives in `SiteOpsService`, not in the column filter.
+
+### 11.9 Build order
+
+| Step | Deliverable | Depends on |
+|---|---|---|
+| 1 | migration_v008: 3 tables + `projects` geofence columns | — |
+| 2 | registry entries + `PROTECTED_COLUMNS` additions + permission seed rows (`diary.write`, `diary.signoff`, `attendance.write.{own,site}`, `deliveries.write`) into the matrix | 1 |
+| 3 | `SiteOpsService`: diary append-only/versioning rule + geofence derivation, wired into **sync-push** and REST | 1–2 |
+| 4 | portal review reads (`/diary`, `/attendance`, `/deliveries`) + a Site tab on the project page (read-only muster, diary chain, delivery log) | 3 |
+| 5 | `tests/siteops.test.js`: diary finalise→immutable→versioned, geofence pass/fail/degrade, self-vs-site attendance scope, project-scoped pull, redaction-N/A sanity | 3 |
+
+Steps 1–3 are the spine; 4–5 additive. No dependency on the image/documents module or on
+P7 — those wire in additively (11.2).
+
+### 11.10 Open decisions for the owner
+
+1. **Diary versioning shape.** I recommend **new-row-per-version** with `supersedes_id` +
+   `is_current` (11.4) — the superseded text is preserved verbatim, which is what makes it
+   a legal record. Alternative: a side `site_diary_revisions` audit table with the live
+   row mutated in place. I prefer the former (one table, the chain is the data). Confirm.
+2. **`geo_verified` server-derived vs app-asserted.** I recommend **server-derived** from
+   a web-set project geofence (11.5) so a tampered client can't self-certify. Cost: the
+   office must set site coordinates (else `geo_verified` is NULL/unknown, which degrades
+   gracefully). Confirm, or accept a client-asserted flag for v1?
+3. **People with no account.** v1 uses `person_id` (paired staff) OR free-text
+   `person_name`+`person_type` (subbie/visitor) — no `persons` table yet. Confirm that's
+   enough for P5, or do you want a lightweight `site_personnel` roster now?
+4. **`diary.signoff` as a distinct permission.** Splitting contribute (`diary.write`,
+   incl. foreperson) from finalise (`diary.signoff`, supervisor+) matches the app spec.
+   Confirm — or collapse to one `diary.write` and let the app hide sign-off?
+5. **Deliveries without commercial.** v1 delivery is an evidence record (docket photo +
+   free-text supplier/PO), no value, no stock movement. The stock-on-site view
+   (development.md §231 "materials on site") and PO linkage wait for P7. Confirm P5 stops
+   at the evidence record.
+
+**Review ask (§11):** approve 11.3 (schema + the `projects` geofence add), 11.4 (the
+append-only diary invariant), 11.6 (ownership/permissions/scope), and answer 11.10. Then
+I build steps 1–3 and bring `tests/siteops.test.js` green before the portal Site tab.
