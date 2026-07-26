@@ -19,6 +19,7 @@ const { projectScope, isProjectMember } = require('../lib/scope');
 const MembershipService = require('./MembershipService');
 const StageProgressionService = require('./StageProgressionService');
 const SiteOpsService = require('./SiteOpsService');
+const QualityOpsService = require('./QualityOpsService');
 
 const SYNC_DEBUG = process.env.SYNC_DEBUG === 'true';
 
@@ -57,11 +58,15 @@ async function pushRecord({ orgId, userId, deviceUid, role, surface, wireName, o
   // `appCreate` to let the field app CREATE (never update/delete) even though the web
   // owns it. A create is a new row with a client UUID — no single-writer conflict —
   // so offline on-site creation (Stage 1) is safe while edits stay WEB-only.
+  //
+  // `owner` may also be an array (e.g. certificates: §12.7 — office upload OR an
+  // on-site inspector attach, both surfaces write every op, not just create).
+  const owners = Array.isArray(entry.owner) ? entry.owner : [entry.owner];
   const isAppCreate = operation === 'create' && entry.appCreate && surface === 'app';
-  if (entry.owner !== surface && !isAppCreate) {
+  if (!owners.includes(surface) && !isAppCreate) {
     throw new ServiceError(
       'NOT_OWNER',
-      `${wireName} is owned by the ${entry.owner}; the ${surface} may ${entry.appCreate ? 'create but not update/delete it' : 'read it but not write it'}.`,
+      `${wireName} is owned by the ${owners.join('+')}; the ${surface} may ${entry.appCreate ? 'create but not update/delete it' : 'read it but not write it'}.`,
       403
     );
   }
@@ -105,6 +110,31 @@ async function pushRecord({ orgId, userId, deviceUid, role, surface, wireName, o
     if (!member) {
       throw new ServiceError('NOT_MEMBER', 'You are not a member of that project', 403);
     }
+  } else if (entry.projectViaTable && role && access.scopeClassFor(role) !== 'portfolio') {
+    // Child-scoped table (§12.9): it carries no project_id of its own — resolve one
+    // via its parent row (e.g. inspection_items -> inspections.project_id), the same
+    // parent-derivation Nexus's cook_session_lines uses.
+    let parentId = incoming[entry.projectViaColumn] ?? incoming[toCamel(entry.projectViaColumn)];
+    if (!parentId && operation !== 'create') {
+      const [[row]] = await pool.query(
+        `SELECT \`${entry.projectViaColumn}\` AS pid FROM \`${entry.table}\`
+          WHERE id = ? AND \`${entry.orgColumn || 'org_id'}\` = ? LIMIT 1`,
+        [incoming.id, orgId]
+      );
+      parentId = row?.pid;
+    }
+    if (!parentId) {
+      throw new ServiceError('VALIDATION_ERROR', `${wireName} push needs a ${entry.projectViaColumn}`, 400);
+    }
+    const [[parent]] = await pool.query(
+      `SELECT project_id FROM \`${entry.projectViaTable}\` WHERE id = ? AND org_id = ? LIMIT 1`,
+      [parentId, orgId]
+    );
+    if (!parent) throw new ServiceError('NOT_FOUND', 'Parent record not found', 404);
+    const member = await isProjectMember(pool, { orgId, userId, projectId: String(parent.project_id) });
+    if (!member) {
+      throw new ServiceError('NOT_MEMBER', 'You are not a member of that project', 403);
+    }
   }
 
   const safe = sanitise(incoming, entry);
@@ -123,6 +153,12 @@ async function pushRecord({ orgId, userId, deviceUid, role, surface, wireName, o
     await SiteOpsService.guardPush({
       wireName, operation, id: incoming.id, safe, actor: { orgId, userId, role },
     });
+  }
+  // Quality (§12/§12.10): the uniform quality.write gate for inspections/
+  // inspection_items/defects/certificates/ncc_register + the R3 scope check on a new
+  // ncc_register row. A no-op for every other table.
+  if (QualityOpsService.isQualityOps(wireName)) {
+    await QualityOpsService.guardPush({ wireName, operation, safe, actor: { orgId, userId, role } });
   }
 
   try {
@@ -207,6 +243,12 @@ async function pushRecord({ orgId, userId, deviceUid, role, surface, wireName, o
         wireName, operation, id: incoming.id, safe, actor: { orgId, userId, role },
       });
     }
+    // Quality: stamp a defect's raised/closed provenance (§12.5). No-op otherwise.
+    if (QualityOpsService.isQualityOps(wireName)) {
+      await QualityOpsService.afterPush({
+        wireName, operation, id: incoming.id, safe, actor: { orgId, userId, role },
+      });
+    }
 
     await logSync(actor, 'push', wireName, 1);
     if (SYNC_DEBUG) {
@@ -269,11 +311,22 @@ async function pullDeltas({ orgId, userId, deviceUid, jti, sinceMs, role }) {
         scopeSql = ' AND user_id = ?';
         params.push(userId);
       }
-      // Resource scoping (§9.4): a project-scoped table returns only the member
-      // projects' rows to an assigned/self role. A portfolio role gets '' (org-wide).
-      // The scope source table (project_members) has no projectColumn on purpose —
-      // a device must receive its own membership rows to know what it may reach.
-      if (entry.projectColumn) {
+      // Child-scoped table (§12.9): no project_id of its own — JOIN to the parent
+      // table and scope on ITS project_id (e.g. inspection_items -> inspections).
+      // Every column reference qualifies with the `t`/`pvt` aliases once joined.
+      const joined = !!entry.projectViaTable;
+      let fromSql = `\`${entry.table}\``;
+      const col = (name) => (joined ? `t.\`${name}\`` : `\`${name}\``);
+      if (joined) {
+        fromSql = `\`${entry.table}\` t JOIN \`${entry.projectViaTable}\` pvt ON pvt.id = t.\`${entry.projectViaColumn}\``;
+        const { sql, params: sp } = projectScope({ role, userId }, { projectColumn: 'project_id', alias: 'pvt' });
+        scopeSql += sql;
+        params.push(...sp);
+      } else if (entry.projectColumn) {
+        // Resource scoping (§9.4): a project-scoped table returns only the member
+        // projects' rows to an assigned/self role. A portfolio role gets '' (org-wide).
+        // The scope source table (project_members) has no projectColumn on purpose —
+        // a device must receive its own membership rows to know what it may reach.
         const { sql, params: sp } = projectScope(
           { role, userId },
           { projectColumn: entry.projectColumn, selfColumn: entry.selfColumn }
@@ -283,15 +336,15 @@ async function pullDeltas({ orgId, userId, deviceUid, jti, sinceMs, role }) {
       }
       // Echo skip. NULL-safe `<=>` so a web-written row (device_id NULL) still reaches
       // every device.
-      const echoSql = deviceUid ? ' AND NOT (device_id <=> ?)' : '';
+      const echoSql = deviceUid ? ` AND NOT (${col('device_id')} <=> ?)` : '';
       if (deviceUid) params.push(deviceUid);
 
       const [rows] = await pool.query(
-        `SELECT *, ROUND(UNIX_TIMESTAMP(server_updated_at) * 1000) AS _su_ms
-           FROM \`${entry.table}\`
-          WHERE \`${orgColumn}\` = ?
-            AND ROUND(UNIX_TIMESTAMP(server_updated_at) * 1000) >  ?
-            AND ROUND(UNIX_TIMESTAMP(server_updated_at) * 1000) <= ?
+        `SELECT ${joined ? 't.*' : '*'}, ROUND(UNIX_TIMESTAMP(${col('server_updated_at')}) * 1000) AS _su_ms
+           FROM ${fromSql}
+          WHERE ${col(orgColumn)} = ?
+            AND ROUND(UNIX_TIMESTAMP(${col('server_updated_at')}) * 1000) >  ?
+            AND ROUND(UNIX_TIMESTAMP(${col('server_updated_at')}) * 1000) <= ?
             ${scopeSql}${echoSql}`,
         params
       );

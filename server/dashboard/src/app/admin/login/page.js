@@ -1,13 +1,16 @@
-// /login — office console sign-in. Email + password against POST /auth/login.
-// A rewrite, not a port: the Nexus portal login was CCCD + PIN + QR; ProjMan2 is
-// email/password (OAuth buttons come with the app team's provider IDs later).
+// /admin/login — System Admin sign-in. Separate entry page from the tenant Portal's
+// /login, but the SAME identity/auth underneath (one JWT, one POST /auth/login) —
+// this is a different front door, not a second auth system. After authenticating,
+// confirms the account actually holds a `platform_admins` row before entering;
+// a valid tenant login that isn't a platform admin gets a clear message here rather
+// than a silent bounce, and keeps its session (still usable at the tenant /login).
 'use client';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { authApi, setSession } from '@/lib/api';
+import { authApi, adminApi, setSession } from '@/lib/api';
 
-export default function LoginPage() {
+export default function AdminLoginPage() {
   const router = useRouter();
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
@@ -21,12 +24,16 @@ export default function LoginPage() {
     try {
       const { data } = await authApi.login(email, password);
       const d = data.data || data;
-      setSession({
-        accessToken: d.accessToken,
-        refreshToken: d.refreshToken,
-        user: d.user,
-      });
-      router.replace('/devices');
+      setSession({ accessToken: d.accessToken, refreshToken: d.refreshToken, user: d.user });
+
+      try {
+        await adminApi.me();
+      } catch {
+        setError('This account does not have System Admin access. Use the office console at /login instead.');
+        setBusy(false);
+        return;
+      }
+      router.replace('/admin');
     } catch (err) {
       setError(err?.response?.data?.message || err.message || 'Sign-in failed');
       setBusy(false);
@@ -35,21 +42,19 @@ export default function LoginPage() {
 
   return (
     <div style={{
-      minHeight: '100vh',
-      backgroundImage: 'linear-gradient(rgba(0,0,0,.35), rgba(0,0,0,.35)), url(/bgimage2.jpeg)',
-      backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
+      minHeight: '100vh', background: 'var(--bg)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
     }}>
       <form onSubmit={submit} style={{
         width: 380, maxWidth: '100%',
         background: 'var(--s1)', border: '2px solid var(--b1)', borderRadius: 16,
-        padding: '32px 28px', boxShadow: '0 20px 60px rgba(0,0,0,.45)',
+        padding: '32px 28px', boxShadow: '0 20px 60px rgba(0,0,0,.25)',
       }}>
         {/* Brand */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 22 }}>
           <div style={{
-            width: 70, height: 60, borderRadius: 10,
-            background: 'var(--bdim)', border: '1px solid rgba(194,65,12,.28)',
+            width: 60, height: 60, borderRadius: 10,
+            background: 'var(--bluedim)', border: '1px solid rgba(29,78,216,.28)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
           }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -59,8 +64,8 @@ export default function LoginPage() {
             <div style={{ fontFamily: 'var(--fh)', fontWeight: 800, fontSize: 20, color: 'var(--text)', lineHeight: 1.1 }}>
               ProjMan
             </div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', letterSpacing: '.06em', textTransform: 'uppercase' }}>
-              Office Console
+            <div style={{ fontSize: 12, color: 'var(--blue)', letterSpacing: '.06em', textTransform: 'uppercase', fontWeight: 700 }}>
+              System Admin
             </div>
           </div>
         </div>
@@ -107,7 +112,7 @@ export default function LoginPage() {
         </button>
 
         <div style={{ marginTop: 16, fontSize: 13, color: 'var(--muted)', textAlign: 'center' }}>
-          Registration and password recovery live in the field app for now.
+          Platform operations only. Tenant sign-in is at <a href="/login" style={{ color: 'var(--blue)' }}>/login</a>.
         </div>
       </form>
     </div>

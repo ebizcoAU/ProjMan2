@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "description": "ProjMan2 Office Console — builder dashboard (Next.js)",
   "scripts": {
-    "dev": "next dev -p 3100",
+    "dev": "next dev -p 4110",
     "build": "next build",
-    "start": "next start -p 3100"
+    "start": "next start -p 4110"
   },
   "dependencies": {
     "next": "^14.2.5",

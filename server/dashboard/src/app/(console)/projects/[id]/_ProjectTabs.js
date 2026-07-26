@@ -1,4 +1,4 @@
-// Shared tab bar for a project's sub-views (Programme | Cost Plan).
+// Shared tab bar for a project's sub-views (Programme | Cost Plan | Quality).
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -8,6 +8,7 @@ export function ProjectTabs({ id, seesMoney }) {
   const tabs = [
     { href: `/projects/${id}`, label: 'Programme', exact: true },
     ...(seesMoney ? [{ href: `/projects/${id}/cost-plan`, label: 'Cost Plan' }] : []),
+    { href: `/projects/${id}/quality`, label: 'Quality' },
   ];
   return (
     <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--b1)', marginBottom: 16 }}>

@@ -146,6 +146,13 @@ export const projectsApi = {
   patchStage: (id, stageId, body) => request('PATCH', `/projects/${id}/stages/${stageId}`, body),
 };
 
+// Quality (P6a) — review reads only; writes ride /sync/push from the field app.
+export const qualityApi = {
+  inspections:  (id)             => request('GET', `/projects/${id}/inspections`),
+  defects:      (id, status)     => request('GET', `/projects/${id}/defects${status ? `?status=${status}` : ''}`),
+  certificates: (id)             => request('GET', `/projects/${id}/certificates`),
+};
+
 export const stageTemplatesApi = {
   list:   ()   => request('GET', '/stage-templates'),
   detail: (id) => request('GET', `/stage-templates/${id}`),
@@ -159,6 +166,7 @@ export const customersApi = {
 
 // ── System Admin dashboard (platform-admin allowlist; account + billing only) ──
 export const adminApi = {
+  me:      ()           => request('GET', '/admin/me'),
   stats:   ()           => request('GET', '/admin/stats'),
   health:  ()           => request('GET', '/admin/system/health'),
   users:   (params={})  => request('GET', `/admin/users${qs(params)}`),
@@ -188,6 +196,7 @@ const api = {
   projects:       projectsApi,
   customers:      customersApi,
   stageTemplates: stageTemplatesApi,
+  quality:        qualityApi,
   admin:          adminApi,
 };
 

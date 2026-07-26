@@ -57,7 +57,7 @@ async function pairAs(admin, adminUserId, role, uid, stamp) {
   // ── 1. /auth/permissions ──
   const perms = await call('GET', '/auth/permissions', undefined, pm);
   const d = perms.json.data;
-  ok('permissions: matrixVersion present', d?.matrixVersion === 3, JSON.stringify(d?.matrixVersion));
+  ok('permissions: matrixVersion present', d?.matrixVersion === 4, JSON.stringify(d?.matrixVersion));
   ok('permissions: projectManager scope = portfolio', d?.scopeClass === 'portfolio');
   ok('permissions: projectManager has projects.write', d?.permissions?.includes('projects.write'));
   ok('permissions: pairableRoles are the 5 field roles (no client)',

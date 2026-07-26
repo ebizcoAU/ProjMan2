@@ -257,5 +257,5 @@ async function updateStage({ orgId, projectId, stageId, data, auth }) {
 
 module.exports = {
   listProjects, getProject, createProject, updateProject,
-  createStage, updateStage,
+  createStage, updateStage, assertProjectReachable,
 };

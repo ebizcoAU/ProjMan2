@@ -130,12 +130,10 @@ function isMatch(href, exact, pathname) {
 export function getNavLabel(pathname) {
   if (!pathname) return null;
   let best = null;
-  for (const section of NAV) {
-    for (const item of section.items) {
-      if (item.mock) continue;
-      const hit = item.exact ? pathname === item.href : pathname.startsWith(item.href);
-      if (hit && (!best || item.href.length > best.href.length)) best = item;
-    }
+  for (const item of NAV.flatMap((s) => s.items)) {
+    if (item.mock) continue;
+    const hit = item.exact ? pathname === item.href : pathname.startsWith(item.href);
+    if (hit && (!best || item.href.length > best.href.length)) best = item;
   }
   return best ? best.label : null;
 }
@@ -224,7 +222,7 @@ export function PortalNav({ userName, role, onLogout }) {
                 fontFamily: 'var(--fh)', fontWeight: 800, fontSize: fs(15, screenTier),
                 color: 'var(--text)', letterSpacing: '-.01em', lineHeight: 1,
               }}>
-                ProjMan2
+                ProjMan
               </div>
               <span style={{
                 fontSize: fs(9, screenTier), fontWeight: 600, letterSpacing: '.09em',

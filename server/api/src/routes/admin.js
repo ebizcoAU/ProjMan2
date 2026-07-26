@@ -1,14 +1,16 @@
-// Mounted at /admin — the System Admin dashboard (dashboardspec §7).
+// Mounted at /admin — the System Admin dashboard (dashboardspec §7, §2/§3 addendum).
 //
 // SINGLE TIER: every route requires the `platform_admins` allowlist (adminAuthenticate).
-// Cross-tenant by design; ACCOUNT & BILLING layer ONLY — no route here returns a
-// project, stage, task, or any construction content. Writes (account actions, billing)
-// are audited; `?org_id=` is a view filter, never a security boundary.
+// Within that tier, migration_v011 adds three admin-team roles (`admin_role` —
+// admin/account/staff), each route further gated by `requireAdminRole(...)`. Cross-
+// tenant by design; ACCOUNT & BILLING layer ONLY — no route here returns a project,
+// stage, task, or any construction content. Writes (account actions, billing) are
+// audited; `?org_id=` is a view filter, never a security boundary.
 
 const router = require('express').Router();
 const { body, query, validationResult } = require('express-validator');
 
-const { adminAuthenticate } = require('../middleware/adminAuth');
+const { adminAuthenticate, requireAdminRole } = require('../middleware/adminAuth');
 const { sendError } = require('../services/errors');
 const { audit } = require('../lib/audit');
 const AdminService = require('../services/AdminService');
@@ -25,14 +27,30 @@ function validation(req, res) {
 }
 const wrap = (fn) => async (req, res) => { try { return res.json({ success: true, data: await fn(req) }); } catch (e) { return sendError(res, e); } };
 
+// Admin-team roles (migration_v011): admin (full) · account (money + user actions) ·
+// staff (user actions + login-log). Each route lists every role that may reach it —
+// no implicit superset, so the list is the whole story at each line.
+const anyAdminRole  = requireAdminRole('admin', 'account', 'staff');
+const canMoney       = requireAdminRole('admin', 'account');
+const canUserActions = requireAdminRole('admin', 'account', 'staff');
+const canLoginLog    = requireAdminRole('admin', 'staff');
+const adminOnly      = requireAdminRole('admin');
+
+// Who am I — the dashboard nav gates itself on this (no role hard-coded client-side).
+router.get('/me', wrap((req) => ({ userId: req.admin.userId, role: req.admin.role })));
+
 // ── Stats & directory ─────────────────────────────────────────
-router.get('/stats', wrap(() => AdminService.stats()));
-router.get('/orgs', [query('page').optional().isInt({ min: 1 })],
+router.get('/stats', anyAdminRole, wrap(() => AdminService.stats()));
+router.get('/orgs', canMoney, [query('page').optional().isInt({ min: 1 })],
   wrap((req) => AdminService.listOrgs({ page: req.query.page })));
-router.get('/system/health', wrap(() => AdminService.systemHealth()));
+router.get('/system/health', adminOnly, wrap(() => AdminService.systemHealth()));
 
 // ── User accounts ─────────────────────────────────────────────
-router.get('/users',
+// Browsing the full cross-tenant account list (names, emails, orgs) is `admin`-only
+// — `account`/`staff` keep the ACTION below (they still enable/disable/force-logout),
+// just not a directory to browse it from; they act on an id they already have (e.g.
+// from a support ticket), never a general list/search.
+router.get('/users', adminOnly,
   [query('role').optional().isString(), query('status').optional().isIn(['active', 'suspended', 'disabled']),
    query('org_id').optional().isString(), query('page').optional().isInt({ min: 1 })],
   async (req, res) => {
@@ -46,8 +64,8 @@ router.get('/users',
   }
 );
 
-// Account actions — account layer only (suspend/reactivate/force-logout).
-router.post('/users/:id/:action(suspend|reactivate|force-logout)', async (req, res) => {
+// Account actions — user-account layer only (suspend/reactivate/force-logout).
+router.post('/users/:id/:action(suspend|reactivate|force-logout)', canUserActions, async (req, res) => {
   try {
     const result = await AdminService.userAction({ userId: req.params.id, action: req.params.action });
     await audit(req, `admin.user.${req.params.action}`, {
@@ -58,7 +76,7 @@ router.post('/users/:id/:action(suspend|reactivate|force-logout)', async (req, r
 });
 
 // ── Devices ───────────────────────────────────────────────────
-router.get('/devices',
+router.get('/devices', adminOnly,
   [query('status').optional().isString(), query('role').optional().isString(),
    query('org_id').optional().isString(), query('page').optional().isInt({ min: 1 })],
   wrap((req) => AdminService.listDevices({
@@ -66,7 +84,7 @@ router.get('/devices',
   })));
 
 // ── Login transaction log ─────────────────────────────────────
-router.get('/logs/login',
+router.get('/logs/login', canLoginLog,
   [query('page').optional().isInt({ min: 1 }), query('outcome').optional().isIn(['success', 'failed'])],
   async (req, res) => {
     if (validation(req, res)) return;
@@ -86,7 +104,7 @@ router.get('/logs/login',
 );
 
 // CSV export of the login log (same filters).
-router.get('/logs/login/export', async (req, res) => {
+router.get('/logs/login/export', canLoginLog, async (req, res) => {
   try {
     const q = req.query;
     const { entries } = await AdminService.loginLog({
@@ -107,13 +125,13 @@ router.get('/logs/login/export', async (req, res) => {
 });
 
 // ── Billing ───────────────────────────────────────────────────
-router.get('/billing/subscriptions',
+router.get('/billing/subscriptions', canMoney,
   [query('status').optional().isString(), query('page').optional().isInt({ min: 1 })],
   wrap((req) => BillingService.listSubscriptions({ status: req.query.status, page: req.query.page || 1 })));
 
-router.get('/billing/revenue', wrap(() => BillingService.revenue()));
+router.get('/billing/revenue', canMoney, wrap(() => BillingService.revenue()));
 
-router.post('/billing/payments',
+router.post('/billing/payments', canMoney,
   [
     body('org_id').trim().notEmpty(),
     body('amount').isFloat({ gt: 0 }),
@@ -132,7 +150,7 @@ router.post('/billing/payments',
   }
 );
 
-router.patch('/orgs/:id/plan',
+router.patch('/orgs/:id/plan', canMoney,
   [
     body('plan').optional().isIn(['trial', 'starter', 'builder', 'enterprise']),
     body('status').optional().isIn(['trial', 'active', 'past_due', 'cancelled']),

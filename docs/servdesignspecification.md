@@ -904,3 +904,268 @@ P7 — those wire in additively (11.2).
 **Review ask (§11):** approve 11.3 (schema + the `projects` geofence add), 11.4 (the
 append-only diary invariant), 11.6 (ownership/permissions/scope), and answer 11.10. Then
 I build steps 1–3 and bring `tests/siteops.test.js` green before the portal Site tab.
+
+---
+
+## 12. Quality (P6a) — inspections · defects · certificates  ✅ BUILT (P6a)
+
+**Status: ✅ BUILT + verified 2026-07-24 — approved same day (all §12.12 recommendations
+locked: P6a now/P6b follows · open defects don't block completion · certificate advisory
+not gated · no `quality.write` for foreperson · `quality.signoff` stays reserved).
+Delivered as migration_v009 + `InspectionService` (create/complete) + `QualityOpsService`
+(guardPush/afterPush wired into SyncService, mirroring SiteOpsService) + 4 registry
+entries (`inspection_items` is child-scoped — resolved via a new `projectViaTable`/
+`projectViaColumn` mechanism, both push-scope and the pull JOIN; `certificates.owner` is
+the first array-valued owner, `['app','web']`) + 5 REST endpoints under
+`routes/projects.js`. `tests/quality.test.js` **19/19**; all 7 suites green. P6b (§12.10,
+NCC/structural `ComplianceService`) is specced but not yet built — see `projman-04.md`
+§8 for the full build log.**
+P6 puts the *detail* behind a gate that already has teeth. The 18-stage engine (§10)
+already refuses to complete a hold-point stage until an **independent inspector**
+validates it (`STAGE_NOT_VALIDATED`, `quality.validate`, `PROTECTED` `is_validated`).
+Today that validation is a bare pass/fail flip with a free-text `reference`. P6 makes it
+an **inspection**: a checklist the inspector runs on the tablet, whose passing IS the
+validation — plus the two records a build's quality trail needs alongside it,
+**defects** (tracked, assigned, closed) and **certificates** (Form BA2 at stage 12,
+BA3/OC at 18, with expiry tracking). It sits on the stage engine (§10) and reuses P5's
+loose-coupling and project-scope patterns (§11).
+
+### 12.1 What it delivers
+
+1. **Inspections** — an inspector runs a checklist against a stage; `inspection_items`
+   are the pass/fail lines with photo evidence. Completing a **hold-point** inspection
+   with an overall **pass** drives the stage's `is_validated` (the §10.5 gate) — one
+   authority, now with a record behind it. Non-hold-point inspections are QA records
+   that inform without gating.
+2. **Defects** — a punch-list item: location, description, trade, assignee, due date,
+   status. Raised on site, tracked to closure with before/after photos.
+3. **Certificates** — the statutory documents (Form BA2 slab, BA3/Occupancy at
+   handover) + their reference/issuer/issue-date and **expiry tracking** for the ones
+   that lapse (e.g. termite, waterproofing warranties).
+4. **(Owner-gated) NCC + structural completion gates** — projman-03 R2/R3: an open NCC
+   register item or an incomplete structural inspection **blocks stage completion**,
+   enforced in a `ComplianceService` on both write paths. Specced in 12.10 as a P6b
+   decision, not assumed into P6a.
+
+### 12.2 How it plugs into the stage engine (the gate already exists)
+
+The interlock is built; P6 does **not** re-open it. `StageProgressionService` already:
+refuses `complete` on a hold-point stage until `is_validated=1` (§10.4.3); keeps
+`is_validated`/`validated_by`/`validated_at` in `PROTECTED_COLUMNS` (no device write);
+and flips them only through `validate()` guarded by `quality.validate` (inspector).
+
+P6 adds a **richer entry point to that same flip**: completing a hold-point inspection
+with `result='pass'` calls the existing `StageProgressionService.validate()` internally
+(inspection id as the `reference`, so the validation is provenance-linked to the
+checklist that justified it). The bare `POST …/validate` stays as the primitive the
+inspection-complete path calls — exactly the advance-vs-sync-push twinning of §10.8. A
+`fail` records the result and leaves the hold point closed.
+
+### 12.3 Schema — migration v009
+
+All tables carry the five sync columns + `id CHAR(36)` client-UUID PK + `created_at`.
+Same loose-coupling as P5 (§11.2): `document_id`/`photo_id` are nullable ids the app
+queues through the offline image queue; the `documents` rows land with that module. No
+`suppliers`/`persons` FK targets yet, so `trade` is free-text and `assigned_to` →
+`users.id` when the assignee is staff, else free-text `assigned_to_name`.
+
+```
+inspections        project_id CHAR(36) NOT NULL       (FK projects.id)
+                   stage_id   CHAR(36) NULL            (FK project_stages.id — the gated stage)
+                   type       VARCHAR(60)              e.g. 'slab','frame','waterproofing','QA'
+                   is_hold_point TINYINT DEFAULT 0     mirrors the stage; a hold-point inspection drives validation
+                   scheduled_at DATETIME NULL
+                   inspector_id CHAR(36) NULL          (FK users.id — who ran it; server-stamped on complete)
+                   result     ENUM('pending','pass','fail') NOT NULL DEFAULT 'pending'
+                   completed_at DATETIME NULL           (server-set on complete)
+                   reference  VARCHAR(100) NULL         cert/form ref (e.g. BA2-0031)
+                   document_id CHAR(36) NULL            signed report
+                   notes      TEXT NULL
+
+inspection_items   inspection_id CHAR(36) NOT NULL     (FK inspections.id, ON DELETE CASCADE)
+                   seq        INT NOT NULL DEFAULT 0
+                   description VARCHAR(255) NOT NULL
+                   result     ENUM('pending','pass','fail','na') NOT NULL DEFAULT 'pending'
+                   note       VARCHAR(255) NULL
+                   photo_id   CHAR(36) NULL
+
+defects            project_id CHAR(36) NOT NULL
+                   stage_id   CHAR(36) NULL
+                   raised_by  CHAR(36) NULL             (server-stamped)
+                   raised_at  DATETIME NULL
+                   location   VARCHAR(160)              trade VARCHAR(60)
+                   description TEXT
+                   assigned_to CHAR(36) NULL            (users.id when staff) assigned_to_name VARCHAR(120) NULL
+                   due_date   DATE NULL
+                   severity   ENUM('low','medium','high') NOT NULL DEFAULT 'medium'
+                   status     ENUM('open','in_progress','closed') NOT NULL DEFAULT 'open'
+                   closed_at  DATETIME NULL   closed_by CHAR(36) NULL   (server-stamped)
+                   photo_id   CHAR(36) NULL   photo_after_id CHAR(36) NULL
+
+certificates       project_id CHAR(36) NOT NULL
+                   stage_id   CHAR(36) NULL
+                   type       VARCHAR(60)               'BA2','BA3','OC','termite','waterproofing',…
+                   reference  VARCHAR(100)
+                   issued_by  VARCHAR(160)              the surveyor/authority (free text; not a tenant user)
+                   issued_at  DATE NULL   expires_at DATE NULL
+                   document_id CHAR(36) NULL
+                   notes      TEXT NULL
+```
+
+`is_validated`-style server-owned columns here — `inspector_id`, `completed_at` on
+inspections; `raised_by`, `closed_at`, `closed_by` on defects — are **server-stamped**
+(PROTECTED), same principle as P5's provenance (§11.4): the record names who the server
+authenticated. `result` on inspections is app-writable while `pending`→`fail`, but a
+`pass` that would validate a hold point flows through the gated complete path (12.4),
+not a bare sync write of `result='pass'` — so `result` is unprotected for QA
+inspections but a hold-point pass is only honoured via `InspectionService.complete`.
+
+### 12.4 The inspection → validation flow (`InspectionService`)
+
+```
+POST /projects/:id/inspections            create against a stage   (quality.write)
+POST /projects/:id/inspections/:iid/complete  { result, reference?, document_id? }
+```
+`complete` runs in `InspectionService`:
+1. Load the inspection (org + project scope). Stamp `inspector_id`, `completed_at`,
+   `result`.
+2. If the inspection `is_hold_point` **and** `result='pass'`: call
+   `StageProgressionService.validate({ …, result:'pass', reference: inspectionId })` —
+   which requires `quality.validate` (inspector), flips the stage's `is_validated`, and
+   fires `onStageValidated`. So a hold-point pass and a stage validation are one
+   transaction, and the separation-of-duties rule (§10.10.4 — PM cannot self-validate)
+   holds because `complete` on a hold-point inspection needs `quality.validate` too.
+3. A `fail` records the result; the hold point stays closed and the stage stays blocked.
+
+`inspection_items` are filled through **`/sync/push`** (the inspector ticks them off
+offline); the overall `complete` is the REST action that commits the verdict. This
+mirrors P5: bulk detail via sync, the one server-mediated act via REST.
+
+### 12.5 Defects
+
+Raised and closed through `/sync/push` (app-owned, offline-first) — a punch-list is
+walked on site. `raised_by`/`closed_by`/`closed_at` are server-stamped. **Open defects
+do NOT block stage completion in v1** — development.md §5.6 gives *hold points* the
+teeth, and a stage can complete with cosmetic snags outstanding (they're tracked to
+closure separately). A future `blocks_completion` flag on a critical defect is a clean
+additive change if wanted (12.12). REST reads (`GET …/defects`) feed the portal
+punch-list; writes ride sync.
+
+### 12.6 Certificates & expiry
+
+`certificates` are created app- or web-side (`quality.write`) — the office often uploads
+the surveyor's signed BA2/BA3, but an inspector may attach one on-site. `expires_at`
+drives a portal/report surface ("certificates lapsing in 30 days") — a read, not a gate,
+in v1. Certificate *presence* at a hold point is advisory unless the owner wants it
+gated (12.12). No money columns anywhere in P6 → **no `financialColumns`**.
+
+### 12.7 Ownership, scope & permissions
+
+All P6 tables: **project-scoped** (`projectColumn: 'project_id'`), **no money
+redaction**. `inspection_items` is child-scoped (its parent's project). Owners:
+`inspections`/`inspection_items`/`defects` = **app** (the inspector/site runs them);
+`certificates` = **app + web** (office upload OR site attach).
+
+| Permission | Grants | Roles |
+|---|---|---|
+| `quality.write` (activate reserved §9.3) | create/fill inspections + items, raise/close defects, record certificates | projectManager, siteSupervisor, inspector |
+| `quality.validate` (exists — §10.5) | complete a **hold-point** inspection → flip `is_validated` | inspector only |
+
+`projectManager` deliberately holds `quality.write` (can schedule inspections, record
+certs, manage the punch-list) but **not** `quality.validate` — the independent-inspector
+separation from §10 is preserved. `foreperson`/`tradie` get neither in v1 (they capture
+via site-ops/safety); grantable later if the owner wants forepersons raising defects.
+Reserved `quality.signoff` stays reserved — `quality.validate` already is the hold-point
+sign-off; I don't split certificate issuance into its own authority in v1 (12.12).
+
+### 12.8 Endpoints
+
+```
+POST  /projects/:id/inspections                 create              (quality.write)
+GET   /projects/:id/inspections                 list (+items)        (projects.read, scoped)
+POST  /projects/:id/inspections/:iid/complete   commit verdict; hold-point pass → validate
+                                                { result, reference?, document_id? }  (quality.write; hold-point pass also needs quality.validate)
+GET   /projects/:id/defects                      punch-list (?status=)  (projects.read, scoped)
+GET   /projects/:id/certificates                 cert register (+expiry) (projects.read, scoped)
+```
+`inspection_items`, `defects`, `certificate` bodies are **written through `/sync/push`**
+(offline-first); the REST surface is the portal review + the one gated action
+(`complete`). No bespoke REST writers in v1, same as P5.
+
+### 12.9 Sync registry entries (v009)
+
+Four additions (five with `inspection_items`), all owner `app` (certificates
+`app`+`web`), project-scoped, no financial columns. New `PROTECTED_COLUMNS` (table-
+agnostic): `inspector_id`, `completed_at`, `raised_by`, `closed_at`, `closed_by`.
+`inspections.result` is app-writable (QA + `fail`), but a hold-point `pass` is honoured
+only through `InspectionService.complete` — the sync-push path treats a bare hold-point
+`result='pass'` as a QA record and does **not** flip `is_validated` (only the gated
+complete does). `inspection_items` scopes through its parent inspection's project
+(resolve `project_id` from `inspections` on push, the same parent-derivation
+`cook_session_lines` used in Nexus and tasks use here).
+
+### 12.10 CPC compliance gates (projman-03 R2/R3) — **P6b ✅ BUILT**
+
+**Status: ✅ BUILT + verified 2026-07-24** (migration_v010 + `ComplianceService` +
+`tests/compliance.test.js` **18/18**; all 8 suites green). `checkNccCompliance`/
+`checkStructuralCompliance` are called from `StageProgressionService.checkTransition`
+alongside the existing hold-point gate — since that function already runs on BOTH the
+REST `/advance` path and the sync-push path (§10.4), parity came for free with no
+separate sync wiring. `ncc_register` rides `/sync/push` exactly like `defects`
+(`QualityOpsService` extended to cover it: `quality.write` gate + the R3 scope check +
+`raised_by`/`raised_at`/`closed_at`/`closed_by` stamping). `cpc_units` seeded with the
+full frozen 37-unit CPC50220_R4 list (24 core + 13 elective); `cpc_feature_map` tags
+only the 7 units these two gates actually enforce (5 → `ncc`, 2 → `structural`) —
+further tagging lands incrementally as development.md §12 gap modules are built. One
+correction from the original spec below: `checkStructuralCompliance` governs on the
+**latest** structural inspection per stage, not "has any ever failed" — a later pass
+supersedes an earlier fail, same as re-inspecting a hold point.
+
+projman-03 folds two CPC completion gates into the quality module's `ComplianceService`
+(per §3), enforced on both write paths like the stage gate:
+- **NCC** (units CPCCBC4001/4053/5001/6001 + 5003): an open `ncc_register` item on a
+  stage **blocks that stage's completion**. Needs a new `ncc_register` table + the
+  system-reference `cpc_units`/`cpc_feature_map` (org-agnostic, not device-synced —
+  projman-03 R1) + R3 scope CHECKs (`ncc_class ∈ {1,10}` residential / `{2..9}`+`type
+  ∈ {C,B}` commercial).
+- **Structural** (units CPCCBC4010\*/5018\*): an incomplete structural inspection /
+  open structural hold point **blocks completion** — largely expressible as a
+  hold-point inspection of `type='structural'` on the relevant stage, so it may need
+  little beyond 12.4.
+
+**Recommendation:** ship **P6a** (the four quality tables + inspection-drives-validate)
+first — it's the owner's stated P6 scope and completes the quality trail. Then **P6b**
+(the NCC register + `cpc_units` seed + `ComplianceService` NCC/structural gates + scope
+CHECKs) as the immediate follow-on, since it reuses this module's stage-gate wiring.
+Folding P6b into P6a is possible but roughly doubles the surface (a seed migration, a
+reference-endpoint, scope validation). **Decision in 12.12.**
+
+### 12.11 Build order (P6a)
+
+| Step | Deliverable | Depends on |
+|---|---|---|
+| 1 | migration_v009: `inspections`/`inspection_items`/`defects`/`certificates` + activate `quality.write` in the matrix (version→4) | — |
+| 2 | registry entries + `PROTECTED_COLUMNS` additions + `inspection_items` parent-project derivation | 1 |
+| 3 | `InspectionService`: create + `complete` (hold-point pass → `StageProgressionService.validate`) wired to REST | 1–2 |
+| 4 | portal/REST reads: inspections(+items), defects punch-list, certificate register(+expiry) | 3 |
+| 5 | `tests/quality.test.js`: hold-point inspection pass drives `is_validated` + unblocks completion; fail keeps it blocked; PM cannot complete-validate (separation of duties); QA (non-hold) inspection records without gating; defect lifecycle; certificate expiry read; project-scoped pull | 3 |
+
+Steps 1–3 are the spine; 4–5 additive. P6b (12.10) is a separate spec'd increment.
+
+### 12.12 Open decisions for the owner
+
+1. **P6a now, P6b (NCC/structural ComplianceService) right after** — vs fold both into
+   one v009. Recommend **split** (12.10). Confirm.
+2. **Do open defects block stage completion?** Recommend **no** in v1 (only hold points
+   gate; add a `blocks_completion` critical-defect flag later). Confirm.
+3. **Is a certificate required at its hold point** (e.g. BA2 present before stage 12
+   completes)? Recommend **advisory in v1** (the inspection pass is the gate; the cert is
+   the record) — gate it in P6b if you want statutory-doc enforcement. Confirm.
+4. **`quality.write` on foreperson?** Recommend **no** in v1 (foreperson captures via
+   site-ops/safety); grant later if forepersons should raise defects. Confirm.
+5. **Keep `quality.signoff` reserved?** Recommend **yes** — `quality.validate` already
+   is the hold-point authority; no need to split certificate issuance out in v1. Confirm.
+
+**Review ask (§12):** approve 12.3 (schema), 12.4 (the inspection→validate flow), 12.7
+(ownership/permissions), and answer 12.12. Then I build P6a steps 1–3 and bring
+`tests/quality.test.js` green before the portal Quality tab — and spec P6b separately.

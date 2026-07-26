@@ -25,8 +25,8 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata = {
-  title: 'ProjMan2 — Office Console',
-  description: 'ProjMan2 builder console — projects, devices, customers, claims',
+  title: 'ProjMan — Office Console',
+  description: 'ProjMan builder console — projects, devices, customers, claims',
 };
 
 export default function RootLayout({ children }) {

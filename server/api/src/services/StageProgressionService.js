@@ -16,6 +16,7 @@ const { ServiceError } = require('./errors');
 const access = require('../lib/access');
 const { isProjectMember } = require('../lib/scope');
 const hooks = require('./stageHooks');
+const ComplianceService = require('./ComplianceService');
 
 const STATUSES = ['not_started', 'in_progress', 'blocked', 'complete', 'skipped'];
 
@@ -81,6 +82,20 @@ async function checkTransition({ actor, stage, toStatus }) {
   if (toStatus === 'complete' && stage.is_hold_point && !stage.is_validated) {
     throw new ServiceError('STAGE_NOT_VALIDATED',
       'This stage is a hold point — an inspector must validate it before it can be completed', 409);
+  }
+
+  // 4. NCC / structural completion gates (P6b, projman-03 R2/R3, §12.10) — the same
+  //    posture as the hold-point gate above: checked here so REST /advance and the
+  //    sync-push path (which both call checkTransition) share it identically.
+  if (toStatus === 'complete') {
+    if (!(await ComplianceService.checkNccCompliance(actor.orgId, stage.id))) {
+      throw new ServiceError('NCC_OPEN',
+        'This stage has an open NCC compliance item — close it before completing the stage', 409);
+    }
+    if (!(await ComplianceService.checkStructuralCompliance(actor.orgId, stage.id))) {
+      throw new ServiceError('STRUCTURAL_INCOMPLETE',
+        'This stage has an incomplete or failed structural inspection — resolve it before completing the stage', 409);
+    }
   }
 }
 

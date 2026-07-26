@@ -235,6 +235,105 @@ const TABLES = {
       'received_at', 'docket_no', 'photo_ids', 'notes', 'is_deleted', 'updated_at',
     ]),
   },
+
+  // ── Quality (migration_v009) ── servdesignspec §12 ─────────────────────────
+  // App-authored: the inspector's checklist and the site's punch-list are captured
+  // offline and ride /sync/push, same as site-ops (§11). The one server-mediated act
+  // — a hold-point inspection's `complete` driving the stage's is_validated — is a
+  // REST call to InspectionService, not a sync write (§12.4). No financial columns.
+
+  // A bare hold-point `result='pass'` pushed here is a QA record only — it does NOT
+  // flip is_validated; only InspectionService.complete does that (§12.9). Server-
+  // stamped provenance (`inspector_id`, `completed_at`) is PROTECTED.
+  inspections: {
+    table: 'inspections',
+    owner: 'app',
+    pull: true,
+    scope: 'org',
+    orgColumn: 'org_id',
+    idColumn: 'id',
+    projectColumn: 'project_id',
+    columns: new Set([
+      'project_id', 'stage_id', 'type', 'is_hold_point', 'scheduled_at',
+      'result', 'reference', 'document_id', 'notes', 'is_deleted', 'updated_at',
+    ]),
+  },
+
+  // Child-scoped: carries no project_id of its own — its project is resolved from
+  // its parent `inspections` row via `projectViaTable`/`projectViaColumn` (the same
+  // parent-derivation Nexus's cook_session_lines uses; see SyncService).
+  inspection_items: {
+    table: 'inspection_items',
+    owner: 'app',
+    pull: true,
+    scope: 'org',
+    orgColumn: 'org_id',
+    idColumn: 'id',
+    projectViaTable: 'inspections',
+    projectViaColumn: 'inspection_id',
+    columns: new Set([
+      'inspection_id', 'seq', 'description', 'result', 'note', 'photo_id',
+      'is_deleted', 'updated_at',
+    ]),
+  },
+
+  // The punch-list. `raised_by`/`closed_at`/`closed_by` are server-stamped
+  // (PROTECTED, stamped by QualityOpsService.afterPush). Open defects do not gate
+  // stage completion in v1 (§12.5). `status` is globally protected — unprotect it
+  // here (like `site_diary`/`project_stages`) so the app can push open/in_progress/
+  // closed transitions; the closed provenance is what QualityOpsService adds.
+  defects: {
+    table: 'defects',
+    owner: 'app',
+    pull: true,
+    scope: 'org',
+    orgColumn: 'org_id',
+    idColumn: 'id',
+    projectColumn: 'project_id',
+    columns: new Set([
+      'project_id', 'stage_id', 'location', 'trade', 'description',
+      'assigned_to', 'assigned_to_name', 'due_date', 'severity', 'status',
+      'photo_id', 'photo_after_id', 'is_deleted', 'updated_at',
+    ]),
+    unprotect: new Set(['status']),
+  },
+
+  // App + web owned (§12.7): the office often uploads the surveyor's signed BA2/BA3,
+  // but an inspector may attach one on-site. No money columns in P6.
+  certificates: {
+    table: 'certificates',
+    owner: ['app', 'web'],
+    pull: true,
+    scope: 'org',
+    orgColumn: 'org_id',
+    idColumn: 'id',
+    projectColumn: 'project_id',
+    columns: new Set([
+      'project_id', 'stage_id', 'type', 'reference', 'issued_by', 'issued_at',
+      'expires_at', 'document_id', 'notes', 'is_deleted', 'updated_at',
+    ]),
+  },
+
+  // ── Compliance (migration_v010) ── servdesignspec §12.10, projman-03 R2/R3 ──────
+  // An open item here BLOCKS its stage's completion (ComplianceService, wired into
+  // StageProgressionService.checkTransition — same gate on REST /advance and
+  // sync-push). Same posture as defects: app-owned, quality.write gated
+  // (QualityOpsService), `raised_by`/`raised_at`/`closed_at`/`closed_by`
+  // server-stamped. `status` unprotected like every other app-driven status column.
+  ncc_register: {
+    table: 'ncc_register',
+    owner: 'app',
+    pull: true,
+    scope: 'org',
+    orgColumn: 'org_id',
+    idColumn: 'id',
+    projectColumn: 'project_id',
+    columns: new Set([
+      'project_id', 'stage_id', 'ncc_class', 'building_type', 'cpc_unit',
+      'reference', 'notes', 'status', 'is_deleted', 'updated_at',
+    ]),
+    unprotect: new Set(['status']),
+  },
 };
 
 // Never writable by a device push, on any table, whatever the registry says.
@@ -270,6 +369,15 @@ const PROTECTED_COLUMNS = new Set([
   'finalised_by',
   'geo_verified',
   'received_by',
+  // Quality provenance (§12.9) — server-owned, same principle. `inspector_id`/
+  // `completed_at` are set only via InspectionService.complete (never a bare sync
+  // write, §12.4); `raised_by`/`closed_at`/`closed_by` are stamped by
+  // QualityOpsService.afterPush on the defect's sync-push path.
+  'inspector_id',
+  'completed_at',
+  'raised_by',
+  'closed_at',
+  'closed_by',
 ]);
 
 // Masked in log output. Not blocked — just never printed.

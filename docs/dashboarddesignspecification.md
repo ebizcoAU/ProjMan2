@@ -93,18 +93,72 @@ weakening of isolation — and leaves the construction role model untouched.
 
 ## 3. Permission & access model
 
+**✅ BUILT + verified 2026-07-24 (migration_v011 addendum).** The dashboard stays a
+**single platform TIER** exactly as designed below (a `projectManager` still has zero
+reach here) — what's new is three **admin-team roles WITHIN that one tier**,
+requested directly by the owner, so a System Admin operator is no longer all-or-
+nothing:
+
+| `admin_role` | Reach |
+|---|---|
+| `admin` | Every `/admin/*` endpoint (the original single-tier behaviour) |
+| `account` | Money — `orgs`, `billing/*` (subscriptions/revenue/payments/plan changes) — plus user account actions (suspend/reactivate/force-logout) |
+| `staff` | User account actions (suspend/reactivate/force-logout) plus the login transaction log (`logs/login`, export) |
+
+`stats` is common ground — all three roles reach it; `devices` and `system/health`
+are `admin`-only. Enforced by `requireAdminRole(...roles)` (`middleware/adminAuth.js`),
+one call per route in `routes/admin.js`, each route listing every role that may reach
+it explicitly (no implicit superset, so the route file is the whole story).
+`platform_admins.admin_role` defaults to the least-privileged `staff` — a bare INSERT
+never silently grants full access. `GET /admin/me` reports `{ userId, role }`.
+
+**Refined same day (owner):** browsing the full cross-tenant account directory
+(`GET /admin/users` — names, emails, orgs) is **`admin`-only**, even though
+`account`/`staff` still hold the user-account **action**
+(`POST /users/:id/(suspend|reactivate|force-logout)`, which itself returns no PII —
+just `{userId, action}`). The `account`/`staff` Accounts page is a narrow act-by-id
+form (paste a user id from a support ticket, choose an action) — never a browsable
+list. This keeps "manage user (enable/disable)" for both roles per the original ask,
+without handing every admin-team member a directory of every tenant's people.
+
+**Kept separate (owner, same day):** a merge into one shared `PortalNav` sidebar was
+tried and reverted — cramming the tenant PROJECTS/SITE/COMMERCIAL/ORGANISATION groups
+and the platform Overview/Accounts/Devices/Organisations/Billing/Login-Log group into
+one sidebar read as crowded. The System Admin dashboard keeps its **own** dedicated
+sidebar (`admin/layout.js`, a plain `<aside>` + `NAV` list filtered by `admin_role`,
+still mirroring `routes/admin.js`'s `requireAdminRole(...)` lists exactly) — visually
+and structurally separate from the tenant Portal's `PortalNav`, not a shared
+component. It also has its **own entry point**, `/admin/login` (`admin/login/page.js`)
+— a different front door onto the exact same identity/auth as the app and the tenant
+Portal (one JWT, one `POST /auth/login`; not a second auth system), landing on `/admin`
+on success. It confirms the account actually holds a `platform_admins` row before
+entering — a valid tenant login that isn't a platform admin sees a clear message on
+that page, rather than a silent bounce, and keeps its (still valid) tenant session.
+The tenant Portal's `/login` is unchanged and unaware any of this exists. **Reinforced
+by the owner directly: "Portal should have nothing to do with admin/account/staff of
+the Platform Management Team"** — `PortalNav.js` and `(console)/layout.js` carry zero
+reference to `admin_role` or `adminApi` (verified). The split is total: separate nav,
+separate login, separate layout — the only thing shared is the underlying identity/
+auth (one JWT, one `users` table), which is by design (same as the app).
+
 | Principal | How identified | Dashboard access |
 |---|---|---|
-| **System Admin** | row in `platform_admins` | Full — all orgs, all `/admin/*` endpoints |
+| **System Admin** (`admin`/`account`/`staff`) | row in `platform_admins`, `admin_role` column | Per the table above — all orgs, scoped `/admin/*` endpoints |
 | **Everyone else** (any tenant role, incl. `projectManager`) | — | **No access** (403) — org-admin is done in the portal |
 
 - Access is the **`platform_admins` allowlist**, full stop — not a tenant role, not a
   tenant permission (no `admin.dashboard.view` on the construction matrix). This keeps
-  the 6-role model untouched.
+  the 6-role model untouched; `admin_role` is a platform-tier-internal refinement, not
+  a second tenant-facing tier.
 - `adminAuthenticate` verifies the JWT, then checks `platform_admins`; a hit sets
-  `req.admin = { userId }`. No tier logic — every `/admin/*` caller is a System Admin.
-- Provisioning the first System Admin is an **out-of-band seed/CLI** step (a platform
-  operator can then grant others) — never through tenant sign-up or user-management.
+  `req.admin = { userId, role }`.
+- Provisioning is an **out-of-band CLI** step —
+  `scripts/grant-platform-admin.js <email> --role=admin|account|staff` (defaults to
+  `admin`, the pre-v011 behaviour) — never through tenant sign-up or user-management.
+  `scripts/seed-admin-team.js` seeds one of each role under a dedicated
+  "eBizco Platform Ops" organisation (a technical home for the `users.org_id` FK — these
+  accounts never touch tenant/construction data, only `/admin/*`, which is cross-tenant
+  by design and ignores `org_id`).
 
 ---
 

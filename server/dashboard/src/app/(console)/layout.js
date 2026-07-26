@@ -180,7 +180,7 @@ export default function ConsoleLayout({ children }) {
               )}
             </div>
             <div style={{ fontSize: fs(13, screenTier), color: 'var(--dim)', marginTop: 3 }}>
-              ProjMan2 · Office Console
+              ProjMan · Office Console
             </div>
           </div>
 

@@ -9,6 +9,12 @@
 //   POST   /projects/:id/programme         instantiate from a template (programme.write)
 //   POST   /projects/:id/stages/:id/advance  advance status (progress.write, gated)
 //   POST   /projects/:id/stages/:id/validate hold-point validation (quality.validate)
+//   POST   /projects/:id/inspections               create             (quality.write)
+//   GET    /projects/:id/inspections               list (+items)      (projects.read)
+//   POST   /projects/:id/inspections/:iid/complete  commit verdict     (quality.write;
+//                                                    hold-point pass also needs quality.validate)
+//   GET    /projects/:id/defects                    punch-list (?status=) (projects.read)
+//   GET    /projects/:id/certificates                cert register (+expiry) (projects.read)
 //
 // The web console is the system of record for project structure (projman-01 §4);
 // the field app receives every write here through /sync/pull and pushes progress
@@ -27,6 +33,7 @@ const ProjectService = require('../services/ProjectService');
 const MembershipService = require('../services/MembershipService');
 const StageTemplateService = require('../services/StageTemplateService');
 const StageProgressionService = require('../services/StageProgressionService');
+const InspectionService = require('../services/InspectionService');
 
 router.use(authenticate);
 
@@ -38,6 +45,7 @@ const canWriteProgramme = requirePermission('programme.write');
 const canWriteProgress = requirePermission('progress.write');
 const canValidate = requirePermission('quality.validate');
 const canManageUsers = requirePermission('users.manage');
+const canWriteQuality = requirePermission('quality.write');
 
 function validation(req, res) {
   const errors = validationResult(req);
@@ -332,6 +340,120 @@ router.delete('/:id/members/:userId', canManageUsers, async (req, res) => {
       detail: { project_id: req.params.id, user_id: req.params.userId },
     });
     return res.json({ success: true, data: { removed: true } });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+// ── Quality (P6, servdesignspec §12) ────────────────────────────────────────────
+// `inspection_items`/`defects`/`certificates` bodies ride /sync/push (offline-first,
+// QualityOpsService governs that path); REST here is the portal review surface plus
+// the one server-mediated action — completing an inspection, which drives a hold
+// point's is_validated through the EXISTING StageProgressionService.validate (§12.2).
+
+// ── POST /projects/:id/inspections  { type, stage_id?, is_hold_point?, scheduled_at?, notes? } ─
+router.post(
+  '/:id/inspections',
+  canWriteQuality,
+  [
+    body('type').trim().notEmpty().withMessage('type is required'),
+    body('stage_id').optional({ nullable: true }).isString(),
+    body('is_hold_point').optional().isBoolean(),
+    body('scheduled_at').optional({ nullable: true, checkFalsy: true }).isISO8601(),
+    body('notes').optional({ nullable: true }).isString(),
+  ],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await InspectionService.create({
+        orgId: req.auth.orgId, projectId: req.params.id,
+        actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+        type: req.body.type, stageId: req.body.stage_id, isHoldPoint: req.body.is_hold_point,
+        scheduledAt: req.body.scheduled_at, notes: req.body.notes,
+      });
+      await audit(req, 'inspection.create', {
+        entity: 'inspections', entityId: result.id,
+        detail: { project_id: req.params.id, type: req.body.type },
+      });
+      return res.status(201).json({ success: true, data: result });
+    } catch (err) {
+      return sendError(res, err);
+    }
+  }
+);
+
+// ── GET /projects/:id/inspections  (+items) ──────────────────────────────────────
+router.get('/:id/inspections', canReadProjects, async (req, res) => {
+  try {
+    const data = await InspectionService.listInspections({
+      orgId: req.auth.orgId, projectId: req.params.id,
+      actor: { role: req.auth.role, userId: req.auth.userId },
+    });
+    return res.json({ success: true, data });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+// ── POST /projects/:id/inspections/:iid/complete  { result, reference?, document_id? } ─
+// A hold-point PASS additionally needs quality.validate — enforced inside
+// StageProgressionService.validate, so a projectManager cannot self-validate here
+// either (separation of duties, §12.4).
+router.post(
+  '/:id/inspections/:iid/complete',
+  canWriteQuality,
+  [
+    body('result').isIn(['pass', 'fail']).withMessage('result must be pass or fail'),
+    body('reference').optional({ nullable: true }).isString().isLength({ max: 100 }),
+    body('document_id').optional({ nullable: true }).isString(),
+  ],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await InspectionService.complete({
+        orgId: req.auth.orgId, projectId: req.params.id,
+        actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+        inspectionId: req.params.iid, result: req.body.result,
+        reference: req.body.reference, documentId: req.body.document_id,
+      });
+      await audit(req, 'inspection.complete', {
+        entity: 'inspections', entityId: req.params.iid,
+        detail: { project_id: req.params.id, result: req.body.result },
+      });
+      return res.json({ success: true, data: result });
+    } catch (err) {
+      return sendError(res, err);
+    }
+  }
+);
+
+// ── GET /projects/:id/defects?status=  the punch-list ───────────────────────────
+router.get(
+  '/:id/defects',
+  canReadProjects,
+  [query('status').optional().isIn(['open', 'in_progress', 'closed'])],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const data = await InspectionService.listDefects({
+        orgId: req.auth.orgId, projectId: req.params.id,
+        actor: { role: req.auth.role, userId: req.auth.userId }, status: req.query.status,
+      });
+      return res.json({ success: true, data });
+    } catch (err) {
+      return sendError(res, err);
+    }
+  }
+);
+
+// ── GET /projects/:id/certificates  the cert register (+expiry) ─────────────────
+router.get('/:id/certificates', canReadProjects, async (req, res) => {
+  try {
+    const data = await InspectionService.listCertificates({
+      orgId: req.auth.orgId, projectId: req.params.id,
+      actor: { role: req.auth.role, userId: req.auth.userId },
+    });
+    return res.json({ success: true, data });
   } catch (err) {
     return sendError(res, err);
   }

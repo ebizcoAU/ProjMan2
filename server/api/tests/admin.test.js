@@ -53,8 +53,10 @@ async function call(m, p, b, t) {
   ok('projectManager denied /admin/billing/subscriptions', (await call('GET', '/admin/billing/subscriptions', undefined, pmA)).status === 403);
   ok('no token → 401 on /admin', (await call('GET', '/admin/stats')).status === 401);
 
-  // Grant platform-admin to Alice, out-of-band (as the CLI does).
-  await pool.query('INSERT INTO platform_admins (id, user_id, note) VALUES (?, ?, ?)', [uuidv4(), userA, 'test']);
+  // Grant platform-admin to Alice, out-of-band (as the CLI does). This test exercises
+  // the full surface (billing/devices/orgs/logs), so she needs the 'admin' sub-role
+  // (migration_v011) — the column defaults to the least-privileged 'staff' otherwise.
+  await pool.query('INSERT INTO platform_admins (id, user_id, admin_role, note) VALUES (?, ?, ?, ?)', [uuidv4(), userA, 'admin', 'test']);
 
   // ── 2. Cross-tenant reach ──
   const stats = await call('GET', '/admin/stats', undefined, pmA);

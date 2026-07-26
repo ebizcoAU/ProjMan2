@@ -12,10 +12,39 @@ login + Devices + Projects + Programme + **Cost Plan** + **Admin** Users/Setting
 projects/customers offline; creator auto-enrolled) · **18-STAGE ENGINE BUILT** (v006:
 StageProgressionService + StageTemplateService + stageHooks; gate on REST **and**
 sync-push; WA_RESIDENTIAL_18 seeded, hold points 11/12/13/15/18; inspector-only
-validation; stage cost cols estimated/committed/actual/claimed money-redacted).
-All 6 suites green: isolation 16 · domain 29 · access 19 · stages 15 · **admin 18** ·
-acceptance (run `DISABLE_RATE_LIMIT=true PORT=4199 node src/index.js`). Migrations at
-**v007** (next v008). **App-team progress board = `docs/decisions/projman-04.md`** — keep updated.
+validation; stage cost cols estimated/committed/actual/claimed money-redacted) ·
+**SITE OPS BUILT** (v008: SiteOpsService — diary append-only/versioned, geofenced
+attendance, deliveries) · **QUALITY P6a BUILT** (v009: InspectionService — a hold-point
+inspection pass drives is_validated via the EXISTING §10.5 validate gate;
+QualityOpsService — quality.write gate + defect provenance stamping; matrix_version→4)
+· **COMPLIANCE P6b BUILT** (v010: ComplianceService.checkNccCompliance/
+checkStructuralCompliance wired into StageProgressionService.checkTransition — no
+separate sync wiring needed, that function already runs on both REST+sync; ncc_register
+rides sync-push like defects; cpc_units/cpc_feature_map seeded) · **PORTAL QUALITY TAB
+BUILT** (`/projects/[id]/quality`, read-only, no new endpoints) · **ADMIN-TEAM ROLES
+BUILT** (v011: `platform_admins.admin_role` admin/account/staff, `requireAdminRole`
+per-route gates in `routes/admin.js`, `GET /admin/me`; seed via
+`scripts/seed-admin-team.js` — admin@projman.internal / accountx@projman.internal /
+staffx@projman.internal, all `Passwd@1234`). **Refined same day**: `GET /admin/users`
+(the full cross-tenant directory) narrowed to `admin`-only — `account`/`staff` keep
+the suspend/reactivate/force-logout ACTION via a paste-the-id form
+(`admin/users/page.js`), no browse/search — **Dashboard must never expose tenant/App
+user data to a non-admin platform role**, reiterated by the owner, see the
+`projman2-admin-privacy-rule` cross-session memory. **Portal and Dashboard are fully
+split, on purpose** — a shared-nav-shell merge was tried and reverted same day (owner:
+"too crowded"), then explicitly reinforced ("Portal should have nothing to do with
+admin/account/staff of the Platform Management Team"): `PortalNav.js`/
+`(console)/layout.js` carry ZERO reference to `admin_role`/`adminApi` (verified by
+grep); `admin/layout.js` has its own separate hand-rolled sidebar; **System Admin has
+its own entry point, `/admin/login`** (`admin/login/page.js`) — a different front
+door onto the SAME identity/auth as the app and the tenant Portal (one JWT, one
+`POST /auth/login`, not a second auth system), landing on `/admin` and confirming a
+`platform_admins` row before entering.
+All 8 suites green: isolation 16 · domain 29 · access 19 · stages 15 · admin 18 ·
+siteops 28 · quality 19 · compliance 18 (run
+`DISABLE_RATE_LIMIT=true PORT=4199 node src/index.js`). Dashboard now on **:4110**
+(was :3100), branded "ProjMan" not "ProjMan2" in visible UI text. Migrations at **v011**.
+**App-team progress board = `docs/decisions/projman-04.md`** — keep updated.
 
 **THE ROLE MODEL (authoritative, 2026-07-23):** 6 roles, camelCase, from
 `18StageProjectMangementMatrix.md` (NOT development.md §3's retired 12-role model):
