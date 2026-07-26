@@ -48,7 +48,7 @@ ProjMan2 is a **different product with a different customer base**, so I assume 
 separate database rather than new tables inside the FTPOS schema. Proposed:
 
 - **Database:** `c1projman2` (new; the legacy `c1projman` is not migrated)
-- **Base URL:** `https://ebizco.com.au/projman/api/v1`, dev `http://10.1.1.21:4100/api/v1`
+- **Base URL:** `https://ebizco.com.au/projman/api/v1`, dev `http://10.1.1.20:4100/api/v1`
 - **Deployment:** its own service under the Nexus workspace, reusing Nexus
   middleware, auth libraries and DB layer
 

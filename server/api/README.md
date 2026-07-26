@@ -84,7 +84,7 @@ ProjMan2 is a different product with a different customer base, so it does not s
 the FTPOS schema.
 
 - **Database:** `c1projman2` (new; legacy `c1projman` is not migrated)
-- **Dev base URL:** `http://localhost:4100/api/v1` (LAN: `http://10.1.1.21:4100`)
+- **Dev base URL:** `http://localhost:4100/api/v1` (LAN: `http://10.1.1.20:4100`)
 - **Prod base URL:** `https://ebizco.com.au/projman/api/v1`
 
 It reuses Nexus's *shape* — Express + mysql2 pool + JWT — but not its process. The

@@ -43,14 +43,14 @@ const double GST_RATE = 0.10;
 // ── API ───────────────────────────────────────────────────────────────────────
 
 // NOTE: the dev base URL is provisional — NEXUSPM-BRIEF.md §2 asks NexusPM to
-// confirm it. Proposed there: http://10.1.1.21:4100/api/v1 (own service, own
+// confirm it. Proposed there: http://10.1.1.20:4100/api/v1 (own service, own
 // database `c1projman2`). Override with --dart-define until it is confirmed.
 
 /// Nexus API base URL. Override with --dart-define=API_BASE_URL=...
 const String API_BASE_URL = String.fromEnvironment(
   'API_BASE_URL',
   defaultValue: IS_DEV
-      ? 'http://10.1.1.21:4100/api/v1'
+      ? 'http://10.1.1.20:4100/api/v1'
       : 'https://ebizco.com.au/projman/api/v1',
 );
 
@@ -73,13 +73,13 @@ String? resolveImageUrl(String? url) {
 //
 // Carries pairing, handoff and sync nudges — not orders. Same broker as ftpos.
 //
-// dev:           ws://10.1.1.21:9001/mqtt   — local Mosquitto, no auth, no TLS
+// dev:           ws://10.1.1.20:9001/mqtt   — local Mosquitto, no auth, no TLS
 // preview/prod:  wss://mqtt.ebizco.com.au:8884/mqtt — auth required, TLS
 
 /// Hostname only (no ws:// prefix). Override with --dart-define=MQTT_BROKER_URL=...
 const String MQTT_BROKER_URL = String.fromEnvironment(
   'MQTT_BROKER_URL',
-  defaultValue: IS_DEV ? '10.1.1.21' : 'mqtt.ebizco.com.au',
+  defaultValue: IS_DEV ? '10.1.1.20' : 'mqtt.ebizco.com.au',
 );
 
 /// WebSocket port: 9001 for dev Mosquitto, 8884 for preview/prod.

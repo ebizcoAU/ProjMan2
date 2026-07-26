@@ -35,7 +35,7 @@ first, as it decides how each domain table is scoped.)
 - **§6 In flight / next** — what each side is doing now.
 - **§7 Change log** — dated line per contract change.
 
-Base URL (dev): `http://localhost:4100/api/v1` · LAN `http://10.1.1.21:4100/api/v1`
+Base URL (dev): `http://localhost:4100/api/v1` · LAN `http://10.1.1.20:4100/api/v1`
 Base URL (prod): `https://ebizco.com.au/projman/api/v1`
 
 Deployment shape is **settled**: a separate database `c1projman2` and a separate

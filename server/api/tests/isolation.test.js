@@ -9,7 +9,7 @@
 // so run it against a dev database only.
 //
 //   node tests/isolation.test.js            (expects the API on :4100)
-//   BASE=http://10.1.1.21:4100 node tests/isolation.test.js
+//   BASE=http://10.1.1.20:4100 node tests/isolation.test.js
 
 const BASE = (process.env.BASE || 'http://localhost:4100') + '/api/v1';
 
