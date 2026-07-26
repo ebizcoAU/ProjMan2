@@ -155,13 +155,35 @@ class NexusService {
   // ── Authed helpers (domain services build on these) ────────────────────────
 
   /// Authenticated GET — attaches the stored access token; unwraps the envelope.
-  static Future<ApiResult> authedGet(String path) async =>
-      _get(path, bearer: await SessionService.accessToken());
+  /// On a 401 it refreshes the token once and retries, so an expired access
+  /// token recovers transparently instead of looking like empty/lost data. If
+  /// the refresh also fails the result carries `code: 'SESSION_EXPIRED'` for the
+  /// UI to route to Login (rather than silently showing nothing).
+  static Future<ApiResult> authedGet(String path) =>
+      _authed((bearer) => _get(path, bearer: bearer));
 
-  /// Authenticated POST — attaches the stored access token; unwraps the envelope.
-  static Future<ApiResult> authedPost(
-          String path, Map<String, dynamic> body) async =>
-      _post(path, body: body, bearer: await SessionService.accessToken());
+  /// Authenticated POST — same token-attach + refresh-on-401-and-retry as GET.
+  static Future<ApiResult> authedPost(String path, Map<String, dynamic> body) =>
+      _authed((bearer) => _post(path, body: body, bearer: bearer));
+
+  /// Runs an authed request; on `401` refreshes once and retries the same call.
+  static Future<ApiResult> _authed(
+      Future<ApiResult> Function(String? bearer) send) async {
+    final res = await send(await SessionService.accessToken());
+    if (res.status != 401) return res;
+    // Access token rejected (expired, or invalidated by a server matrix/secret
+    // rotation). Try to mint a new one from the refresh token, then retry once.
+    if (await refresh()) {
+      return send(await SessionService.accessToken());
+    }
+    return const ApiResult(
+      success: false,
+      status: 401,
+      data: {},
+      code: 'SESSION_EXPIRED',
+      message: 'Your session has expired. Please sign in again.',
+    );
+  }
 
   /// POST /auth/refresh — refresh token → new access token. (projman-01 §1.1)
   static Future<bool> refresh() async {

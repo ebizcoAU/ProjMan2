@@ -1,17 +1,19 @@
 import 'package:sqflite/sqflite.dart';
 import 'schema_core.dart';
+import 'schema_domain.dart';
 
 /// Database initialisation and migration manager.
 ///
 /// Ported from ftpos `core/db/database.dart` but starting clean: ProjMan2 is a
 /// new install with no legacy `c1projman` data to migrate (development.md §8.2),
 /// so the 129 ftpos migrations are dropped and we open at schema **v1**. New
-/// tables land as `onUpgrade` steps from here — the construction domain (§5)
-/// arrives as v2 at P3.
+/// tables land as `onUpgrade` steps from here.
 class DatabaseManager {
   /// Bump on every schema change and add a matching `onUpgrade` branch.
   ///   v1 — identity, device, sync, settings (P1/P2)
-  static const int currentVersion = 1;
+  ///   v2 — site ops: site_diary/site_attendance/deliveries (P5, servdesignspec §11)
+  ///   v3 — quality: inspections/inspection_items/defects/certificates (P6a, §12)
+  static const int currentVersion = 3;
 
   static Database? _instance;
 
@@ -40,11 +42,16 @@ class DatabaseManager {
       for (final stmt in CoreSchema.all) {
         await txn.execute(stmt);
       }
+      for (final stmt in DomainSchema.all) {
+        await txn.execute(stmt);
+      }
       await _createIndexes(txn);
+      await _createSiteOpsIndexes(txn);
+      await _createQualityIndexes(txn);
     });
     // ignore: avoid_print
     print('✅ [DB] Created projman2.db v$version '
-        '(${CoreSchema.all.length} core tables)');
+        '(${CoreSchema.all.length + DomainSchema.all.length} tables)');
   }
 
   static Future<void> _onUpgrade(
@@ -52,9 +59,24 @@ class DatabaseManager {
     int oldVersion,
     int newVersion,
   ) async {
-    // No migrations past v1 yet. Domain schema (§5) will add a `v < 2` branch.
+    if (oldVersion < 2) {
+      await db.transaction((txn) async {
+        for (final stmt in DomainSchema.v2) {
+          await txn.execute(stmt);
+        }
+        await _createSiteOpsIndexes(txn);
+      });
+    }
+    if (oldVersion < 3) {
+      await db.transaction((txn) async {
+        for (final stmt in DomainSchema.v3) {
+          await txn.execute(stmt);
+        }
+        await _createQualityIndexes(txn);
+      });
+    }
     // ignore: avoid_print
-    print('ℹ️ [DB] upgrade $oldVersion → $newVersion (no steps registered)');
+    print('ℹ️ [DB] upgrade $oldVersion → $newVersion');
   }
 
   /// Row counts per table — used by the startup log to confirm tables exist.
@@ -82,7 +104,7 @@ class DatabaseManager {
   static Future<void> clearAllData() async {
     final db = await getInstance();
     await db.transaction((txn) async {
-      for (final stmt in CoreSchema.all) {
+      for (final stmt in [...CoreSchema.all, ...DomainSchema.all]) {
         final match = RegExp(r'CREATE TABLE IF NOT EXISTS (\w+)').firstMatch(stmt);
         if (match != null) {
           await txn.delete(match.group(1)!);
@@ -115,6 +137,60 @@ class DatabaseManager {
     );
     await txn.execute(
       'CREATE INDEX IF NOT EXISTS idx_devices_uid ON devices(device_uid)',
+    );
+  }
+
+  // Site ops (P5, servdesignspec §11.9) — project-scoped reads + outbox scans.
+  static Future<void> _createSiteOpsIndexes(Transaction txn) async {
+    await txn.execute(
+      'CREATE INDEX IF NOT EXISTS idx_diary_project ON site_diary(project_id, entry_date)',
+    );
+    await txn.execute(
+      'CREATE INDEX IF NOT EXISTS idx_diary_dirty ON site_diary(is_dirty)',
+    );
+    await txn.execute(
+      'CREATE INDEX IF NOT EXISTS idx_attendance_project ON site_attendance(project_id)',
+    );
+    await txn.execute(
+      'CREATE INDEX IF NOT EXISTS idx_attendance_dirty ON site_attendance(is_dirty)',
+    );
+    await txn.execute(
+      'CREATE INDEX IF NOT EXISTS idx_deliveries_project ON deliveries(project_id)',
+    );
+    await txn.execute(
+      'CREATE INDEX IF NOT EXISTS idx_deliveries_dirty ON deliveries(is_dirty)',
+    );
+  }
+
+  // Quality (P6a, servdesignspec §12.9) — project-scoped reads (inspection_items
+  // via its parent's inspection_id, per §12.9 — it carries no project_id) + outbox.
+  static Future<void> _createQualityIndexes(Transaction txn) async {
+    await txn.execute(
+      'CREATE INDEX IF NOT EXISTS idx_insp_project ON inspections(project_id)',
+    );
+    await txn.execute(
+      'CREATE INDEX IF NOT EXISTS idx_insp_dirty ON inspections(is_dirty)',
+    );
+    await txn.execute(
+      'CREATE INDEX IF NOT EXISTS idx_items_inspection ON inspection_items(inspection_id)',
+    );
+    await txn.execute(
+      'CREATE INDEX IF NOT EXISTS idx_items_dirty ON inspection_items(is_dirty)',
+    );
+    await txn.execute(
+      'CREATE INDEX IF NOT EXISTS idx_defect_project ON defects(project_id)',
+    );
+    await txn.execute(
+      'CREATE INDEX IF NOT EXISTS idx_defect_status ON defects(project_id, status)',
+    );
+    await txn.execute(
+      'CREATE INDEX IF NOT EXISTS idx_defect_dirty ON defects(is_dirty)',
+    );
+    await txn.execute(
+      'CREATE INDEX IF NOT EXISTS idx_cert_project ON certificates(project_id)',
+    );
+    await txn.execute(
+      'CREATE INDEX IF NOT EXISTS idx_cert_dirty ON certificates(is_dirty)',
     );
   }
 }

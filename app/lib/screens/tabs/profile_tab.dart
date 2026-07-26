@@ -56,22 +56,21 @@ class _ProfileTabState extends State<ProfileTab> {
     });
   }
 
+  // 6-role model, camelCase wire values (projman-04 / matrix registry v2).
   static String _roleLabel(String? role) {
     switch (role) {
-      case 'org_admin':
-        return 'Org Admin';
-      case 'project_developer':
-        return 'Project Developer';
-      case 'project_manager':
+      case 'projectManager':
         return 'Project Manager';
-      case 'supervisor':
-        return 'Supervisor';
+      case 'siteSupervisor':
+        return 'Site Manager';
+      case 'foreperson':
+        return 'Foreman';
       case 'tradie':
         return 'Tradie';
       case 'inspector':
         return 'Inspector';
-      case 'customer':
-        return 'Customer';
+      case 'client':
+        return 'Client';
       default:
         return role == null || role.isEmpty ? '—' : role;
     }

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/db_service.dart';
+import '../models/domain.dart';
 
 // ── Field-app tab sub-page toggles ────────────────────────────────────────────
 // Each of the five bottom tabs cycles its sub-pages by tapping the header title
@@ -18,6 +19,17 @@ final profilePageProvider = StateProvider<int>((ref) => 0);
 // ── Active org (tenant) ───────────────────────────────────────────────────────
 // Resolved from the is_primary organisation on load. '' until first resolved.
 final orgIdProvider = StateProvider<String?>((ref) => null);
+
+// ── Active site project ───────────────────────────────────────────────────────
+// The Site tab (daily driver) is project-scoped — a supervisor works one site at
+// a time (appspec §5.3). Held here so the selection survives sub-page cycling
+// (Today ↔ Diary ↔ Attendance). Null until the supervisor picks a job.
+final activeSiteProjectProvider = StateProvider<Project?>((ref) => null);
+
+// ── Active quality project ───────────────────────────────────────────────────
+// Same pattern as Site (§5.5) — Inspections/Defects/Certificates are all
+// project-scoped, so the Quality tab picks one job at a time too.
+final activeQualityProjectProvider = StateProvider<Project?>((ref) => null);
 
 // ── Database service singleton ────────────────────────────────────────────────
 final databaseServiceProvider = FutureProvider<DatabaseService>((ref) async {

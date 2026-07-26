@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../config/providers.dart';
+import '../services/permissions_service.dart';
 import 'tabs/projects_tab.dart';
 import 'tabs/site_tab.dart';
 import 'tabs/safety_tab.dart';
@@ -27,6 +28,16 @@ class _TabDef {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _selectedIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // This shell only mounts once there's a session, so this is the first
+    // point permissions can actually be fetched (projman-05 §10.1 item 2).
+    // Fire-and-forget: gated screens await PermissionsService.ensureLoaded()
+    // themselves, so a slow/offline fetch here never blocks the tab bar.
+    PermissionsService.instance.ensureLoaded();
+  }
 
   static const _tabs = <_TabDef>[
     _TabDef('projects', Icons.folder_outlined,

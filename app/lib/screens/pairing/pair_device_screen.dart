@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../services/nexus_service.dart';
+import '../../services/permissions_service.dart';
 import '../../widgets/auth_scaffold.dart';
 import '../../widgets/auth_extras.dart';
 import '../../widgets/onboarding_fields.dart';
@@ -17,19 +18,24 @@ class PairDeviceScreen extends StatefulWidget {
   State<PairDeviceScreen> createState() => _PairDeviceScreenState();
 }
 
-/// Device roles assignable to a paired device (development.md §3).
-const pairingRoles = <String, String>{
-  'Supervisor': 'supervisor',
-  'Project Manager': 'project_manager',
-  'Tradie': 'tradie',
-  'Inspector': 'inspector',
-};
+/// Fallback shown only if `GET /auth/permissions` hasn't returned yet (e.g. no
+/// network on first open) — never the source of truth. The real list is
+/// [PermissionsService.pairableRoles] (projman-05 §6.3/§10.1 item 2); the
+/// server, not the app, decides which roles are device-pairable.
+const _fallbackRoles = <RoleOption>[
+  RoleOption(role: 'projectManager', label: 'Project Manager'),
+  RoleOption(role: 'siteSupervisor', label: 'Site Manager'),
+  RoleOption(role: 'foreperson', label: 'Foreman'),
+  RoleOption(role: 'tradie', label: 'Tradie'),
+  RoleOption(role: 'inspector', label: 'Inspector'),
+];
 
 enum _Phase { pickRole, showQr, done }
 
 class _PairDeviceScreenState extends State<PairDeviceScreen> {
   _Phase _phase = _Phase.pickRole;
-  String _roleLabel = 'Supervisor';
+  List<RoleOption> _roles = _fallbackRoles;
+  late String _roleEnum = _roles.first.role;
   bool _busy = false;
 
   String? _requestId;
@@ -37,7 +43,24 @@ class _PairDeviceScreenState extends State<PairDeviceScreen> {
   Map<String, dynamic>? _incoming; // the pending join request, once it appears
   Timer? _poll;
 
-  String get _roleEnum => pairingRoles[_roleLabel]!;
+  String get _roleLabel =>
+      _roles.firstWhere((r) => r.role == _roleEnum, orElse: () => _roles.first).label;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRoles();
+  }
+
+  Future<void> _loadRoles() async {
+    await PermissionsService.instance.ensureLoaded();
+    final server = PermissionsService.instance.pairableRoles;
+    if (!mounted || server.isEmpty) return;
+    setState(() {
+      _roles = server;
+      _roleEnum = server.first.role;
+    });
+  }
 
   @override
   void dispose() {
@@ -130,8 +153,9 @@ class _PairDeviceScreenState extends State<PairDeviceScreen> {
         AppDropdownField(
           label: 'Role',
           value: _roleLabel,
-          items: pairingRoles.keys.toList(),
-          onChanged: (v) => setState(() => _roleLabel = v!),
+          items: _roles.map((r) => r.label).toList(),
+          onChanged: (v) => setState(
+              () => _roleEnum = _roles.firstWhere((r) => r.label == v).role),
         ),
         const SizedBox(height: 24),
         AuthButton(label: 'Generate code', busy: _busy, onPressed: _generate),
