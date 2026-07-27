@@ -153,6 +153,17 @@ export const qualityApi = {
   certificates: (id)             => request('GET', `/projects/${id}/certificates`),
 };
 
+// Field / Team (DIRECTIVE 1 Steps A + D2) — the office watches what the app pushes
+// (stage progress, task tick/verify, hold-point checklists) and drives the two
+// server-mediated actions: verify a ticked task, satisfy a hold-point requirement.
+// Tasks + stages come off projectsApi.detail(id); these add the per-stage checklist
+// read and the two writes.
+export const fieldApi = {
+  holdPoints:      (id, stageId)        => request('GET',  `/projects/${id}/stages/${stageId}/hold-points`),
+  satisfyHoldPoint:(id, stageId, reqId) => request('POST', `/projects/${id}/stages/${stageId}/hold-points/${reqId}/satisfy`, {}),
+  verifyTask:      (id, taskId)         => request('POST', `/projects/${id}/tasks/${taskId}/verify`, {}),
+};
+
 export const stageTemplatesApi = {
   list:   ()   => request('GET', '/stage-templates'),
   detail: (id) => request('GET', `/stage-templates/${id}`),
