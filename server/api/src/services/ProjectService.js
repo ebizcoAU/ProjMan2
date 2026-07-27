@@ -38,12 +38,24 @@ function redactProject(row, role) {
   return rest;
 }
 
-function redactStage(row, role) {
-  if (seesMoney(role)) return row;
-  const {
-    budget_amount, estimated_amount, committed_amount, actual_amount, claimed_amount, ...rest
-  } = row;
-  return rest;
+// `engagementMode`/`isTheBuilder` implement §7.2.1's query-time resolution: a PM
+// with `money.read` still doesn't see the engaged Builder's own cost-plan breakdown
+// under `independent_fixed` — only the head-contract total (`projects.contract_value`,
+// untouched — a separate column, redacted only by the plain `money.read` gate above).
+// `independent_cost_plus`/`employee`/no-Builder-yet fall through unchanged (the
+// existing `money.read` gate is the whole story, exactly like before this migration).
+function redactStage(row, role, engagementMode, isTheBuilder) {
+  if (!seesMoney(role)) {
+    const {
+      budget_amount, estimated_amount, committed_amount, actual_amount, claimed_amount, ...rest
+    } = row;
+    return rest;
+  }
+  if (engagementMode === 'independent_fixed' && !isTheBuilder) {
+    const { estimated_amount, committed_amount, actual_amount, claimed_amount, ...rest } = row;
+    return rest;
+  }
+  return row;
 }
 
 function redactTask(row, role) {
@@ -136,9 +148,15 @@ async function getProject({ orgId, role, userId, id }) {
     [id, orgId]
   );
 
+  // §7.2.1 query-time resolution — lazy require, same cycle-break as
+  // assertProgrammeWriteScope (JobAwardService requires this module back).
+  const JobAwardService = require('./JobAwardService');
+  const engagement = await JobAwardService.acceptedBuilderEngagement({ orgId, projectId: id });
+  const isTheBuilder = !!engagement && String(engagement.to_user_id) === String(userId);
+
   return {
     project: redactProject(project, role),
-    stages: stages.map((s) => redactStage(s, role)),
+    stages: stages.map((s) => redactStage(s, role, engagement?.builder_engagement_type, isTheBuilder)),
     tasks: tasks.map((t) => redactTask(t, role)),
   };
 }
@@ -182,6 +200,20 @@ async function createProject({ orgId, data, addedBy }) {
   if (data.pm_user_id && data.pm_user_id !== addedBy) {
     await MembershipService.addMember({ orgId, projectId: id, userId: data.pm_user_id, addedBy });
   }
+
+  // S1.3 (18-Stage spec v3.4) — PM declares building type/unit count AT CREATION,
+  // written immediately rather than only from Stage 9 on. A standalone house is not
+  // a special case: `modular_units` always has at least one row (devroadmap.md §2 —
+  // "one model, one rule set"). `unit_count` is not a `projects` column — it only
+  // ever materialises as these rows.
+  const unitCount = Math.max(1, Number(data.unit_count) || 1);
+  for (let n = 1; n <= unitCount; n++) {
+    await pool.query(
+      `INSERT INTO modular_units (id, org_id, project_id, unit_number) VALUES (?, ?, ?, ?)`,
+      [uuidv4(), orgId, id, n]
+    );
+  }
+
   return { id };
 }
 
@@ -215,8 +247,37 @@ async function updateProject({ orgId, id, data, addedBy }) {
 
 // ── Stages ───────────────────────────────────────────────────────────────────
 
+// Corrective migration Step A (servdesignspec §7.2): `programme.write` is a flat
+// permission grant (route middleware), but WHICH stages it reaches is now scoped per
+// row. PM holds Stages 1–8 always, and 9–18 too UNTIL a Builder is actually
+// job-awarded and accepted — nobody real starts a project with an instant Builder,
+// so this stays backward-compatible for every project before Stage 9 (and every
+// existing test). Once a Builder accepts, PM's write on 9–18 stops and only that
+// Builder (their own accepted engagement) holds it there. Lazy `require` (not a
+// top-level import) — JobAwardService requires ProjectService back for
+// `assertProjectReachable`, so this breaks the cycle.
+async function assertProgrammeWriteScope({ orgId, projectId, actor, seq }) {
+  if (seq === undefined || seq === null) return; // no stage-number context — nothing to scope
+  const JobAwardService = require('./JobAwardService');
+  const engagement = await JobAwardService.acceptedBuilderEngagement({ orgId, projectId });
+
+  if (Number(seq) <= 8) {
+    if (actor.role === 'projectManager') return;
+    throw new ServiceError('FORBIDDEN', 'Only the Project Manager holds programme.write on Stages 1–8', 403);
+  }
+  // Stage 9+
+  if (!engagement) {
+    if (actor.role === 'projectManager') return; // no Builder yet — PM still runs it
+    throw new ServiceError('FORBIDDEN', 'No Builder is engaged on this project yet', 403);
+  }
+  if (actor.role === 'builder' && String(engagement.to_user_id) === String(actor.userId)) return;
+  throw new ServiceError('FORBIDDEN',
+    'Stages 9–18 are the engaged Builder\'s own schedule — PM is read-only here once a Builder is engaged', 403);
+}
+
 async function createStage({ orgId, projectId, data, auth }) {
   await assertProjectReachable(orgId, projectId, auth);
+  await assertProgrammeWriteScope({ orgId, projectId, actor: auth, seq: data.seq });
 
   const id = uuidv4();
   const fields = { name: data.name };
@@ -236,6 +297,13 @@ async function createStage({ orgId, projectId, data, auth }) {
 
 async function updateStage({ orgId, projectId, stageId, data, auth }) {
   await assertProjectReachable(orgId, projectId, auth);
+
+  const [[existing]] = await pool.query(
+    'SELECT seq FROM project_stages WHERE id = ? AND project_id = ? AND org_id = ? AND is_deleted = 0 LIMIT 1',
+    [stageId, projectId, orgId]
+  );
+  if (!existing) throw new ServiceError('NOT_FOUND', 'Stage not found', 404);
+  await assertProgrammeWriteScope({ orgId, projectId, actor: auth, seq: existing.seq });
 
   const fields = {};
   for (const key of STAGE_FIELDS) {

@@ -20,6 +20,7 @@ const MembershipService = require('./MembershipService');
 const StageProgressionService = require('./StageProgressionService');
 const SiteOpsService = require('./SiteOpsService');
 const QualityOpsService = require('./QualityOpsService');
+const TaskProgressService = require('./TaskProgressService');
 
 const SYNC_DEBUG = process.env.SYNC_DEBUG === 'true';
 
@@ -160,6 +161,12 @@ async function pushRecord({ orgId, userId, deviceUid, role, surface, wireName, o
   if (QualityOpsService.isQualityOps(wireName)) {
     await QualityOpsService.guardPush({ wireName, operation, safe, actor: { orgId, userId, role } });
   }
+  // Tick-then-verify (DIRECTIVE 1 Step A): a completion-field change on `tasks`
+  // needs progress.tick, and a `self`-scope tradie may only tick their own task. A
+  // no-op for every other table/field.
+  await TaskProgressService.guardPush({
+    wireName, operation, id: incoming.id, safe, actor: { orgId, userId, role },
+  });
 
   try {
     if (operation === 'create') {
@@ -301,6 +308,16 @@ async function pullDeltas({ orgId, userId, deviceUid, jti, sinceMs, role }) {
     const cursorMs = Number(cursor_ms);
     const changes = [];
 
+    // §7.2.1 query-time resolution, sync-pull side: same rule REST's getProject
+    // applies, cheap to precompute once per pull rather than per row. Only
+    // `project_stages` reads from it (below) — every other table is unaffected.
+    const [builderEngagements] = await pool.query(
+      `SELECT project_id, builder_engagement_type, to_user_id FROM job_awards
+        WHERE org_id = ? AND role_offered = 'builder' AND status = 'accepted'`,
+      [orgId]
+    );
+    const engagementByProject = new Map(builderEngagements.map((e) => [e.project_id, e]));
+
     for (const [wireName, entry] of Object.entries(TABLES)) {
       if (!entry.pull) continue;
 
@@ -355,6 +372,17 @@ async function pullDeltas({ orgId, userId, deviceUid, jti, sinceMs, role }) {
         const { password_hash, _su_ms, server_updated_at, ...rowData } = row;
         if (!seesMoney && entry.financialColumns) {
           for (const col of entry.financialColumns) delete rowData[col];
+        } else if (wireName === 'project_stages' && seesMoney) {
+          // §7.2.1: a PM with money.read still doesn't see the engaged Builder's own
+          // cost-plan breakdown under independent_fixed — only the head-contract
+          // total (projects.contract_value, a different table, untouched here).
+          const eng = engagementByProject.get(row.project_id);
+          if (eng && eng.builder_engagement_type === 'independent_fixed'
+              && String(eng.to_user_id) !== String(userId)) {
+            for (const c of ['estimated_amount', 'committed_amount', 'actual_amount', 'claimed_amount']) {
+              delete rowData[c];
+            }
+          }
         }
         changes.push({
           table_name: wireName,

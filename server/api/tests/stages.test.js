@@ -82,10 +82,22 @@ async function pairAs(admin, userId, role, uid) {
   ok('stage 11 cannot start before stage 10 complete (STAGE_GATE_PREV)',
     startEarly.status === 409 && startEarly.json.code === 'STAGE_GATE_PREV', JSON.stringify(startEarly.json));
 
+  // Site Supervisor, paired early — Stage 10's new S10.5 hold-point requirement
+  // (DIRECTIVE 1 Step D2) needs one to satisfy it before Stage 10 can complete.
+  const supTokEarly = await pairAs(pm, pmUser, 'siteSupervisor', `sup-early-${s}`);
+
   // Walk stages 1–10 to complete so 11 may start. (1–9 no gate; 10 gate_prev on 9.)
   for (let n = 1; n <= 10; n++) {
     const id = bySeq(n).id;
     await call('POST', `/projects/${projId}/stages/${id}/advance`, { to_status: 'in_progress' }, pm);
+    if (n === 10) {
+      const hp = await call('GET', `/projects/${projId}/stages/${id}/hold-points`, undefined, pm);
+      const setout = hp.json.data.requirements.find(r => r.blocks_progress === 1);
+      ok('Stage 10 seeded the S10.5 survey set-out hold-point requirement', !!setout, JSON.stringify(hp.json));
+      const satisfy = await call('POST',
+        `/projects/${projId}/stages/${id}/hold-points/${setout.id}/satisfy`, {}, supTokEarly);
+      ok('Site Supervisor satisfies S10.5', satisfy.status === 200, JSON.stringify(satisfy.json));
+    }
     const c = await call('POST', `/projects/${projId}/stages/${id}/advance`, { to_status: 'complete' }, pm);
     if (c.status !== 200) { ok(`walk stage ${n} to complete`, false, JSON.stringify(c.json)); break; }
   }

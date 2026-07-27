@@ -8,6 +8,7 @@
 const { v4: uuidv4 } = require('uuid');
 const pool = require('../db/pool');
 const { ServiceError } = require('./errors');
+const HoldPointService = require('./HoldPointService');
 
 /** System templates (org_id NULL) + this org's own. */
 async function listTemplates({ orgId }) {
@@ -64,6 +65,8 @@ async function instantiate({ orgId, projectId, templateId, actorUserId }) {
   const { items } = await getTemplate({ orgId, id: templateId });
   if (!items.length) throw new ServiceError('VALIDATION_ERROR', 'Template has no stages', 422);
 
+  const [[org]] = await pool.query('SELECT state FROM organisations WHERE id = ? LIMIT 1', [orgId]);
+
   const conn = await pool.getConnection();
   await conn.beginTransaction();
   try {
@@ -74,15 +77,21 @@ async function instantiate({ orgId, projectId, templateId, actorUserId }) {
     const idBySeq = new Map(itemRows.map((r) => [r.seq, r.id]));
 
     for (const it of items) {
+      const stageId = uuidv4();
       await conn.query(
         `INSERT INTO project_stages
            (id, org_id, project_id, seq, stage_code, name, part, actor_role,
             template_item_id, is_hold_point, gate_prev, status, updated_at, server_updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'not_started', ?, NOW(3))`,
-        [uuidv4(), orgId, projectId, it.seq, it.stage_code, it.name, it.part || null,
+        [stageId, orgId, projectId, it.seq, it.stage_code, it.name, it.part || null,
          it.actor_role || null, idBySeq.get(it.seq) || null,
          it.is_hold_point ? 1 : 0, it.gate_prev ? 1 : 0, nowMs]
       );
+      // DIRECTIVE 1 Step D2 — the per-stage hold-point checklist (additive to the
+      // is_hold_point/is_validated gate above, never a replacement of it).
+      await HoldPointService.seedForStage({
+        conn, orgId, projectId, stageId, seq: it.seq, orgState: org?.state,
+      });
     }
     await conn.commit();
   } catch (err) {

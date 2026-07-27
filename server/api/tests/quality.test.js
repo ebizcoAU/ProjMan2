@@ -76,10 +76,19 @@ async function pull(tok, table) {
   const stages = detail.json.data.stages;
   const bySeq = (n) => stages.find((st) => st.seq === n);
 
+  // Paired early — Stage 10's S10.5 hold-point requirement (DIRECTIVE 1 Step D2)
+  // needs a Site Supervisor to satisfy it before Stage 10 can complete.
+  const supTokEarly = await pairAs(pm, pmUser, 'siteSupervisor', `sup-early-${s}`);
+
   // Walk 1–10 to complete so stage 11 (hold point) may start.
   for (let n = 1; n <= 10; n++) {
     const id = bySeq(n).id;
     await call('POST', `/projects/${projId}/stages/${id}/advance`, { to_status: 'in_progress' }, pm);
+    if (n === 10) {
+      const hp = await call('GET', `/projects/${projId}/stages/${id}/hold-points`, undefined, pm);
+      const setout = hp.json.data.requirements.find((r) => r.blocks_progress === 1);
+      await call('POST', `/projects/${projId}/stages/${id}/hold-points/${setout.id}/satisfy`, {}, supTokEarly);
+    }
     await call('POST', `/projects/${projId}/stages/${id}/advance`, { to_status: 'complete' }, pm);
   }
   const s11 = bySeq(11).id, s12 = bySeq(12).id;

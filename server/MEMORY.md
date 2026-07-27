@@ -5,7 +5,8 @@ construction project-management platform. You own **`server/api`** (Node/Express
 MySQL). A separate **app team** owns the Flutter app (`app/`) and the contract docs.
 This file is what a fresh session (after `/clear`) reads to resume.
 
-**One-line status (2026-07-24):** Phase 1 + AU sign-in · **portal** (`server/dashboard`:
+**One-line status (2026-07-26, committed `d03f822` on `server/p5-site-ops` — still
+local/unpushed, same as the P5 commit before it):** Phase 1 + AU sign-in · **portal** (`server/dashboard`:
 login + Devices + Projects + Programme + **Cost Plan** + **Admin** Users/Settings/Audit
 — built 2026-07-24, endpoints verified) · **construction core** (v003) ·
 **access-control 6-ROLE model** (v004+v005) · **§10 per-op ownership** (app CREATEs
@@ -45,6 +46,49 @@ siteops 28 · quality 19 · compliance 18 (run
 `DISABLE_RATE_LIMIT=true PORT=4199 node src/index.js`). Dashboard now on **:4110**
 (was :3100), branded "ProjMan" not "ProjMan2" in visible UI text. Migrations at **v011**.
 **App-team progress board = `docs/decisions/projman-04.md`** — keep updated.
+
+**DIRECTIVE 1 — CORRECTIVE MIGRATION BUILT + VERIFIED (2026-07-28, migrations v012–v016,
+NOT yet committed).** Manager's corrective build off the `xprojman-01.md` assessment,
+against the revised spec set (`servdesignspecification.md` §7.2/§7.3, `devroadmap.md`).
+All 9 suites green (191 tests, throwaway :4199): isolation 16 · domain 29 · access 19 ·
+stages 17 · admin 18 · siteops 28 · quality 19 · compliance 18 · **directive1 27** (new).
+- **Step A (v012):** +roles `builder`(pair_rank 35)/`developer`/`accountant`; split
+  `progress.write`→`progress.tick`+`progress.verify` (wired to **`tasks`**, previously
+  UNGUARDED — the stage-advance `progress.write`/`StageProgressionService` gate is
+  untouched); +`tax.approve`/`development.read`/`panel.manage`; protected
+  `tasks.verified_by`/`verified_at`; **matrix_version→5**; `builder` is a 6th pairable
+  field role. `accountant.scope_class='assigned'` NOT spec's literal `engagement` (that
+  fails closed until PM2-02 lands — documented in the migration header).
+- **Step A code:** `TaskProgressService` (tick-then-verify: `guardPush` needs
+  `progress.tick` only when `completion` changes — a create at `completion:0` is NOT a
+  tick; `verify()` is the server-mediated action stamping the protected pair). Query-time
+  money redaction for `independent_fixed` engagement in `ProjectService.redactStage` +
+  `SyncService.pullDeltas`. `programme.write` stage-range scoping (`assertProgrammeWriteScope`:
+  PM Stages 1–8, accepted Builder 9–18).
+- **Step B (v013):** `introductions` + `job_awards` + `project_payments` (minimal
+  TPAR-relevant). `IntroductionService` (idempotent QR swap, peer-to-peer, no panel.manage)
+  + `JobAwardService` (create needs `panel.manage` + a pre-existing introduction — the
+  cold-stranger constraint; `respond` only by the invitee, accept auto-enrols;
+  `recordDeposit` = S9.9 binding event, idempotent). Routes on `projects.js` +
+  `routes/introductions.js` (mounted `/api/v1/introductions`).
+- **Step A2 (v014):** `subcontractor_engagements` (`subcontractor_pass_through_consent`
+  DEFAULT FALSE, `consent_recorded_at`/`consent_document_id`). `builder_engagement_type`
+  set once at S9.6 on the job award.
+- **Step D (v015):** `DELETE /organisation/users/:id` = **deactivate not erase**
+  (`deactivated_at`, status disabled, mobile purged, sessions revoked, evidence retained;
+  last-admin protected; idempotent `ALREADY_DEACTIVATED`).
+- **Step D2 (v016):** `hold_point_requirements` (checklist per stage, `required_role`/
+  `inspection_type`/`jurisdiction`/`blocks_progress`) + `modular_units`. `HoldPointService`
+  seeds concrete rows per stage (S10.5 survey set-out=blocking siteSupervisor; S11.9 three
+  non-blocking; S12 two non-blocking; S16/S17 jurisdiction; S18.12 accountant-blocking).
+  Additive: `allBlockingSatisfied()` is a NEW gate in `StageProgressionService` alongside
+  the untouched `is_hold_point`/`is_validated` check; `satisfy()` checks the row's own
+  required authority (PERMISSION_BY_ROLE map). `modular_units` seeded at project create
+  from `unit_count`.
+- **Step E (VeriTrade login endpoints): NOT DONE — blocked on PM2-02** per the directive.
+- Test updates for the new Stage-10 blocking gate: `stages.test.js`/`quality.test.js` now
+  pair a siteSupervisor early and satisfy S10.5 before completing Stage 10; `access.test.js`
+  matrixVersion 4→5 and pairableRoles 5→6.
 
 **THE ROLE MODEL (authoritative, 2026-07-23):** 6 roles, camelCase, from
 `18StageProjectMangementMatrix.md` (NOT development.md §3's retired 12-role model):

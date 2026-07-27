@@ -57,11 +57,13 @@ async function pairAs(admin, adminUserId, role, uid, stamp) {
   // ── 1. /auth/permissions ──
   const perms = await call('GET', '/auth/permissions', undefined, pm);
   const d = perms.json.data;
-  ok('permissions: matrixVersion present', d?.matrixVersion === 4, JSON.stringify(d?.matrixVersion));
+  // v5 (migration_v012, DIRECTIVE 1 Step A): + builder/developer/accountant roles,
+  // + progress.tick/verify/tax.approve/development.read/panel.manage permissions.
+  ok('permissions: matrixVersion present', d?.matrixVersion === 5, JSON.stringify(d?.matrixVersion));
   ok('permissions: projectManager scope = portfolio', d?.scopeClass === 'portfolio');
   ok('permissions: projectManager has projects.write', d?.permissions?.includes('projects.write'));
-  ok('permissions: pairableRoles are the 5 field roles (no client)',
-    d?.pairableRoles?.length === 5 && !d.pairableRoles.some(r => r.role === 'client'),
+  ok('permissions: pairableRoles are the 6 field roles (+ builder, no client)',
+    d?.pairableRoles?.length === 6 && !d.pairableRoles.some(r => r.role === 'client'),
     JSON.stringify(d?.pairableRoles?.map(r => r.role)));
   ok('permissions: client is not assignable',
     !d?.assignableRoles?.some(r => r.role === 'client'),

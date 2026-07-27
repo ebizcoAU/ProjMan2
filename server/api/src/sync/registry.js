@@ -378,6 +378,11 @@ const PROTECTED_COLUMNS = new Set([
   'raised_by',
   'closed_at',
   'closed_by',
+  // Tick-then-verify (migration_v012, DIRECTIVE 1 Step A) — a device ticks
+  // `tasks.completion`; only TaskProgressService.verify (Site Supervisor,
+  // progress.verify) may set the verify pair, never a bare sync write.
+  'verified_by',
+  'verified_at',
 ]);
 
 // Masked in log output. Not blocked — just never printed.

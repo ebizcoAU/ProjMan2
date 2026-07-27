@@ -34,6 +34,9 @@ const MembershipService = require('../services/MembershipService');
 const StageTemplateService = require('../services/StageTemplateService');
 const StageProgressionService = require('../services/StageProgressionService');
 const InspectionService = require('../services/InspectionService');
+const TaskProgressService = require('../services/TaskProgressService');
+const JobAwardService = require('../services/JobAwardService');
+const HoldPointService = require('../services/HoldPointService');
 
 router.use(authenticate);
 
@@ -46,6 +49,8 @@ const canWriteProgress = requirePermission('progress.write');
 const canValidate = requirePermission('quality.validate');
 const canManageUsers = requirePermission('users.manage');
 const canWriteQuality = requirePermission('quality.write');
+const canVerifyProgress = requirePermission('progress.verify');
+const canManagePanel = requirePermission('panel.manage');
 
 function validation(req, res) {
   const errors = validationResult(req);
@@ -93,6 +98,8 @@ router.post(
     body('status').optional().isIn(['draft', 'active', 'on_hold', 'completed', 'archived']),
     body('start_date').optional({ nullable: true, checkFalsy: true }).isISO8601(),
     body('due_date').optional({ nullable: true, checkFalsy: true }).isISO8601(),
+    // S1.3 (18-Stage spec v3.4) — building type/unit count, declared at creation.
+    body('unit_count').optional({ nullable: true }).isInt({ min: 1 }),
   ],
   async (req, res) => {
     if (validation(req, res)) return;
@@ -286,6 +293,38 @@ router.post(
   }
 );
 
+// ── Hold-point checklist (DIRECTIVE 1 Step D2, 18-Stage spec §1.5) — a list per
+// stage, not a single flag. Read is `projects.read`; satisfying one row needs
+// whatever authority that ROW names (inspector/siteSupervisor/accountant/PM),
+// checked inside HoldPointService.satisfy — no single blanket permission here.
+router.get('/:id/stages/:stageId/hold-points', canReadProjects, async (req, res) => {
+  try {
+    const data = await HoldPointService.listForStage({
+      orgId: req.auth.orgId, projectId: req.params.id, stageId: req.params.stageId,
+    });
+    return res.json({ success: true, data });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+router.post('/:id/stages/:stageId/hold-points/:reqId/satisfy', async (req, res) => {
+  try {
+    const result = await HoldPointService.satisfy({
+      orgId: req.auth.orgId, projectId: req.params.id, stageId: req.params.stageId,
+      requirementId: req.params.reqId,
+      actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+    });
+    await audit(req, 'hold_point.satisfy', {
+      entity: 'hold_point_requirements', entityId: req.params.reqId,
+      detail: { project_id: req.params.id, stage_id: req.params.stageId },
+    });
+    return res.json({ success: true, data: result });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
 // ── Project membership (the console's Team tab — §9.9.2, web-only in v1) ───────
 //   GET    /projects/:id/members            who is on this job
 //   POST   /projects/:id/members  {user_id}  add       (users.manage)
@@ -454,6 +493,120 @@ router.get('/:id/certificates', canReadProjects, async (req, res) => {
       actor: { role: req.auth.role, userId: req.auth.userId },
     });
     return res.json({ success: true, data });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+// ── Job Award (DIRECTIVE 1 Step B, servdesignspec §7.3) ─────────────────────────
+// POST   /projects/:id/job-awards                send the S9.6 invitation (panel.manage;
+//                                                 requires a pre-existing introduction)
+// GET    /projects/:id/job-awards                review list
+// POST   /projects/:id/job-awards/:jaId/respond   the S9.7 tap — only the invited person
+// POST   /projects/:id/job-awards/:jaId/deposit   S9.9 — the binding deposit (panel.manage)
+router.post(
+  '/:id/job-awards',
+  canManagePanel,
+  [
+    body('to_user_id').trim().notEmpty().withMessage('to_user_id is required'),
+    body('role_offered').isIn(['builder', 'tradie', 'foreperson', 'subcontractor']),
+    body('builder_engagement_type').optional({ nullable: true })
+      .isIn(['employee', 'independent_fixed', 'independent_cost_plus']),
+  ],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await JobAwardService.create({
+        orgId: req.auth.orgId, projectId: req.params.id,
+        actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+        toUserId: req.body.to_user_id, roleOffered: req.body.role_offered,
+        builderEngagementType: req.body.builder_engagement_type,
+      });
+      await audit(req, 'job_award.create', {
+        entity: 'job_awards', entityId: result.id,
+        detail: { project_id: req.params.id, role_offered: req.body.role_offered, to_user_id: req.body.to_user_id },
+      });
+      return res.status(201).json({ success: true, data: result });
+    } catch (err) {
+      return sendError(res, err);
+    }
+  }
+);
+
+router.get('/:id/job-awards', canReadProjects, async (req, res) => {
+  try {
+    const data = await JobAwardService.list({
+      orgId: req.auth.orgId, projectId: req.params.id,
+      actor: { role: req.auth.role, userId: req.auth.userId },
+    });
+    return res.json({ success: true, data });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+router.post(
+  '/:id/job-awards/:jaId/respond',
+  [body('accept').isBoolean().withMessage('accept must be true or false')],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await JobAwardService.respond({
+        orgId: req.auth.orgId, projectId: req.params.id, jobAwardId: req.params.jaId,
+        actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+        accept: req.body.accept, surface: req.auth.deviceUid ? 'app' : 'portal',
+      });
+      await audit(req, 'job_award.respond', {
+        entity: 'job_awards', entityId: req.params.jaId,
+        detail: { project_id: req.params.id, status: result.status },
+      });
+      return res.json({ success: true, data: result });
+    } catch (err) {
+      return sendError(res, err);
+    }
+  }
+);
+
+router.post(
+  '/:id/job-awards/:jaId/deposit',
+  canManagePanel,
+  [
+    body('amount').isFloat({ gt: 0 }).withMessage('amount must be a positive number'),
+    body('reference').optional({ nullable: true }).isString(),
+  ],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await JobAwardService.recordDeposit({
+        orgId: req.auth.orgId, projectId: req.params.id, jobAwardId: req.params.jaId,
+        actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+        amount: req.body.amount, reference: req.body.reference,
+      });
+      await audit(req, 'job_award.deposit', {
+        entity: 'job_awards', entityId: req.params.jaId,
+        detail: { project_id: req.params.id, amount: req.body.amount },
+      });
+      return res.status(201).json({ success: true, data: result });
+    } catch (err) {
+      return sendError(res, err);
+    }
+  }
+);
+
+// ── POST /projects/:id/tasks/:taskId/verify  the Site Supervisor's tick-then-verify ─
+// (DIRECTIVE 1 Step A, servdesignspec §7.2). A device ticks tasks.completion via
+// /sync/push (progress.tick, TaskProgressService.guardPush); this is the one
+// server-mediated action that sets the protected verified_by/verified_at pair.
+router.post('/:id/tasks/:taskId/verify', canVerifyProgress, async (req, res) => {
+  try {
+    const result = await TaskProgressService.verify({
+      orgId: req.auth.orgId, projectId: req.params.id, taskId: req.params.taskId,
+      actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+    });
+    await audit(req, 'task.verify', {
+      entity: 'tasks', entityId: req.params.taskId, detail: { project_id: req.params.id },
+    });
+    return res.json({ success: true, data: result });
   } catch (err) {
     return sendError(res, err);
   }

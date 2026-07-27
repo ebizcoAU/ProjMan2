@@ -17,6 +17,7 @@ const access = require('../lib/access');
 const { isProjectMember } = require('../lib/scope');
 const hooks = require('./stageHooks');
 const ComplianceService = require('./ComplianceService');
+const HoldPointService = require('./HoldPointService');
 
 const STATUSES = ['not_started', 'in_progress', 'blocked', 'complete', 'skipped'];
 
@@ -95,6 +96,16 @@ async function checkTransition({ actor, stage, toStatus }) {
     if (!(await ComplianceService.checkStructuralCompliance(actor.orgId, stage.id))) {
       throw new ServiceError('STRUCTURAL_INCOMPLETE',
         'This stage has an incomplete or failed structural inspection — resolve it before completing the stage', 409);
+    }
+    // 5. Hold-point CHECKLIST (DIRECTIVE 1 Step D2, 18-Stage spec §1.5) — additive to
+    //    gate #3 above, never a replacement of it: a stage with no requirement rows
+    //    is unaffected (existing behaviour, unchanged); one with open, blocking rows
+    //    (Stage 10's survey set-out, Stage 18's new accountant tax.approve gate)
+    //    cannot complete until every blocking row is satisfied, on top of whatever
+    //    gate #3 already demands.
+    if (!(await HoldPointService.allBlockingSatisfied(actor.orgId, stage.id))) {
+      throw new ServiceError('HOLD_POINT_REQUIREMENTS_OPEN',
+        'This stage has an open hold-point requirement — satisfy it before completing the stage', 409);
     }
   }
 }

@@ -314,6 +314,75 @@ router.patch(
 );
 
 // ============================================================================
+// DELETE /organisation/users/:id — Step D, servdesignspecification.md §7.6.
+// Deactivation, NOT erasure: a hard DELETE is never correct for anyone who may have
+// relied-upon project evidence attached (a verified tick, a signed diary entry, a
+// hold-point sign-off) — and there is no cheap way to know in advance which users do
+// and don't, so every deactivation follows the same four-step rule.
+// ============================================================================
+router.delete('/users/:id', requireOrgAdmin, async (req, res) => {
+  try {
+    const [[target]] = await pool.query(
+      `SELECT id, role, status, deactivated_at FROM users WHERE id = ? AND org_id = ? AND is_deleted = 0 LIMIT 1`,
+      [req.params.id, req.auth.orgId]
+    );
+    if (!target) {
+      return res.status(404).json({ success: false, message: 'User not found', code: 'NOT_FOUND' });
+    }
+    if (target.deactivated_at) {
+      return res.status(409).json({ success: false, message: 'This account is already deactivated', code: 'ALREADY_DEACTIVATED' });
+    }
+
+    // Same "don't leave the org unadministered" guard as PATCH's role-demotion check,
+    // applied to the stronger action of deactivating someone outright.
+    const adminRoles = access.allRoles().filter((r) => access.hasPermission(r, 'org.manage'));
+    if (adminRoles.includes(target.role)) {
+      const placeholders = adminRoles.map(() => '?').join(', ');
+      const [[{ n }]] = await pool.query(
+        `SELECT COUNT(*) AS n FROM users
+          WHERE org_id = ? AND role IN (${placeholders})
+            AND status = 'active' AND is_deleted = 0 AND deactivated_at IS NULL`,
+        [req.auth.orgId, ...adminRoles]
+      );
+      if (n <= 1) {
+        return res.status(409).json({
+          success: false,
+          message: 'You are the only administrator. Promote someone else first.',
+          code: 'LAST_ADMIN',
+        });
+      }
+    }
+
+    // 1. Stop all future sync/capture — reuses the existing 'disabled' gate
+    //    `authenticate()` already refuses, rather than inventing a second one.
+    // 2. Force-logout every live session immediately (not "on next expiry").
+    // 3. Purge only discretionary fields — this system has no profile photo/bio yet,
+    //    so `mobile` (a contact detail) is the one column that qualifies today.
+    // 4. VeriTrade is_published=false — N/A, VeriTrade doesn't exist yet (deferred,
+    //    not forgotten; see xprojman-01.md S12).
+    // Every other row (tasks, inspections, site_diary, audit_log…) is untouched —
+    // the whole point is that relied-upon evidence survives this.
+    await pool.query(
+      `UPDATE users SET deactivated_at = NOW(), status = 'disabled', mobile = NULL,
+              security_version = security_version + 1
+        WHERE id = ? AND org_id = ?`,
+      [target.id, req.auth.orgId]
+    );
+    await pool.query(
+      `UPDATE sessions SET revoked_at = NOW(), is_authoritative = 0
+        WHERE user_id = ? AND revoked_at IS NULL`,
+      [target.id]
+    );
+
+    await audit(req, 'user.deactivated', { entity: 'users', entityId: target.id, detail: {} });
+    return res.json({ success: true, data: { id: target.id, deactivated: true } });
+  } catch (err) {
+    console.error('[ORG/USERS/DELETE] Error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to deactivate user' });
+  }
+});
+
+// ============================================================================
 // GET /organisation/audit
 // ============================================================================
 router.get(
