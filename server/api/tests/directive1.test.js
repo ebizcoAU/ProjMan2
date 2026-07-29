@@ -72,6 +72,12 @@ async function pairAs(admin, userId, role, uid) {
   const detail = await call('GET', `/projects/${projId}`, undefined, pm);
   const bySeq = (n) => detail.json.data.stages.find((st) => st.seq === n);
 
+  // ── B0. Self-award refused: appointer ≠ appointed (xprojman-08 §3, single-role model) ──
+  const selfAward = await call('POST', `/projects/${projId}/job-awards`,
+    { to_user_id: pmUser, role_offered: 'builder', builder_engagement_type: 'independent_fixed' }, pm);
+  ok('a PM cannot Job-Award himself (SELF_AWARD)',
+    selfAward.status === 400 && selfAward.json.code === 'SELF_AWARD', JSON.stringify(selfAward.json));
+
   // ── B2. Cold-stranger constraint: a Job Award before any introduction is refused ──
   const noIntro = await call('POST', `/projects/${projId}/job-awards`,
     { to_user_id: builderUser, role_offered: 'builder', builder_engagement_type: 'independent_fixed' }, pm);

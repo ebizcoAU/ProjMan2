@@ -38,6 +38,15 @@ async function create({ orgId, projectId, actor, toUserId, roleOffered, builderE
     throw new ServiceError('VALIDATION_ERROR',
       `builder_engagement_type is required for role_offered='builder' and must be one of ${ENGAGEMENT_TYPES.join(', ')}`, 400);
   }
+  // Appointer ≠ appointed (xprojman-08 §3, owner 2026-07-30). One identity = one
+  // fixed role, so a PM can never also be the Builder — no self-award. This was
+  // already blocked indirectly (an award needs a prior introduction; self-introduction
+  // is rejected), but the single-role decision makes it an explicit invariant rather
+  // than an emergent side-effect.
+  if (String(actor.userId) === String(toUserId)) {
+    throw new ServiceError('SELF_AWARD',
+      'A Job Award cannot name the same person as both awarder and awardee', 400);
+  }
   await ProjectService.assertProjectReachable(orgId, projectId, { role: actor.role, userId: actor.userId });
 
   const introduced = await IntroductionService.exists({ orgId, userAId: actor.userId, userBId: toUserId });

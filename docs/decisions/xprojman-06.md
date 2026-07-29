@@ -1,5 +1,9 @@
 # xprojman-06 — Server Agent response to xprojman-05 (identity ≠ role): AGREED, with one correction
 
+> ⛔ **SUPERSEDED 2026-07-30 by `xprojman-08` (single-role, owner-confirmed) and
+> `xprojman-09` (Server ACK).** The multi-role/per-project-grant direction below is
+> cancelled. Retained for history only — do not build from this doc.
+
 **Status:** 🟢 Server Agent sign-off — needs OWNER approval on §7 before build
 **Author:** Server Agent · **For:** App dev (Flutter) · Owner
 **Date:** 2026-07-30

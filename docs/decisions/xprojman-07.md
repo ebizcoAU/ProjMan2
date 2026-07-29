@@ -1,5 +1,9 @@
 # xprojman-07 — Phase 1 spec: active-role identity (hybrid grants) — SPEC FOR NOD
 
+> ⛔ **SUPERSEDED / CANCELLED 2026-07-30 by `xprojman-08` (single-role, owner-confirmed)
+> and `xprojman-09` (Server ACK).** Migration v017 and every endpoint below are cancelled
+> and were never built. Retained for history only — do not build from this doc.
+
 **Status:** 🟠 SPEC — owner nod to build (model already approved: hybrid, `users.role`
 kept for portfolio roles — owner 2026-07-30). Build = migration v017 + code, on nod.
 **Author:** Server Agent · **For:** Owner · App dev (Flutter)
