@@ -162,6 +162,67 @@ async function pairAs(admin, adminUserId, role, uid, stamp) {
   ok('assignable role (foreperson) accepted at user-create', goodUser.status === 201,
     JSON.stringify(goodUser.json));
 
+  // ── 7. Fork A self-registration + org-admin decoupling (xprojman-14, v018) ──
+  // A Builder self-registers, FOUNDING their own org, and administers it via the
+  // is_org_owner flag — WITHOUT the `builder` role carrying tenant-owner caps (which would
+  // leak into orgs a builder is merely engaged into).
+  const bReg = await call('POST', '/auth/register', {
+    organisation: { name: `BuilderCo ${s}` },
+    user: { full_name: 'Bob Builder', email: `founder${s}@x.com`, password: 'hunter2hunter2', role: 'builder' },
+    device: { device_uid: `bld-${s}`, platform: 'android' },
+  });
+  ok('a Builder self-registers as role builder (Fork A)',
+    bReg.status === 201 && bReg.json.data?.user?.role === 'builder', JSON.stringify(bReg.json.data?.user));
+  ok('the founder is flagged is_org_owner in the register response',
+    bReg.json.data?.user?.isOrgOwner === true, JSON.stringify(bReg.json.data?.user));
+  const bTok = bReg.json.data.accessToken;
+
+  const bPerms = (await call('GET', '/auth/permissions', undefined, bTok)).json.data;
+  ok('founder /auth/permissions: isOrgOwner true, role still builder (single-role intact)',
+    bPerms?.isOrgOwner === true && bPerms?.role === 'builder', JSON.stringify(bPerms?.role));
+  ok('founder holds the three owner caps (org/users/devices.manage) via the flag',
+    ['org.manage', 'users.manage', 'devices.manage'].every((p) => bPerms?.permissions?.includes(p)),
+    JSON.stringify(bPerms?.permissions));
+  ok('founder keeps their builder role caps (claims.submit, panel.manage, progress.tick)',
+    ['claims.submit', 'panel.manage', 'progress.tick'].every((p) => bPerms?.permissions?.includes(p)),
+    JSON.stringify(bPerms?.permissions));
+  ok('the flag confers ONLY owner caps — NOT PM construction caps (claims.approve/progress.write/money.write)',
+    !['claims.approve', 'progress.write', 'money.write'].some((p) => bPerms?.permissions?.includes(p)),
+    JSON.stringify(bPerms?.permissions));
+
+  // The founder can actually administer their org (requireOrgAdmin = org.manage, via flag).
+  const bEmp = await call('POST', '/organisation/users', {
+    email: `emp${s}@x.com`, full_name: 'Emma Employee', role: 'foreperson', password: 'hunter2hunter2',
+  }, bTok);
+  ok('founder administers own org: creates an org user (org.manage conferred by flag)',
+    bEmp.status === 201, JSON.stringify(bEmp.json));
+
+  // A NON-founder builder (created inside the org, is_org_owner=0) gets NO owner caps —
+  // the exact leak the decoupling prevents.
+  await call('POST', '/organisation/users', {
+    email: `emp2${s}@x.com`, full_name: 'Ivan Engaged', role: 'builder', password: 'hunter2hunter2',
+  }, bTok);
+  const ivanTok = (await call('POST', '/auth/login',
+    { email: `emp2${s}@x.com`, password: 'hunter2hunter2' })).json.data?.accessToken;
+  const ivanPerms = (await call('GET', '/auth/permissions', undefined, ivanTok)).json.data;
+  ok('a non-founder builder is NOT is_org_owner and lacks org.manage (no tenant-owner leak)',
+    ivanPerms?.isOrgOwner === false && !ivanPerms?.permissions?.includes('org.manage'),
+    JSON.stringify({ owner: ivanPerms?.isOrgOwner, perms: ivanPerms?.permissions }));
+  const ivanAdmin = await call('POST', '/organisation/users', {
+    email: `x${s}@x.com`, full_name: 'X', role: 'tradie', password: 'hunter2hunter2',
+  }, ivanTok);
+  ok('a non-founder builder CANNOT administer the org (FORBIDDEN)',
+    ivanAdmin.status === 403 && ivanAdmin.json.code === 'FORBIDDEN', JSON.stringify(ivanAdmin.json));
+
+  // Crew roles cannot self-register — they arrive by device pairing, not registration.
+  const tradieReg = await call('POST', '/auth/register', {
+    organisation: { name: `Nope ${s}` },
+    user: { full_name: 'Terry Tradie', email: `tradie${s}@x.com`, password: 'hunter2hunter2', role: 'tradie' },
+    device: { device_uid: `trd-${s}`, platform: 'android' },
+  });
+  ok('a crew role (tradie) cannot self-register (ROLE_NOT_SELF_REGISTRABLE)',
+    tradieReg.status === 422 && tradieReg.json.code === 'ROLE_NOT_SELF_REGISTRABLE', JSON.stringify(tradieReg.json));
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

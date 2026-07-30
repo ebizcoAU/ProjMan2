@@ -272,7 +272,8 @@ router.post(
       }
       // Someone other than the issuer may confirm only if they administer the org
       // (org.manage) — the projectManager. Expressed as the permission, not a role.
-      if (token.initiated_by !== userId && !access.hasPermission(myRole, 'org.manage')) {
+      if (token.initiated_by !== userId &&
+          !access.grants({ role: myRole, isOrgOwner: req.auth.isOrgOwner }, 'org.manage')) {
         return res.status(403).json({ success: false, message: 'Only the issuer or an org administrator can confirm', code: 'NOT_ISSUER' });
       }
 

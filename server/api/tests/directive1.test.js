@@ -124,6 +124,24 @@ async function pairAs(admin, userId, role, uid) {
     award.status === 201 && award.json.data.status === 'sent', JSON.stringify(award.json));
   const jaId = award.json.data.id;
 
+  // ── B3.5. Pending inbox (xprojman-11) — the invitee discovers the award BEFORE
+  // accepting, i.e. before any project_members row exists. This is the chicken/egg fix:
+  // the project-scoped list is membership-gated, the identity-level inbox is not. ──
+  const notYet = await call('GET', `/projects/${projId}/members`, undefined, pm);
+  ok('precondition: invited Builder is NOT yet a project member',
+    !(notYet.json.data.members || []).some((m) => String(m.user_id) === String(builderUser)), JSON.stringify(notYet.json));
+  const inbox = await call('GET', '/job-awards/pending', undefined, builderTok);
+  const inboxRow = (inbox.json.data?.pending || []).find((a) => String(a.id) === String(jaId));
+  ok('the Builder discovers the pending award via the identity-level inbox (not membership-gated)',
+    inbox.status === 200 && !!inboxRow, JSON.stringify(inbox.json));
+  ok('inbox row carries the joined display names + engagement (from_name/project_name)',
+    !!inboxRow && inboxRow.from_name === 'Pat PM' && inboxRow.project_name === 'Lot 3 dwelling'
+      && String(inboxRow.from_user_id) === String(pmUser) && inboxRow.role_offered === 'builder'
+      && inboxRow.builder_engagement_type === 'independent_fixed', JSON.stringify(inboxRow));
+  const pmInbox = await call('GET', '/job-awards/pending', undefined, pm);
+  ok('the inviting PM does NOT see the award in their own pending inbox (scoped to to_user_id)',
+    (pmInbox.json.data?.pending || []).every((a) => String(a.id) !== String(jaId)), JSON.stringify(pmInbox.json));
+
   // ── B4. respond authz — only the invited person; accepting auto-enrols ──
   const pmRespond = await call('POST', `/projects/${projId}/job-awards/${jaId}/respond`, { accept: true }, pm);
   ok('the PM (not the invitee) CANNOT respond to the award (FORBIDDEN)',
@@ -137,6 +155,9 @@ async function pairAs(admin, userId, role, uid) {
   const reRespond = await call('POST', `/projects/${projId}/job-awards/${jaId}/respond`, { accept: false }, builderTok);
   ok('a second response is refused (ALREADY_RESPONDED)',
     reRespond.status === 409 && reRespond.json.code === 'ALREADY_RESPONDED', JSON.stringify(reRespond.json));
+  const inboxAfter = await call('GET', '/job-awards/pending', undefined, builderTok);
+  ok('once accepted, the award leaves the pending inbox (status filter is sent-only)',
+    (inboxAfter.json.data?.pending || []).every((a) => String(a.id) !== String(jaId)), JSON.stringify(inboxAfter.json));
 
   // ── B5. deposit — binding only on an accepted award, idempotent ──
   const dep1 = await call('POST', `/projects/${projId}/job-awards/${jaId}/deposit`, { amount: 5000, reference: 'DEP-1' }, pm);

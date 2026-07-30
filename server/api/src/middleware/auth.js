@@ -43,7 +43,7 @@ async function authenticate(req, res, next) {
   try {
     const [[user]] = await pool.query(
       `SELECT u.id, u.org_id, u.email, u.full_name, u.mobile, u.mobile_verified,
-              u.role, u.status, u.onboarding_complete,
+              u.role, u.is_org_owner, u.status, u.onboarding_complete,
               u.security_version, u.force_logout_flag, u.disabled_reason,
               o.name AS org_name, o.status AS org_status, o.timezone, o.currency
          FROM users u
@@ -121,6 +121,9 @@ async function authenticate(req, res, next) {
       orgId: user.org_id,
       role,
       userRole: user.role,
+      // Org-ownership is a property of the identity, not the device's paired role — the
+      // founder administers their org whatever hat their current session wears (v018).
+      isOrgOwner: !!user.is_org_owner,
       deviceUid: decoded.device_id || null,
       deviceId: device?.id || null,
       jti: decoded.jti || null,
@@ -142,7 +145,8 @@ async function authenticate(req, res, next) {
 function requirePermission(...perms) {
   return (req, res, next) => {
     if (!req.auth) return deny(res, 401, 'Not authenticated', 'NO_AUTH');
-    const missing = perms.find((p) => !access.hasPermission(req.auth.role, p));
+    const principal = { role: req.auth.role, isOrgOwner: req.auth.isOrgOwner };
+    const missing = perms.find((p) => !access.grants(principal, p));
     if (missing) {
       return deny(res, 403, `Requires permission: ${missing}`, 'FORBIDDEN');
     }
@@ -150,7 +154,8 @@ function requirePermission(...perms) {
   };
 }
 
-// org.manage is the "tenant owner" capability — only org_admin holds it in the matrix.
+// org.manage is the "tenant owner" capability — held by the projectManager role OR conferred
+// on a self-registered founder via is_org_owner (v018); requirePermission resolves both.
 function requireOrgAdmin(req, res, next) {
   return requirePermission('org.manage')(req, res, next);
 }

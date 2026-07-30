@@ -72,6 +72,14 @@ function validation(req, res) {
   return true;
 }
 
+// Roles a person may SELF-REGISTER as (xprojman-14 Fork A) — the org-founding/business
+// roles only. Everyone here founds their own org and becomes its owner (is_org_owner).
+// Crew (siteSupervisor/foreperson/tradie/inspector) and client are NOT self-registrable —
+// they arrive via device pairing into an existing org; independent crew identity is PM2-02.
+// v1 app surfaces only `builder`; `projectManager`/`developer` self-register on the Portal.
+// Omitting role stays `projectManager` — back-compat with the existing app + portal flows.
+const SELF_REGISTRABLE_ROLES = ['projectManager', 'builder', 'developer'];
+
 const publicUser = (u, role) => ({
   id: u.id,
   orgId: u.org_id,
@@ -80,6 +88,7 @@ const publicUser = (u, role) => ({
   mobile: u.mobile || null,
   mobileVerified: u.mobile_verified != null ? !!u.mobile_verified : undefined,
   role: role || u.role,
+  isOrgOwner: u.is_org_owner != null ? !!u.is_org_owner : undefined,
   status: u.status,
   // Present once the column is loaded (login/me); undefined on the register path
   // where the org details were just collected inline.
@@ -106,6 +115,7 @@ router.post(
     body('user.password').isLength({ min: config.password.minLength })
       .withMessage(`Password must be at least ${config.password.minLength} characters`),
     body('user.mobile').optional({ nullable: true, checkFalsy: true }).isString(),
+    body('user.role').optional({ nullable: true, checkFalsy: true }).isString(),
   ],
   async (req, res) => {
     if (validation(req, res)) return;
@@ -114,6 +124,18 @@ router.post(
     const person = req.body.user || {};
     const device = readDevice(req.body.device || req.body);
     const ip     = clientIp(req);
+
+    // Self-Registration role (xprojman-14 Fork A). Default projectManager (back-compat).
+    // Only the org-founding roles may self-register; crew/client are pairing-only.
+    const role = person.role || 'projectManager';
+    if (!SELF_REGISTRABLE_ROLES.includes(role)) {
+      return res.status(422).json({
+        success: false,
+        message: `Role '${role}' cannot self-register. Members of a team are added by their org (device pairing), not self-registration.`,
+        code: 'ROLE_NOT_SELF_REGISTRABLE',
+        field: 'user.role',
+      });
+    }
 
     try {
       const [[existing]] = await pool.query(
@@ -163,15 +185,18 @@ router.post(
           ]
         );
 
-        // The registering user is the builder's top actor — projectManager (18-Stage
-        // Matrix Stage 1: projectManager creates projects). It is the portfolio role
-        // that also holds org.manage / users.manage / devices.manage.
+        // The registrant FOUNDS this org, so they are its owner (is_org_owner = 1) — this
+        // is what confers org.manage/users.manage/devices.manage, decoupled from the fixed
+        // identity role (v018). Their role is their chosen self-registrable role
+        // (default projectManager): a Builder founding their own building business gets
+        // role `builder` + owner authority over their own org, without the `builder` role
+        // carrying tenant-owner caps into orgs they are merely engaged into (xprojman-08).
         await conn.query(
           `INSERT INTO users
-             (id, org_id, email, password_hash, full_name, mobile, role, status)
-           VALUES (?, ?, ?, ?, ?, ?, 'projectManager', 'active')`,
+             (id, org_id, email, password_hash, full_name, mobile, role, is_org_owner, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'active')`,
           [userId, orgId, person.email, passwordHash,
-           person.full_name, person.mobile || null]
+           person.full_name, person.mobile || null, role]
         );
 
         await conn.commit();
@@ -183,7 +208,7 @@ router.post(
       }
 
       const [[user]] = await pool.query(
-        `SELECT id, org_id, email, full_name, mobile, role, status, security_version
+        `SELECT id, org_id, email, full_name, mobile, role, is_org_owner, status, security_version
            FROM users WHERE id = ? LIMIT 1`,
         [userId]
       );
@@ -515,8 +540,11 @@ router.get('/permissions', authenticate, async (req, res) => {
     data: {
       matrixVersion: access.matrixVersion(),
       role,
+      isOrgOwner: !!req.auth.isOrgOwner,
       scopeClass: meta?.scopeClass || null,
-      permissions: [...access.permissionsFor(role)],
+      // Effective set = role's matrix grants PLUS the owner caps if this identity founded
+      // its org (v018). The app enables UI off exactly what the server will allow.
+      permissions: access.effectivePermissions(role, req.auth.isOrgOwner),
       pairableRoles: access.pairableRoles(),
       assignableRoles: access.assignableRoles(),
     },

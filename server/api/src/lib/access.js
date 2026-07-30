@@ -15,6 +15,15 @@
 
 const pool = require('../db/pool');
 
+// The tenant-owner capabilities (xprojman-14 / migration v018). These administer the org
+// itself — settings, its users, its devices — as opposed to doing construction work on a
+// project. They are held by the `projectManager` role in the matrix, AND conferred on a
+// self-registered founder (`users.is_org_owner`) whatever their fixed role, so a Builder who
+// founds their own org can run it without the `builder` role carrying these everywhere (which
+// would leak tenant-owner authority into orgs a builder is merely engaged into — xprojman-08).
+const OWNER_CAPABILITIES = new Set(['org.manage', 'users.manage', 'devices.manage']);
+const isOwnerCapability = (perm) => OWNER_CAPABILITIES.has(perm);
+
 let CACHE = {
   loaded: false,
   matrixVersion: 0,
@@ -77,6 +86,25 @@ const pairRank       = (role) => roleMeta(role)?.pairRank ?? 0;
 const matrixVersion  = () => (ensureLoaded(), CACHE.matrixVersion);
 
 /**
+ * The effective grant for a principal: the role's matrix permission OR — for the three
+ * owner capabilities only — the org-owner founder flag. This is the single place the
+ * `is_org_owner` decoupling is applied; `requirePermission` calls it. The owner flag never
+ * confers construction-work capabilities (progress.verify, claims.approve, …), so a
+ * Builder-founder stays a Builder — they just also administer their own org.
+ */
+function grants({ role, isOrgOwner }, perm) {
+  return hasPermission(role, perm) || (!!isOrgOwner && OWNER_CAPABILITIES.has(perm));
+}
+
+/** A principal's full effective permission set — role grants plus any owner caps. Drives
+ *  GET /auth/permissions so the UI enables exactly what the server will allow. */
+function effectivePermissions(role, isOrgOwner) {
+  const set = new Set(permissionsFor(role));
+  if (isOrgOwner) for (const p of OWNER_CAPABILITIES) set.add(p);
+  return [...set];
+}
+
+/**
  * May `issuerRole` pair a device as `targetRole`? Target must be pairable, and the
  * issuer must out-rank (or equal) it — the anti-escalation ceiling. Rank is separate
  * from permissions on purpose: an inspector holds an authority the PM lacks, yet the
@@ -115,6 +143,10 @@ module.exports = {
   roleMeta,
   permissionsFor,
   hasPermission,
+  grants,
+  effectivePermissions,
+  OWNER_CAPABILITIES,
+  isOwnerCapability,
   scopeClassFor,
   isAssignable,
   isPairable,

@@ -238,9 +238,9 @@ router.post(
   async (req, res) => {
     if (validation(req, res)) return;
 
-    // Onboarding configures the org — an org.manage action. The first OAuth sign-in
-    // creates a projectManager (which holds org.manage), so this holds for the caller.
-    if (!access.hasPermission(req.auth.role, 'org.manage')) {
+    // Onboarding configures the org — an org.manage action, held by the projectManager
+    // role or conferred on a founder via is_org_owner (v018).
+    if (!access.grants({ role: req.auth.role, isOrgOwner: req.auth.isOrgOwner }, 'org.manage')) {
       return res.status(403).json({ success: false, message: 'Only the organisation owner can complete onboarding', code: 'FORBIDDEN' });
     }
 

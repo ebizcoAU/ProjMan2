@@ -142,6 +142,39 @@ async function recordDeposit({ orgId, projectId, jobAwardId, actor, amount, refe
 }
 
 /**
+ * GET /job-awards/pending — the invitee's identity-level inbox (xprojman-11).
+ * The cold-stranger/chicken-and-egg fix: an invited person is NOT a `project_members`
+ * row until they accept (that write happens inside `respond`), so the project-scoped
+ * `list()` above — which goes through `assertProjectReachable` — can never surface an
+ * award TO them. This read is scoped to `to_user_id = caller`, so it needs no project
+ * membership and no permission beyond being authenticated (same posture as
+ * `GET /introductions`). Still org-bounded — cross-company invitations are PM2-02.
+ *
+ * Returns the app's proposed xprojman-11 §3 shape verbatim; the two display names it
+ * flagged as guesses map to `users.full_name` (→ `from_name`) and `projects.name`
+ * (→ `project_name`).
+ */
+async function pending({ orgId, userId }) {
+  const [rows] = await pool.query(
+    `SELECT ja.id,
+            ja.project_id,
+            p.name       AS project_name,
+            ja.from_user_id,
+            u.full_name  AS from_name,
+            ja.role_offered,
+            ja.builder_engagement_type,
+            ja.sent_at
+       FROM job_awards ja
+       LEFT JOIN projects p ON p.id = ja.project_id  AND p.org_id = ja.org_id
+       LEFT JOIN users    u ON u.id = ja.from_user_id AND u.org_id = ja.org_id
+      WHERE ja.to_user_id = ? AND ja.org_id = ? AND ja.status = 'sent'
+      ORDER BY ja.sent_at DESC`,
+    [userId, orgId]
+  );
+  return { pending: rows };
+}
+
+/**
  * The one accepted `builder` engagement for a project, if any — the resolver every
  * `programme.write`/`money.*` scope check (Step A code, Step A2) reads from. A
  * single-Builder-per-project v1 default (devroadmap.md Open Decision #7).
@@ -156,4 +189,4 @@ async function acceptedBuilderEngagement({ orgId, projectId }) {
   return row || null;
 }
 
-module.exports = { create, list, respond, recordDeposit, acceptedBuilderEngagement };
+module.exports = { create, list, pending, respond, recordDeposit, acceptedBuilderEngagement };

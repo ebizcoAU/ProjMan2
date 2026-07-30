@@ -239,7 +239,7 @@ router.patch(
 
     try {
       const [[target]] = await pool.query(
-        `SELECT id, role, status FROM users WHERE id = ? AND org_id = ? AND is_deleted = 0 LIMIT 1`,
+        `SELECT id, role, is_org_owner, status FROM users WHERE id = ? AND org_id = ? AND is_deleted = 0 LIMIT 1`,
         [req.params.id, req.auth.orgId]
       );
       if (!target) {
@@ -249,15 +249,18 @@ router.patch(
       // An org with nobody holding org.manage is an org nobody can administer, and
       // there is no self-service route back. Guard against demoting the last such
       // user — expressed as the permission, not a role literal, so it survives the
-      // role model (any role that grants org.manage counts).
+      // role model (any role that grants org.manage counts). A founder (is_org_owner,
+      // v018) administers via the flag, not the role, so a role change never strips
+      // their admin-ness — they are never "demoting themselves" — and the survivor
+      // COUNT includes founders.
       const adminRoles = access.allRoles().filter((r) => access.hasPermission(r, 'org.manage'));
-      const demotingSelf = target.id === req.auth.userId &&
+      const demotingSelf = target.id === req.auth.userId && !target.is_org_owner &&
         req.body.role && !adminRoles.includes(req.body.role);
       if (demotingSelf && adminRoles.length) {
         const placeholders = adminRoles.map(() => '?').join(', ');
         const [[{ n }]] = await pool.query(
           `SELECT COUNT(*) AS n FROM users
-            WHERE org_id = ? AND role IN (${placeholders})
+            WHERE org_id = ? AND (role IN (${placeholders}) OR is_org_owner = 1)
               AND status = 'active' AND is_deleted = 0`,
           [req.auth.orgId, ...adminRoles]
         );
@@ -323,7 +326,7 @@ router.patch(
 router.delete('/users/:id', requireOrgAdmin, async (req, res) => {
   try {
     const [[target]] = await pool.query(
-      `SELECT id, role, status, deactivated_at FROM users WHERE id = ? AND org_id = ? AND is_deleted = 0 LIMIT 1`,
+      `SELECT id, role, is_org_owner, status, deactivated_at FROM users WHERE id = ? AND org_id = ? AND is_deleted = 0 LIMIT 1`,
       [req.params.id, req.auth.orgId]
     );
     if (!target) {
@@ -334,13 +337,16 @@ router.delete('/users/:id', requireOrgAdmin, async (req, res) => {
     }
 
     // Same "don't leave the org unadministered" guard as PATCH's role-demotion check,
-    // applied to the stronger action of deactivating someone outright.
+    // applied to the stronger action of deactivating someone outright. Admin-ness is
+    // role-org.manage OR the founder flag (v018) — a Builder-founder administers via the
+    // flag, so both the "is the target an admin" test and the survivor COUNT must include
+    // is_org_owner, or the sole admin of a Builder-founded org could be deactivated.
     const adminRoles = access.allRoles().filter((r) => access.hasPermission(r, 'org.manage'));
-    if (adminRoles.includes(target.role)) {
+    if (adminRoles.includes(target.role) || target.is_org_owner) {
       const placeholders = adminRoles.map(() => '?').join(', ');
       const [[{ n }]] = await pool.query(
         `SELECT COUNT(*) AS n FROM users
-          WHERE org_id = ? AND role IN (${placeholders})
+          WHERE org_id = ? AND (role IN (${placeholders}) OR is_org_owner = 1)
             AND status = 'active' AND is_deleted = 0 AND deactivated_at IS NULL`,
         [req.auth.orgId, ...adminRoles]
       );
