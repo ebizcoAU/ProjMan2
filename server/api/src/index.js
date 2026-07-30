@@ -29,6 +29,7 @@ const customersRoutes = require('./routes/customers');
 const stageTemplatesRoutes = require('./routes/stageTemplates');
 const introductionsRoutes = require('./routes/introductions');
 const jobAwardsRoutes = require('./routes/jobAwards');
+const suppliersRoutes = require('./routes/suppliers');
 const adminRoutes = require('./routes/admin');
 
 const app = express();
@@ -135,6 +136,7 @@ app.use('/api/v1/customers',     customersRoutes);
 app.use('/api/v1/stage-templates', stageTemplatesRoutes);
 app.use('/api/v1/introductions', introductionsRoutes);
 app.use('/api/v1/job-awards',    jobAwardsRoutes);
+app.use('/api/v1/suppliers',     suppliersRoutes);
 // System Admin dashboard — a SEPARATE mount (not the tenant surface). Platform-admin
 // allowlist only; account & billing layer; cross-tenant by design (dashboardspec §2).
 app.use('/api/v1/admin',         adminRoutes);

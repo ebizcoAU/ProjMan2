@@ -39,6 +39,7 @@ const JobAwardService = require('../services/JobAwardService');
 const HoldPointService = require('../services/HoldPointService');
 const EstimateService = require('../services/EstimateService');
 const ClaimService = require('../services/ClaimService');
+const ProcurementService = require('../services/ProcurementService');
 
 router.use(authenticate);
 
@@ -56,6 +57,7 @@ const canManagePanel = requirePermission('panel.manage');
 const canWriteMoney = requirePermission('money.write');   // P7a estimate/cost-plan writes
 const canSubmitClaims = requirePermission('claims.submit'); // P7a Builder submits
 const canApproveClaims = requirePermission('claims.approve'); // P7a PM approves/pays
+const canWritePo = requirePermission('po.write');           // P7b procurement writes
 
 function validation(req, res) {
   const errors = validationResult(req);
@@ -780,6 +782,140 @@ router.post(
         detail: { project_id: req.params.id, payment_id: result.payment_id },
       });
       return res.status(201).json({ success: true, data: result });
+    } catch (err) { return sendError(res, err); }
+  }
+);
+
+// ── Commercial P7b — Procurement: purchase orders + supplier invoices ───────────────
+// (xprojman-10 §4 P7b, CORRECTED by xprojman-16; §7.2 / §7.2.1). Writes gated by po.write;
+// reads by money.read OR po.write, then filtered by engagement mode + owner_party in
+// ProcurementService (a Builder's PO/invoice rows are invisible to the PM under
+// independent_fixed). POs → committed_amount, matched/approved invoices → actual_amount.
+//   GET  /:id/purchase-orders                    list (engagement-mode filtered)
+//   POST /:id/purchase-orders                    raise a PO           (po.write)
+//   POST /:id/purchase-orders/:poId/status       issue/receive/cancel (po.write, own scope)
+//   GET  /:id/supplier-invoices                  list (engagement-mode filtered)
+//   POST /:id/supplier-invoices                  record an invoice    (po.write; po_id = 2-way match)
+//   POST /:id/supplier-invoices/:invId/status    match/approve/dispute (po.write, own scope)
+router.get('/:id/purchase-orders', async (req, res) => {
+  try {
+    const data = await ProcurementService.listPurchaseOrders({
+      orgId: req.auth.orgId, projectId: req.params.id,
+      actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+    });
+    return res.json({ success: true, data });
+  } catch (err) { return sendError(res, err); }
+});
+
+router.post(
+  '/:id/purchase-orders',
+  canWritePo,
+  [
+    body('amount').isFloat({ min: 0 }).withMessage('amount must be a non-negative number'),
+    body('stage_id').optional({ nullable: true }).isString(),
+    body('supplier_id').optional({ nullable: true }).isString(),
+    body('supplier_name').optional({ nullable: true }).isString(),
+    body('description').optional({ nullable: true }).isString(),
+    body('subcontractor_engagement_id').optional({ nullable: true }).isString(),
+  ],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await ProcurementService.createPurchaseOrder({
+        orgId: req.auth.orgId, projectId: req.params.id,
+        actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+        stageId: req.body.stage_id, supplierId: req.body.supplier_id, supplierName: req.body.supplier_name,
+        description: req.body.description, amount: req.body.amount,
+        subcontractorEngagementId: req.body.subcontractor_engagement_id,
+      });
+      await audit(req, 'purchase_order.create', {
+        entity: 'purchase_orders', entityId: result.id,
+        detail: { project_id: req.params.id, owner_party: result.owner_party },
+      });
+      return res.status(201).json({ success: true, data: result });
+    } catch (err) { return sendError(res, err); }
+  }
+);
+
+router.post(
+  '/:id/purchase-orders/:poId/status',
+  canWritePo,
+  [body('status').isIn(['issued', 'received', 'cancelled'])],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await ProcurementService.setPoStatus({
+        orgId: req.auth.orgId, projectId: req.params.id, poId: req.params.poId,
+        actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+        status: req.body.status,
+      });
+      await audit(req, 'purchase_order.status', {
+        entity: 'purchase_orders', entityId: req.params.poId,
+        detail: { project_id: req.params.id, status: result.status },
+      });
+      return res.json({ success: true, data: result });
+    } catch (err) { return sendError(res, err); }
+  }
+);
+
+router.get('/:id/supplier-invoices', async (req, res) => {
+  try {
+    const data = await ProcurementService.listSupplierInvoices({
+      orgId: req.auth.orgId, projectId: req.params.id,
+      actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+    });
+    return res.json({ success: true, data });
+  } catch (err) { return sendError(res, err); }
+});
+
+router.post(
+  '/:id/supplier-invoices',
+  canWritePo,
+  [
+    body('invoice_number').trim().notEmpty().withMessage('invoice_number is required'),
+    body('amount').isFloat({ min: 0 }).withMessage('amount must be a non-negative number'),
+    body('po_id').optional({ nullable: true }).isString(),
+    body('stage_id').optional({ nullable: true }).isString(),
+    body('supplier_id').optional({ nullable: true }).isString(),
+    body('supplier_name').optional({ nullable: true }).isString(),
+    body('subcontractor_engagement_id').optional({ nullable: true }).isString(),
+  ],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await ProcurementService.createSupplierInvoice({
+        orgId: req.auth.orgId, projectId: req.params.id,
+        actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+        poId: req.body.po_id, stageId: req.body.stage_id, supplierId: req.body.supplier_id,
+        supplierName: req.body.supplier_name, invoiceNumber: req.body.invoice_number,
+        amount: req.body.amount, subcontractorEngagementId: req.body.subcontractor_engagement_id,
+      });
+      await audit(req, 'supplier_invoice.create', {
+        entity: 'supplier_invoices', entityId: result.id,
+        detail: { project_id: req.params.id, matched: result.matched },
+      });
+      return res.status(201).json({ success: true, data: result });
+    } catch (err) { return sendError(res, err); }
+  }
+);
+
+router.post(
+  '/:id/supplier-invoices/:invId/status',
+  canWritePo,
+  [body('status').isIn(['matched', 'approved', 'disputed'])],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await ProcurementService.setInvoiceStatus({
+        orgId: req.auth.orgId, projectId: req.params.id, invoiceId: req.params.invId,
+        actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+        status: req.body.status,
+      });
+      await audit(req, 'supplier_invoice.status', {
+        entity: 'supplier_invoices', entityId: req.params.invId,
+        detail: { project_id: req.params.id, status: result.status },
+      });
+      return res.json({ success: true, data: result });
     } catch (err) { return sendError(res, err); }
   }
 );

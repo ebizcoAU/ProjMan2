@@ -60,7 +60,8 @@ async function pairAs(admin, adminUserId, role, uid, stamp) {
   // v5 (v012, DIRECTIVE 1): + builder/developer/accountant + progress.tick/verify/
   // tax.approve/development.read/panel.manage. v6 (v017, P7a Commercial): + claims.submit
   // (builder) / claims.approve (projectManager).
-  ok('permissions: matrixVersion present', d?.matrixVersion === 6, JSON.stringify(d?.matrixVersion));
+  // v7 (v019, P7b Procurement): + po.write (projectManager, builder).
+  ok('permissions: matrixVersion present', d?.matrixVersion === 7, JSON.stringify(d?.matrixVersion));
   ok('permissions: projectManager scope = portfolio', d?.scopeClass === 'portfolio');
   ok('permissions: projectManager has projects.write', d?.permissions?.includes('projects.write'));
   ok('permissions: pairableRoles are the 6 field roles (+ builder, no client)',
