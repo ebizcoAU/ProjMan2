@@ -1,8 +1,21 @@
 # xprojman-13 — Self-Registration (Step 1 of §2.3): role-at-registration, and how far v1 goes
 
-**Status:** 🟠 PROPOSED — needs Owner to pick the v1 scope (§4), then Server Agent to confirm the register shape (§5). Not built.
+**Status:** 🟢 Owner-approved 2026-07-30 — **Fork A**. Next: Server Agent confirms the §5 register shape; App builds the role step on that confirmation.
 **Author:** App dev (Flutter) · **For:** Owner · Server Agent
 **Date:** 2026-07-30
+
+> ## 0. Owner decision (2026-07-30)
+> **Fork A is approved** (§4): role-at-registration, v1 App self-register set = **Builder**
+> founding their own org with role `builder` (not forced `projectManager`); crew (Site
+> Supervisor / Foreperson / Tradie / Inspector) keep arriving via device pairing until
+> **PM2-02**; PM / Property Developer self-register on the Portal. The register shape in §5
+> is the sanctioned proposal (`POST /auth/register` accepts `role`, allow-list-enforced,
+> registrant made `org_admin` of their own new org).
+> **Ordering (per Manager's critical path):** the App does **not** wire the role into the
+> register payload until the Server Agent confirms and *honours* it — today `/auth/register`
+> hard-codes `projectManager` (`auth.js:172`) and would ignore an unknown `role`, making the
+> UI claim "Builder" while the server silently creates a PM. So: **Server Agent confirms §5
+> → App builds the role step.** Ball is with the Server Agent.
 **Context:** the three-step primitive is `Self-Registration → Introduction → Job Award`
 (`appdesignspecification.md` §2.3). Steps 2 and 3 are built and wired (Introduction —
 `xprojman-03/04`; Job Award S9.7 accept/decline + discovery — `xprojman-11`/`xprojman-12`).
