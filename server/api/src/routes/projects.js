@@ -37,6 +37,8 @@ const InspectionService = require('../services/InspectionService');
 const TaskProgressService = require('../services/TaskProgressService');
 const JobAwardService = require('../services/JobAwardService');
 const HoldPointService = require('../services/HoldPointService');
+const EstimateService = require('../services/EstimateService');
+const ClaimService = require('../services/ClaimService');
 
 router.use(authenticate);
 
@@ -51,6 +53,9 @@ const canManageUsers = requirePermission('users.manage');
 const canWriteQuality = requirePermission('quality.write');
 const canVerifyProgress = requirePermission('progress.verify');
 const canManagePanel = requirePermission('panel.manage');
+const canWriteMoney = requirePermission('money.write');   // P7a estimate/cost-plan writes
+const canSubmitClaims = requirePermission('claims.submit'); // P7a Builder submits
+const canApproveClaims = requirePermission('claims.approve'); // P7a PM approves/pays
 
 function validation(req, res) {
   const errors = validationResult(req);
@@ -611,5 +616,172 @@ router.post('/:id/tasks/:taskId/verify', canVerifyProgress, async (req, res) => 
     return sendError(res, err);
   }
 });
+
+// ── Commercial P7a — Cost Plan / estimate lines (xprojman-10 §4) ────────────────
+// Writes gated by money.write; reads by money.read (enforced in EstimateService).
+//   GET    /:id/cost-plan                 plan header + lines + total
+//   POST   /:id/estimate-lines            add a line       (money.write)
+//   PATCH  /:id/estimate-lines/:lineId    edit a line      (money.write)
+//   DELETE /:id/estimate-lines/:lineId    remove a line    (money.write)
+//   POST   /:id/cost-plan/lock  { locked } freeze/unfreeze  (money.write)
+router.get('/:id/cost-plan', canReadProjects, async (req, res) => {
+  try {
+    const data = await EstimateService.list({
+      orgId: req.auth.orgId, projectId: req.params.id,
+      actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+    });
+    return res.json({ success: true, data });
+  } catch (err) { return sendError(res, err); }
+});
+
+router.post(
+  '/:id/estimate-lines',
+  canWriteMoney,
+  [
+    body('description').trim().notEmpty().withMessage('description is required'),
+    body('stage_id').optional({ nullable: true }).isString(),
+    body('category').optional({ nullable: true }).isString(),
+    body('quantity').optional({ nullable: true }).isFloat({ min: 0 }),
+    body('unit').optional({ nullable: true }).isString(),
+    body('rate').optional({ nullable: true }).isFloat(),
+  ],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await EstimateService.createLine({
+        orgId: req.auth.orgId, projectId: req.params.id,
+        actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+        stageId: req.body.stage_id, description: req.body.description, category: req.body.category,
+        quantity: req.body.quantity, unit: req.body.unit, rate: req.body.rate,
+      });
+      await audit(req, 'estimate_line.create', {
+        entity: 'estimate_lines', entityId: result.id, detail: { project_id: req.params.id },
+      });
+      return res.status(201).json({ success: true, data: result });
+    } catch (err) { return sendError(res, err); }
+  }
+);
+
+router.patch('/:id/estimate-lines/:lineId', canWriteMoney, async (req, res) => {
+  try {
+    const result = await EstimateService.updateLine({
+      orgId: req.auth.orgId, projectId: req.params.id, lineId: req.params.lineId,
+      actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+      patch: req.body || {},
+    });
+    return res.json({ success: true, data: result });
+  } catch (err) { return sendError(res, err); }
+});
+
+router.delete('/:id/estimate-lines/:lineId', canWriteMoney, async (req, res) => {
+  try {
+    const result = await EstimateService.deleteLine({
+      orgId: req.auth.orgId, projectId: req.params.id, lineId: req.params.lineId,
+      actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+    });
+    return res.json({ success: true, data: result });
+  } catch (err) { return sendError(res, err); }
+});
+
+router.post(
+  '/:id/cost-plan/lock',
+  canWriteMoney,
+  [body('locked').optional().isBoolean()],
+  async (req, res) => {
+    try {
+      const result = await EstimateService.setLock({
+        orgId: req.auth.orgId, projectId: req.params.id,
+        actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+        locked: req.body.locked !== false,
+      });
+      await audit(req, 'cost_plan.lock', {
+        entity: 'cost_plans', entityId: null, detail: { project_id: req.params.id, status: result.status },
+      });
+      return res.json({ success: true, data: result });
+    } catch (err) { return sendError(res, err); }
+  }
+);
+
+// ── Commercial P7a — Progress claims (submit → approve → pay), §7.2 / §10.6 ─────────
+//   GET  /:id/progress-claims                     list (money.read = all; submitter = own)
+//   POST /:id/progress-claims                     Builder submits   (claims.submit)
+//   POST /:id/progress-claims/:claimId/approve    PM approve/decline (claims.approve)
+//   POST /:id/progress-claims/:claimId/pay        PM records payment (claims.approve)
+// No projects.read middleware here: a Builder holds claims.submit but not necessarily
+// projects.read, and must see their OWN claims. ClaimService.list is the authority
+// (money.read → all; claims.submit → own; else 403) and checks project reachability.
+router.get('/:id/progress-claims', async (req, res) => {
+  try {
+    const data = await ClaimService.list({
+      orgId: req.auth.orgId, projectId: req.params.id,
+      actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+    });
+    return res.json({ success: true, data });
+  } catch (err) { return sendError(res, err); }
+});
+
+router.post(
+  '/:id/progress-claims',
+  canSubmitClaims,
+  [
+    body('amount').isFloat({ gt: 0 }).withMessage('amount must be a positive number'),
+    body('stage_id').optional({ nullable: true }).isString(),
+    body('note').optional({ nullable: true }).isString(),
+  ],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await ClaimService.submit({
+        orgId: req.auth.orgId, projectId: req.params.id,
+        actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+        stageId: req.body.stage_id, amount: req.body.amount, note: req.body.note,
+      });
+      await audit(req, 'progress_claim.submit', {
+        entity: 'progress_claims', entityId: result.id, detail: { project_id: req.params.id },
+      });
+      return res.status(201).json({ success: true, data: result });
+    } catch (err) { return sendError(res, err); }
+  }
+);
+
+router.post(
+  '/:id/progress-claims/:claimId/approve',
+  canApproveClaims,
+  [body('accept').optional().isBoolean()],
+  async (req, res) => {
+    try {
+      const result = await ClaimService.approve({
+        orgId: req.auth.orgId, projectId: req.params.id, claimId: req.params.claimId,
+        actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+        accept: req.body.accept !== false,
+      });
+      await audit(req, 'progress_claim.approve', {
+        entity: 'progress_claims', entityId: req.params.claimId,
+        detail: { project_id: req.params.id, status: result.status },
+      });
+      return res.json({ success: true, data: result });
+    } catch (err) { return sendError(res, err); }
+  }
+);
+
+router.post(
+  '/:id/progress-claims/:claimId/pay',
+  canApproveClaims,
+  [body('reference').optional({ nullable: true }).isString()],
+  async (req, res) => {
+    try {
+      const result = await ClaimService.pay({
+        orgId: req.auth.orgId, projectId: req.params.id, claimId: req.params.claimId,
+        actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+        reference: req.body.reference,
+      });
+      await audit(req, 'progress_claim.pay', {
+        entity: 'progress_claims', entityId: req.params.claimId,
+        detail: { project_id: req.params.id, payment_id: result.payment_id },
+      });
+      return res.status(201).json({ success: true, data: result });
+    } catch (err) { return sendError(res, err); }
+  }
+);
 
 module.exports = router;
