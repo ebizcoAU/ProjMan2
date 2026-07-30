@@ -10,10 +10,10 @@ import '../../widgets/auth_extras.dart';
 /// until you accept) — so it lives under Profile alongside Introduction, not
 /// inside any one project.
 ///
-/// The invitation LIST rides a proposed `GET /job-awards/pending` that isn't
-/// built yet (see `NexusService.pendingJobAwards`); until the Server Agent ships
-/// it the inbox reads empty. The accept/decline action rides the real,
-/// confirmed `.../respond` endpoint.
+/// The invitation LIST rides `GET /job-awards/pending`, confirmed + built by the
+/// Server Agent in xprojman-12 (see `NexusService.pendingJobAwards`); the inbox
+/// reads empty until that endpoint is committed/deployed server-side. The
+/// accept/decline action rides the real, confirmed `.../respond` endpoint.
 class JobInvitationsScreen extends StatefulWidget {
   const JobInvitationsScreen({super.key});
 

@@ -444,18 +444,19 @@ class NexusService {
   // — and deliberately does NOT require project membership, so an invited-but-not-
   // yet-enrolled person can accept (membership is written on accept, server-side).
   //
-  // `pendingJobAwards` hits a PROPOSED endpoint that does NOT exist yet: there is
-  // no way for an invited person to DISCOVER an award addressed to them (the only
-  // list, GET /projects/:id/job-awards, is membership-gated and they aren't a
-  // member until they accept — a chicken/egg the server must close). Shape proposed
-  // to the Server Agent for confirmation, same posture Introduction had before
-  // xprojman-04 confirmed its contract; until it ships, the inbox reads empty
-  // rather than erroring.
+  // `pendingJobAwards` closes the discovery chicken/egg: an invited person has no
+  // way to see an award addressed to them (the only other list,
+  // GET /projects/:id/job-awards, is membership-gated and they aren't a member
+  // until they accept). Shape was proposed in xprojman-11 and CONFIRMED + built
+  // verbatim by the Server Agent in xprojman-12 (from_name ← users.full_name and
+  // project_name ← projects.name, both aliased server-side — nothing to rename).
+  // The endpoint is live once the server side commits; until then the inbox reads
+  // empty rather than erroring.
 
-  /// GET /job-awards/pending (Bearer) — **PROPOSED, not built yet.** Awards where
+  /// GET /job-awards/pending (Bearer) — CONFIRMED, xprojman-12. Awards where
   /// `to_user_id = me AND status = 'sent'`, across projects, NOT membership-gated.
-  /// Proposed shape: `{pending: [{id, project_id, project_name, from_user_id,
-  /// from_name, role_offered, builder_engagement_type, sent_at}]}`.
+  /// Shape: `{pending: [{id, project_id, project_name, from_user_id, from_name,
+  /// role_offered, builder_engagement_type, sent_at}]}`.
   static Future<ApiResult> pendingJobAwards() =>
       authedGet('/job-awards/pending');
 
