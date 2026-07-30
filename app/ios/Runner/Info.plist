@@ -24,6 +24,20 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<!-- REVERSED_CLIENT_ID from GoogleService-Info.plist — Google Sign-In's
+				     callback URL scheme. If you ever re-download a fresh config file
+				     with a different CLIENT_ID, this must be updated to match. -->
+				<string>com.googleusercontent.apps.336317627750-un77simkn5gtkuag2pq136olts8pku7r</string>
+			</array>
+		</dict>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

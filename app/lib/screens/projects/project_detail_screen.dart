@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../config/app_theme.dart';
+import '../../config/router.dart';
 import '../../models/domain.dart';
 import '../../services/project_service.dart';
 
@@ -80,6 +82,14 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
         elevation: 0,
         title: Text(_project?.name ?? 'Project',
             style: const TextStyle(fontWeight: FontWeight.w700)),
+        actions: [
+          IconButton(
+            tooltip: 'Programme',
+            icon: const Icon(Icons.view_timeline_outlined),
+            onPressed: () => context.push(AppRoutes.projectProgramme,
+                extra: widget.projectId),
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: Op.accent))

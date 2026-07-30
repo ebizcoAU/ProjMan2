@@ -139,6 +139,25 @@ class _ProfileTabState extends State<ProfileTab> {
           if (state != null && state.isNotEmpty)
             _InfoRow(Icons.map_outlined, 'State', state),
         ]),
+        const SizedBox(height: 16),
+        FilledButton.icon(
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+          icon: const Icon(Icons.qr_code_2),
+          label: const Text('Introduction'),
+          // Digital business-card swap, any time, no job implied (appdesignspec §2.2/§2.3).
+          onPressed: () => context.push(AppRoutes.introduction),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Theme.of(context).colorScheme.primary,
+            minimumSize: const Size.fromHeight(48),
+          ),
+          icon: const Icon(Icons.mail_outline),
+          label: const Text('Job invitations'),
+          // S9.7 accept/decline — projects a PM has invited you onto (appdesignspec §4.2).
+          onPressed: () => context.push(AppRoutes.jobInvitations),
+        ),
         const SizedBox(height: 24),
         OutlinedButton.icon(
           style: OutlinedButton.styleFrom(

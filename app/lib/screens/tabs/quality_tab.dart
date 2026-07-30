@@ -7,6 +7,7 @@ import '../../services/project_service.dart';
 import '../quality/quality_inspections_view.dart';
 import '../quality/quality_defects_view.dart';
 import '../quality/quality_certificates_view.dart';
+import '../quality/disputes_queue_view.dart';
 
 /// Quality — inspections · defects · certificates (P6a, appspec §5.5,
 /// servdesignspec §12). Project-scoped, same pattern as [SiteTab]: pick a job,
@@ -75,11 +76,13 @@ class _QualityTabState extends ConsumerState<QualityTab> {
   }
 
   Widget _subPage(Project p) {
-    switch (widget.subPage % 3) {
+    switch (widget.subPage % 4) {
       case 1:
         return QualityDefectsView(project: p);
       case 2:
         return QualityCertificatesView(project: p);
+      case 3:
+        return DisputesQueueView(project: p);
       default:
         return QualityInspectionsView(project: p);
     }

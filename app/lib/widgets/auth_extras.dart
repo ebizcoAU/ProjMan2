@@ -50,13 +50,23 @@ void showAuthSnack(BuildContext context, String message) {
 /// Runs the OAuth token-exchange flow (projman-01 §1.8): obtain a provider token,
 /// POST it to `/auth/oauth/:provider`, then route to onboarding (new user) or home.
 ///
-/// Real provider SDKs aren't integrated yet. In **dev** we use the server's
-/// dev-bypass: a small dialog collects a simulated provider email + name and we
-/// send `dev:<provider>:<email>:<name>` — so the whole flow is testable against
-/// the live server today. In prod, until the SDKs land, we steer to email.
+/// **Google is real** — runs `google_sign_in` and sends its ID token. Microsoft
+/// and Facebook aren't integrated yet: in **dev** a small dialog collects a
+/// simulated provider email + name and we send `dev:<provider>:<email>:<name>`
+/// (the server's dev bypass) so the flow is still testable end to end; in prod,
+/// until their SDKs land, we steer to email.
 Future<void> handleOAuth(BuildContext context, OAuthProvider provider) async {
   String token;
-  if (IS_DEV) {
+  if (provider == OAuthProvider.google) {
+    final idToken = await OAuthService.googleSignIn();
+    if (idToken == null) {
+      if (context.mounted && OAuthService.lastGoogleError != null) {
+        showAuthSnack(context, OAuthService.lastGoogleError!);
+      }
+      return; // cancelled, or the error was already shown
+    }
+    token = idToken;
+  } else if (IS_DEV) {
     final sim = await _promptDevProvider(context, provider);
     if (sim == null) return; // cancelled
     token = OAuthService.devToken(provider, email: sim.$1, name: sim.$2);

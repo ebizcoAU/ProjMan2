@@ -3,6 +3,7 @@ import '../../config/app_theme.dart';
 import '../../models/domain.dart';
 import '../../services/permissions_service.dart';
 import '../../services/quality_ops_service.dart';
+import 'raise_dispute_screen.dart';
 
 /// A single inspection's checklist (appspec §5.5, servdesignspec §12.4). Items
 /// are filled offline via `/sync/push` (§12.4 "bulk detail via sync"); the one
@@ -188,7 +189,25 @@ class _InspectionDetailScreenState extends State<InspectionDetailScreen> {
             icon: const Icon(Icons.add_a_photo_outlined),
             onPressed: () => _addItemPhoto(item),
           ),
+        if (item.result != ItemResult.pending)
+          IconButton(
+            iconSize: 18,
+            color: Op.muted,
+            tooltip: 'Raise a dispute',
+            icon: const Icon(Icons.flag_outlined),
+            onPressed: () => _raiseDispute(item),
+          ),
       ]),
+    );
+  }
+
+  Future<void> _raiseDispute(InspectionItemEntry item) async {
+    await showRaiseDisputeSheet(
+      context,
+      projectId: _pid,
+      subjectType: 'inspection_item',
+      subjectId: item.id,
+      subjectLabel: item.description,
     );
   }
 

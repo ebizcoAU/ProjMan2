@@ -9,8 +9,11 @@ import '../screens/recovery_screen.dart';
 import '../screens/onboarding_screen.dart';
 import '../screens/pairing/pair_device_screen.dart';
 import '../screens/pairing/join_device_screen.dart';
+import '../screens/introduction/introduction_screen.dart';
+import '../screens/job_awards/job_invitations_screen.dart';
 import '../screens/projects/create_project_screen.dart';
 import '../screens/projects/project_detail_screen.dart';
+import '../screens/projects/programme_screen.dart';
 import '../screens/home_screen.dart';
 
 class AppRoutes {
@@ -21,9 +24,12 @@ class AppRoutes {
   static const String onboarding = '/onboarding';
   static const String pairDevice = '/pair-device'; // primary shows QR
   static const String joinDevice = '/join-device'; // new device scans
+  static const String introduction = '/introduction'; // digital business card
+  static const String jobInvitations = '/job-invitations'; // S9.7 accept/decline
   static const String home = '/home';
   static const String projectCreate = '/project/create'; // Stage 1
   static const String projectDetail = '/project/detail'; // 18-stage tracker
+  static const String projectProgramme = '/project/programme'; // schedule view
   // Handoff lands here later in P2.
 }
 
@@ -92,6 +98,16 @@ final goRouterProvider = FutureProvider<GoRouter>((ref) async {
         builder: (context, state) => const JoinDeviceScreen(),
       ),
       GoRoute(
+        path: AppRoutes.introduction,
+        name: 'introduction',
+        builder: (context, state) => const IntroductionScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.jobInvitations,
+        name: 'jobInvitations',
+        builder: (context, state) => const JobInvitationsScreen(),
+      ),
+      GoRoute(
         path: AppRoutes.home,
         name: 'home',
         builder: (context, state) => const HomeScreen(),
@@ -106,6 +122,12 @@ final goRouterProvider = FutureProvider<GoRouter>((ref) async {
         name: 'projectDetail',
         builder: (context, state) =>
             ProjectDetailScreen(projectId: state.extra as String),
+      ),
+      GoRoute(
+        path: AppRoutes.projectProgramme,
+        name: 'projectProgramme',
+        builder: (context, state) =>
+            ProgrammeScreen(projectId: state.extra as String),
       ),
       GoRoute(
         path: '/error',

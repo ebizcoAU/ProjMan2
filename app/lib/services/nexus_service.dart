@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -13,6 +14,13 @@ import 'session_service.dart';
 /// Every response is `{ success, ... }` with a stable `code` on error (§1.6), so
 /// callers branch on [ApiResult.code], never the message string.
 class NexusService {
+  // `HttpClient.connectionTimeout` only bounds the TCP-connect step — if the
+  // server accepts the connection but never sends a response (e.g. a route
+  // that isn't registered on some server configs just hangs rather than
+  // 404ing), the awaits below had nothing bounding them and the UI's spinner
+  // never cleared. This bounds the whole round trip, not just connecting.
+  static const _requestTimeout = Duration(seconds: 20);
+
   // ── Generic result ─────────────────────────────────────────────────────────
 
   /// The server wraps success payloads in an envelope: `{success, data:{…}}`
@@ -31,26 +39,31 @@ class NexusService {
     String? bearer,
   }) async {
     final uri = Uri.parse('$API_BASE_URL$path');
+    final sw = Stopwatch()..start();
+    debugPrint('[Nexus] → POST $uri');
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 15);
     try {
       final req = await client.postUrl(uri);
+      debugPrint('[Nexus]   connected after ${sw.elapsedMilliseconds}ms, sending body…');
       req.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
       if (bearer != null) {
         req.headers.set(HttpHeaders.authorizationHeader, 'Bearer $bearer');
       }
       req.add(utf8.encode(jsonEncode(body)));
-      final resp = await req.close();
-      final text = await resp.transform(utf8.decoder).join();
+      final resp = await req.close().timeout(_requestTimeout);
+      debugPrint('[Nexus]   headers back after ${sw.elapsedMilliseconds}ms: '
+          '${resp.statusCode}, reading body…');
+      final text =
+          await resp.transform(utf8.decoder).join().timeout(_requestTimeout);
       final Map<String, dynamic> json =
           text.isEmpty ? {} : jsonDecode(text) as Map<String, dynamic>;
       final ok = resp.statusCode >= 200 &&
           resp.statusCode < 300 &&
           json['success'] != false;
-      if (!ok) {
-        debugPrint('[Nexus] POST $path → ${resp.statusCode} '
-            'code=${json['code']} msg=${json['message']}');
-      }
+      debugPrint('[Nexus] ← POST $path → ${resp.statusCode} '
+          'in ${sw.elapsedMilliseconds}ms ok=$ok code=${json['code']} '
+          'msg=${json['message']}');
       return ApiResult(
         success: ok,
         status: resp.statusCode,
@@ -59,7 +72,8 @@ class NexusService {
         message: json['message']?.toString(),
       );
     } on SocketException catch (e) {
-      debugPrint('[Nexus] network error on $path: $e');
+      debugPrint('[Nexus] ← POST $path network error after '
+          '${sw.elapsedMilliseconds}ms: $e');
       return const ApiResult(
         success: false,
         status: 0,
@@ -67,8 +81,19 @@ class NexusService {
         code: 'NETWORK',
         message: 'Cannot reach the server. Check your connection.',
       );
+    } on TimeoutException catch (e) {
+      debugPrint('[Nexus] ← POST $path timeout after '
+          '${sw.elapsedMilliseconds}ms: $e');
+      return const ApiResult(
+        success: false,
+        status: 0,
+        data: {},
+        code: 'NETWORK',
+        message: 'The server took too long to respond. Please try again.',
+      );
     } catch (e) {
-      debugPrint('[Nexus] error on $path: $e');
+      debugPrint('[Nexus] ← POST $path error after '
+          '${sw.elapsedMilliseconds}ms: $e');
       return ApiResult(
         success: false,
         status: 0,
@@ -84,20 +109,29 @@ class NexusService {
   /// Low-level GET returning the decoded body + success flag + error code.
   static Future<ApiResult> _get(String path, {String? bearer}) async {
     final uri = Uri.parse('$API_BASE_URL$path');
+    final sw = Stopwatch()..start();
+    debugPrint('[Nexus] → GET $uri');
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 15);
     try {
       final req = await client.getUrl(uri);
+      debugPrint('[Nexus]   connected after ${sw.elapsedMilliseconds}ms, awaiting response…');
       if (bearer != null) {
         req.headers.set(HttpHeaders.authorizationHeader, 'Bearer $bearer');
       }
-      final resp = await req.close();
-      final text = await resp.transform(utf8.decoder).join();
+      final resp = await req.close().timeout(_requestTimeout);
+      debugPrint('[Nexus]   headers back after ${sw.elapsedMilliseconds}ms: '
+          '${resp.statusCode}, reading body…');
+      final text =
+          await resp.transform(utf8.decoder).join().timeout(_requestTimeout);
       final Map<String, dynamic> json =
           text.isEmpty ? {} : jsonDecode(text) as Map<String, dynamic>;
       final ok = resp.statusCode >= 200 &&
           resp.statusCode < 300 &&
           json['success'] != false;
+      debugPrint('[Nexus] ← GET $path → ${resp.statusCode} '
+          'in ${sw.elapsedMilliseconds}ms ok=$ok code=${json['code']} '
+          'msg=${json['message']}');
       return ApiResult(
         success: ok,
         status: resp.statusCode,
@@ -105,14 +139,27 @@ class NexusService {
         code: json['code']?.toString(),
         message: json['message']?.toString(),
       );
-    } on SocketException {
+    } on SocketException catch (e) {
+      debugPrint('[Nexus] ← GET $path network error after '
+          '${sw.elapsedMilliseconds}ms: $e');
       return const ApiResult(
           success: false,
           status: 0,
           data: {},
           code: 'NETWORK',
           message: 'Cannot reach the server.');
+    } on TimeoutException catch (e) {
+      debugPrint('[Nexus] ← GET $path timeout after '
+          '${sw.elapsedMilliseconds}ms: $e');
+      return const ApiResult(
+          success: false,
+          status: 0,
+          data: {},
+          code: 'NETWORK',
+          message: 'The server took too long to respond. Please try again.');
     } catch (e) {
+      debugPrint('[Nexus] ← GET $path error after '
+          '${sw.elapsedMilliseconds}ms: $e');
       return ApiResult(
           success: false, status: 0, data: const {}, code: 'CLIENT_ERROR',
           message: e.toString());
@@ -357,6 +404,71 @@ class NexusService {
     await _persistSession(res); // no-op unless tokens are present
     return res;
   }
+
+  // ── Introduction (appdesignspecification.md §2.2/§2.3) ─────────────────────
+  // A QR business-card swap between two already-self-registered users — no
+  // job, no project, no device implied. Distinct from device pairing above:
+  // both parties already hold their own session, so this only ever writes an
+  // `introductions` contact-book row, never a new device/session. Contract
+  // CONFIRMED by the Server Agent (docs/decisions/xprojman-04.md) — the code
+  // is a stateless signed token (opaque string, 5 min TTL), NOT a JSON
+  // payload; the scan is the only create path (no raw "introduce me to
+  // user_id" call, so a cold stranger can never be introduced without their
+  // code actually being scanned).
+
+  /// POST /introductions/code (Bearer) — mints this user's own signed QR
+  /// code. Returns `{code, expires_in}` (`expires_in` in seconds — re-mint on
+  /// display, don't cache).
+  static Future<ApiResult> introductionCode() =>
+      authedPost('/introductions/code', const {});
+
+  /// POST /introductions/scan (Bearer) — submits the raw string read off the
+  /// other party's QR (the opaque `code`, not JSON). `201` first time /
+  /// `200` idempotent repeat, both carry `{id, alreadyIntroduced, contact}`;
+  /// `400 INVALID_CODE` (forged/expired/wrong org) or `400 VALIDATION_ERROR`
+  /// (scanned your own code).
+  static Future<ApiResult> introductionScan(String code) =>
+      authedPost('/introductions/scan', {'code': code});
+
+  /// GET /introductions (Bearer) — this user's contact book: `{contacts: [
+  /// {id, user_id, full_name, role, introduced_at, initiated_by}, … ]}`.
+  static Future<ApiResult> introductionContacts() =>
+      authedGet('/introductions');
+
+  // ── Job Award — the S9.7 accept/decline tap (appdesignspecification.md §4.2) ─
+  // The invitation itself (S9.6) is sent from the PM's desk (Portal, `panel.manage`);
+  // the app's slice is the invited person receiving it and tapping accept/decline.
+  //
+  // `respondJobAward` hits a CONFIRMED, real endpoint (server routes/projects.js):
+  //   POST /projects/:id/job-awards/:jaId/respond  { accept: bool } → { id, status }
+  // — and deliberately does NOT require project membership, so an invited-but-not-
+  // yet-enrolled person can accept (membership is written on accept, server-side).
+  //
+  // `pendingJobAwards` hits a PROPOSED endpoint that does NOT exist yet: there is
+  // no way for an invited person to DISCOVER an award addressed to them (the only
+  // list, GET /projects/:id/job-awards, is membership-gated and they aren't a
+  // member until they accept — a chicken/egg the server must close). Shape proposed
+  // to the Server Agent for confirmation, same posture Introduction had before
+  // xprojman-04 confirmed its contract; until it ships, the inbox reads empty
+  // rather than erroring.
+
+  /// GET /job-awards/pending (Bearer) — **PROPOSED, not built yet.** Awards where
+  /// `to_user_id = me AND status = 'sent'`, across projects, NOT membership-gated.
+  /// Proposed shape: `{pending: [{id, project_id, project_name, from_user_id,
+  /// from_name, role_offered, builder_engagement_type, sent_at}]}`.
+  static Future<ApiResult> pendingJobAwards() =>
+      authedGet('/job-awards/pending');
+
+  /// POST /projects/:id/job-awards/:jaId/respond (Bearer) — the S9.7 tap. Only the
+  /// invited person may respond; `{accept}` → `{id, status:'accepted'|'declined'}`.
+  /// Errors: `403 FORBIDDEN` (not the invitee), `409 ALREADY_RESPONDED`.
+  static Future<ApiResult> respondJobAward({
+    required String projectId,
+    required String jobAwardId,
+    required bool accept,
+  }) =>
+      authedPost('/projects/$projectId/job-awards/$jobAwardId/respond',
+          {'accept': accept});
 
   // ── helpers ────────────────────────────────────────────────────────────────
 

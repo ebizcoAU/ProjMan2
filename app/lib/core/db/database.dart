@@ -13,7 +13,8 @@ class DatabaseManager {
   ///   v1 — identity, device, sync, settings (P1/P2)
   ///   v2 — site ops: site_diary/site_attendance/deliveries (P5, servdesignspec §11)
   ///   v3 — quality: inspections/inspection_items/defects/certificates (P6a, §12)
-  static const int currentVersion = 3;
+  ///   v4 — disputes (appdesignspecification.md §2.7, local-only — no sync yet)
+  static const int currentVersion = 4;
 
   static Database? _instance;
 
@@ -48,6 +49,7 @@ class DatabaseManager {
       await _createIndexes(txn);
       await _createSiteOpsIndexes(txn);
       await _createQualityIndexes(txn);
+      await _createDisputeIndexes(txn);
     });
     // ignore: avoid_print
     print('✅ [DB] Created projman2.db v$version '
@@ -73,6 +75,14 @@ class DatabaseManager {
           await txn.execute(stmt);
         }
         await _createQualityIndexes(txn);
+      });
+    }
+    if (oldVersion < 4) {
+      await db.transaction((txn) async {
+        for (final stmt in DomainSchema.v4) {
+          await txn.execute(stmt);
+        }
+        await _createDisputeIndexes(txn);
       });
     }
     // ignore: avoid_print
@@ -191,6 +201,19 @@ class DatabaseManager {
     );
     await txn.execute(
       'CREATE INDEX IF NOT EXISTS idx_cert_dirty ON certificates(is_dirty)',
+    );
+  }
+
+  // Disputes (appdesignspecification.md §2.7) — local-only, project-scoped reads.
+  static Future<void> _createDisputeIndexes(Transaction txn) async {
+    await txn.execute(
+      'CREATE INDEX IF NOT EXISTS idx_dispute_project ON disputes(project_id)',
+    );
+    await txn.execute(
+      'CREATE INDEX IF NOT EXISTS idx_dispute_status ON disputes(status)',
+    );
+    await txn.execute(
+      'CREATE INDEX IF NOT EXISTS idx_dispute_subject ON disputes(subject_type, subject_id)',
     );
   }
 }

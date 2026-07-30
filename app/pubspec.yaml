@@ -28,20 +28,23 @@ dependencies:
 
   # QR — device pairing payloads
   qr_flutter: ^4.1.0
-  mobile_scanner: ^5.2.3
+  mobile_scanner: ^7.4.0
 
   # Storage & Security
   flutter_secure_storage: ^9.0.0
   shared_preferences: ^2.2.0
 
   # Connectivity — drives the offline queue
-  connectivity_plus: ^5.0.0
+  connectivity_plus: ^7.3.1
 
   # UI
   google_fonts: ^6.1.0
 
   # HTTP
   http: ^1.2.0
+
+  # OAuth — Google Sign-In (auth strategy: Google/Microsoft/Facebook only)
+  google_sign_in: ^6.2.1
 
   # Crypto / hashing
   crypto: ^3.0.3

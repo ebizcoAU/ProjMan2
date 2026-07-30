@@ -8,7 +8,7 @@ import '../models/domain.dart';
 //   Projects → 0 Projects · 1 Programme · 2 Costs
 //   Site     → 0 Today · 1 Site Diary · 2 Attendance
 //   Safety   → 0 Safety · 1 Incidents · 2 Inductions
-//   Quality  → 0 Inspections · 1 Defects · 2 Certificates
+//   Quality  → 0 Inspections · 1 Defects · 2 Certificates · 3 Disputes
 //   Profile  → 0 Profile · 1 Device & Sync
 final projectsPageProvider = StateProvider<int>((ref) => 0);
 final sitePageProvider = StateProvider<int>((ref) => 0);

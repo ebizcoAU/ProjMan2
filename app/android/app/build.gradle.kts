@@ -1,12 +1,17 @@
 plugins {
     id("com.android.application")
+    id("com.google.gms.google-services")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
 android {
     namespace = "au.com.ebizco.projman2"
-    compileSdk = flutter.compileSdkVersion
+    // Google Sign-In's AndroidX transitive deps (fragment 1.7.1 etc.) require
+    // compileSdk 34+; Flutter's own default (flutter.compileSdkVersion) still
+    // resolves to 33 on this SDK version, which fails connectivity_plus's AAR
+    // metadata check. Pinned explicitly rather than relying on the default.
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

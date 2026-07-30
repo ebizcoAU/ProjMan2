@@ -220,6 +220,42 @@ class DomainSchema {
     )
   ''';
 
+  // ── disputes — escalation & dispute mechanism (appdesignspecification.md §2.7)
+  // Local-only for now: no server table/endpoint exists yet (the `disputes`
+  // permission strings in serverdesignspecification.md §7.2 are speculative,
+  // not yet wired to any route), so this does NOT ride `/sync/push` — writes
+  // stay on-device until the server ships a registry entry for this table.
+  // `is_dirty`/`pending_op`/`ever_synced` are carried anyway so wiring sync
+  // later is a registry change, not a schema rework — same convention as
+  // every other domain table.
+  static const String disputes = '''
+    CREATE TABLE IF NOT EXISTS disputes (
+      id                      TEXT PRIMARY KEY NOT NULL,
+      project_id              TEXT,
+      subject_type            TEXT NOT NULL,
+      subject_id               TEXT NOT NULL,
+      subject_label            TEXT,
+      raised_by                TEXT,
+      raised_by_name           TEXT,
+      reason                   TEXT NOT NULL,
+      counter_evidence_photo_id TEXT,
+      status                   TEXT DEFAULT 'open',
+      resolution_note          TEXT,
+      resolved_by              TEXT,
+      resolved_by_name         TEXT,
+      resolved_at              TEXT,
+      device_id                TEXT,
+      is_deleted               INTEGER DEFAULT 0,
+      is_dirty                 INTEGER DEFAULT 0,
+      pending_op               TEXT,
+      ever_synced              INTEGER DEFAULT 0,
+      created_at               INTEGER,
+      updated_at                INTEGER,
+      server_updated_at         INTEGER,
+      last_sync_at              INTEGER
+    )
+  ''';
+
   /// v2 upgrade step (P5, servdesignspec §11).
   static const List<String> v2 = [siteDiary, siteAttendance, deliveries];
 
@@ -228,5 +264,8 @@ class DomainSchema {
     inspections, inspectionItems, defects, certificates,
   ];
 
-  static const List<String> all = [...v2, ...v3];
+  /// v4 upgrade step (appdesignspecification.md §2.7 — dispute mechanism).
+  static const List<String> v4 = [disputes];
+
+  static const List<String> all = [...v2, ...v3, ...v4];
 }
