@@ -5,8 +5,14 @@ construction project-management platform. You own **`server/api`** (Node/Express
 MySQL). A separate **app team** owns the Flutter app (`app/`) and the contract docs.
 This file is what a fresh session (after `/clear`) reads to resume.
 
-**One-line status (2026-07-26, committed `d03f822` on `server/p5-site-ops` — still
-local/unpushed, same as the P5 commit before it):** Phase 1 + AU sign-in · **portal** (`server/dashboard`:
+**One-line status (2026-07-30 — `server/p5-site-ops` PUSHED to origin at `4eb3001`;
+migrations at **v017**; matrix **v6**; **212 tests green** across 10 suites; staging DB
+`c1projman2_staging` @ v017. DONE since v011: DIRECTIVE 1 (v012-v016) + intro QR + Portal
+Field/Team surface + SELF_AWARD guard + **P7a Commercial (Cost Plan + Progress Claims,
+v017)**. IDENTITY = single fixed role (xprojman-08/09); the multi-role/active-role detour
+(xprojman-05/06/07) was REVERSED — do not resurrect. NEXT: **P7b Procurement**, then P7c
+Variations. Step E blocked on PM2-02. The blocks below supersede the older v011/8-suite
+figures in this paragraph.):** Phase 1 + AU sign-in · **portal** (`server/dashboard`:
 login + Devices + Projects + Programme + **Cost Plan** + **Admin** Users/Settings/Audit
 — built 2026-07-24, endpoints verified) · **construction core** (v003) ·
 **access-control 6-ROLE model** (v004+v005) · **§10 per-op ownership** (app CREATEs
@@ -89,6 +95,47 @@ stages 17 · admin 18 · siteops 28 · quality 19 · compliance 18 · **directiv
 - Test updates for the new Stage-10 blocking gate: `stages.test.js`/`quality.test.js` now
   pair a siteSupervisor early and satisfy S10.5 before completing Stage 10; `access.test.js`
   matrixVersion 4→5 and pairableRoles 5→6.
+- **Introduction contract reconciled with the App Team** (xprojman-03 §A → my xprojman-04):
+  their invented `POST /introductions/code` + `/scan` + `GET /introductions` QR shape was
+  correct; my `POST /introductions {user_id}` was **removed** (a raw create-by-id defeats
+  the cold-stranger guard). Now a stateless signed code (5-min JWT, no new migration):
+  `IntroductionService.issueCode/scanCode/listContacts`; scan is the only create path. App
+  must confirm its scan body key is `code`. directive1 now 30 checks (194 total, all green).
+
+**COMMITTED + PUSHED + STAGING MIGRATED (2026-07-28), per PM directive:**
+- `10295e2` server: DIRECTIVE 1 (v012–v016) + intro QR contract (24 files).
+- `3aa4095` dashboard: **Portal Field/Team test surface** — new tab `/projects/[id]/field`
+  (stages+hold-point checklists with Satisfy, tasks tick→verify with Verify, "Live" 8s
+  auto-refresh, action buttons gated on the operator's real permissions). Reads reuse
+  `GET /projects/:id`; writes = `fieldApi` (holdPoints/satisfyHoldPoint/verifyTask). Route
+  hot-compiles clean; **not browser-confirmed** (no browser tool this session).
+- **PUSHED**: branch `server/p5-site-ops` now on origin (first push of the whole arc;
+  upstream tracked). Carried the prior unpushed stack too (d03f822 P6, 6cfbdfe P5, plus an
+  app commit 6fce9dc in the ancestry).
+- **STAGING**: no remote staging box exists (projman-05.md's staging was never real — twice
+  flagged). Provisioned + migrated `c1projman2_staging` on localhost to v016 via
+  `DB_NAME=c1projman2_staging node scripts/migrate.js`; smoke-tested (server on 4201 →
+  directive1 30/30). If the app team needs a *remote* staging DB, that host/creds are still
+  needed.
+- **P7 Commercial started** (estimates/POs/variations/claims). Step E still blocked on PM2-02.
+
+**IDENTITY MODEL + P7a (2026-07-30) — see xprojman-08/09/10 (committed in docs/decisions):**
+- **Single fixed role per identity is the MODEL OF RECORD** (xprojman-08 App-authored,
+  owner-confirmed; xprojman-09 Server ACK). A multi-role / active-role-at-login /
+  per-project-grant direction (xprojman-05→06→07) was proposed, owner briefly said yes, then
+  REVERSED (PM+Builder in one identity ⇒ self-award, breaks appointer≠appointed). **Do not
+  resurrect.** `v017`/`project_members.role`/`sessions.active_role`/`/auth/active-role` were
+  spec-only, never built. Only guard shipped: `SELF_AWARD` (`from_user_id!==to_user_id`) in
+  `JobAwardService.create`.
+- **P7a Commercial BUILT** (migration v017, commit 4eb3001): `cost_plans`/`estimate_lines`/
+  `progress_claims`; `EstimateService` (money.write, rolls up `estimated_amount`, lock/unlock)
+  + `ClaimService` (submit→approve→pay; submit runs `stageHooks.assertClaimAllowed` §10.6
+  → `CLAIM_BLOCKED`; pay writes `project_payments` progress_claim/TPAR, idempotent; rolls up
+  `claimed_amount`). Perms `claims.submit`(builder)/`claims.approve`(PM); estimating uses
+  existing `money.write`; **matrix v6**. Routes on `projects.js` (REST, not sync).
+  `tests/commercial.test.js` (17). **NEXT P7b Procurement** (suppliers/POs/supplier-invoices,
+  wire `deliveries.po_id`/`supplier_id`) then **P7c Variations/Contracts** (Client-portal P10
+  dep) — open decisions in xprojman-10 §7 await owner.
 
 **THE ROLE MODEL (authoritative, 2026-07-23):** 6 roles, camelCase, from
 `18StageProjectMangementMatrix.md` (NOT development.md §3's retired 12-role model):
