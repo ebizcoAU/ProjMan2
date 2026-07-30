@@ -6,6 +6,7 @@ import '../../services/session_service.dart';
 import '../../services/nexus_service.dart';
 import '../../services/device_service.dart';
 import '../../services/db_service.dart';
+import '../../services/permissions_service.dart';
 
 /// Profile — who this device is, what role it holds, sync state (development.md
 /// §4). Closes the P2 identity loop: sign in → see your identity → sign out.
@@ -28,6 +29,10 @@ class _ProfileTabState extends State<ProfileTab> {
   Map<String, dynamic>? _device;
   int _pending = 0;
   bool _loading = true;
+  // Org-ownership is decoupled from the fixed role (xprojman-14 §3): a founder
+  // holds org.manage/users.manage/devices.manage via users.isOrgOwner regardless
+  // of their role. Drives the "Org admin" badge + any manage-my-org affordance.
+  bool _canManageOrg = false;
 
   @override
   void initState() {
@@ -39,6 +44,14 @@ class _ProfileTabState extends State<ProfileTab> {
     final user = await SessionService.currentUser();
     final org = await SessionService.currentOrg();
     final device = await DeviceService.describe();
+    // "Manage my org" capability = founded the org (isOrgOwner) OR holds
+    // users.manage (a delegated admin). xprojman-14 §4 says gate on this, not role.
+    final owner = user?['isOrgOwner'] == true;
+    bool canManage = owner;
+    try {
+      await PermissionsService.instance.ensureLoaded();
+      canManage = owner || PermissionsService.instance.has('users.manage');
+    } catch (_) {}
     int pending = 0;
     try {
       final rows = await DatabaseService().rawQuery(
@@ -52,6 +65,7 @@ class _ProfileTabState extends State<ProfileTab> {
       _org = org;
       _device = device;
       _pending = pending;
+      _canManageOrg = canManage;
       _loading = false;
     });
   }
@@ -69,6 +83,8 @@ class _ProfileTabState extends State<ProfileTab> {
         return 'Tradie';
       case 'inspector':
         return 'Inspector';
+      case 'builder':
+        return 'Builder';
       case 'client':
         return 'Client';
       default:
@@ -123,7 +139,7 @@ class _ProfileTabState extends State<ProfileTab> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _Header(name: name, role: role),
+        _Header(name: name, role: role, orgAdmin: _canManageOrg),
         const SizedBox(height: 16),
         _Section(title: 'You', rows: [
           _InfoRow(Icons.email_outlined, 'Email', email),
@@ -211,7 +227,9 @@ class _ProfileTabState extends State<ProfileTab> {
 class _Header extends StatelessWidget {
   final String name;
   final String role;
-  const _Header({required this.name, required this.role});
+  final bool orgAdmin;
+  const _Header(
+      {required this.name, required this.role, this.orgAdmin = false});
 
   @override
   Widget build(BuildContext context) {
@@ -238,24 +256,54 @@ class _Header extends StatelessWidget {
               Text(name,
                   style: Theme.of(context).textTheme.titleLarge,
                   overflow: TextOverflow.ellipsis),
-              const SizedBox(height: 2),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: scheme.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(role,
-                    style: TextStyle(
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: [
+                  _Pill(role, color: scheme.primary),
+                  // "You are the org admin" badge — the founder of this org, or a
+                  // delegated users.manage holder (xprojman-14 §4).
+                  if (orgAdmin)
+                    _Pill('Org admin',
                         color: scheme.primary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600)),
+                        icon: Icons.verified_user_outlined),
+                ],
               ),
             ],
           ),
         ),
       ],
+    );
+  }
+}
+
+class _Pill extends StatelessWidget {
+  final String label;
+  final Color color;
+  final IconData? icon;
+  const _Pill(this.label, {required this.color, this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 12, color: color),
+            const SizedBox(width: 4),
+          ],
+          Text(label,
+              style: TextStyle(
+                  color: color, fontSize: 12, fontWeight: FontWeight.w600)),
+        ],
+      ),
     );
   }
 }

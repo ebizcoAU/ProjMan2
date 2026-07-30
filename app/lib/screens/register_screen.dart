@@ -18,8 +18,13 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  int _step = 0; // 0 = account, 1 = business
+  int _step = 0; // 0 = account, 1 = role, 2 = business
   bool _busy = false;
+  // v1 App self-registration surfaces one self-registrable role: Builder
+  // (xprojman-13/14 Fork A). Sent as user.role on /auth/register; the server's
+  // allow-list also permits projectManager/developer, but those register on the
+  // web Portal, not here.
+  final String _role = 'builder';
 
   // Step 1 — account
   final _accountForm = GlobalKey<FormState>();
@@ -47,8 +52,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   void _next() {
     if (_accountForm.currentState!.validate()) {
-      setState(() => _step = 1);
+      setState(() => _step = 1); // account → role
     }
+  }
+
+  void _toBusiness() {
+    // Default the business name to the person's own name — a sole-trader Builder
+    // shouldn't have to invent a separate company name (xprojman-13 §5).
+    if (_orgName.text.trim().isEmpty) {
+      _orgName.text = _fullName.text.trim();
+    }
+    setState(() => _step = 2); // role → business
   }
 
   Future<void> _submit() async {
@@ -68,6 +82,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
         'email': _email.text.trim(),
         'password': _password.text,
         'mobile': _mobile.text.replaceAll(RegExp(r'\s'), ''),
+        // Fork A — self-register with the chosen fixed role (xprojman-14 §2).
+        // Omitting it would default to projectManager server-side.
+        'role': _role,
       },
     );
     if (!mounted) return;
@@ -95,22 +112,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    const titles = ['Create your account', 'Your role', 'About your business'];
+    const subtitles = [
+      'Sign up in a minute. Your details stay in Australia.',
+      'This is the role you hold on ProjMan. It stays with your account.',
+      'A few Australian basics. ABN is optional for now.',
+    ];
     return AuthScaffold(
-      title: _step == 0 ? 'Create your account' : 'About your business',
-      // Step 2 heading: 1px smaller, not bold (owner request).
-      titleStyle: _step == 1
+      title: titles[_step],
+      // Business-step heading: 1px smaller, not bold (owner request).
+      titleStyle: _step == 2
           ? const TextStyle(
               color: Colors.white,
               fontSize: 27,
               fontWeight: FontWeight.w500,
               letterSpacing: -0.3)
           : null,
-      // Back on step 2 returns to step 1; on step 1 it exits (pop → welcome/login).
-      onBack: _step == 1 ? () => setState(() => _step = 0) : null,
-      subtitle: _step == 0
-          ? 'Sign up in a minute. Your details stay in Australia.'
-          : 'A few Australian basics. ABN is optional for now.',
-      child: _step == 0 ? _buildAccountStep() : _buildBusinessStep(),
+      // Back steps one page; on the first step it exits (pop → welcome/login).
+      onBack: _step == 0 ? null : () => setState(() => _step -= 1),
+      subtitle: subtitles[_step],
+      child: _step == 0
+          ? _buildAccountStep()
+          : _step == 1
+              ? _buildRoleStep()
+              : _buildBusinessStep(),
     );
   }
 
@@ -189,6 +214,45 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
+  Widget _buildRoleStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Single self-registrable App role in v1 — Builder. Crew (site supervisor /
+        // foreperson / tradie / inspector) join a builder's team by pairing a
+        // device and are not self-registrable yet (PM2-02); PMs use the Portal.
+        const _RoleCard(
+          icon: Icons.construction,
+          title: "I'm a Builder",
+          subtitle: 'You run your own building business and take on projects. '
+              'Registering creates your business and makes you its admin.',
+        ),
+        const SizedBox(height: 16),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.info_outline,
+                size: 18, color: Colors.white.withValues(alpha: 0.5)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Site supervisors, forepersons, tradies and inspectors join a '
+                "builder's team by pairing a device. Project managers register on "
+                'the web portal.',
+                style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.35,
+                    color: Colors.white.withValues(alpha: 0.6)),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        AuthButton(label: 'Continue', onPressed: _toBusiness),
+      ],
+    );
+  }
+
   Widget _buildBusinessStep() {
     return Form(
       key: _businessForm,
@@ -234,6 +298,66 @@ class _RegisterScreenState extends State<RegisterScreen> {
           const SizedBox(height: 24),
           AuthButton(
               label: 'Create account', busy: _busy, onPressed: _submit),
+        ],
+      ),
+    );
+  }
+}
+
+/// A single, pre-selected role option on the dark auth scaffold. v1 shows only
+/// one (Builder), so it's presentational — it states the role rather than
+/// offering a choice. When PM2-02 opens crew self-registration this becomes a
+/// selectable list.
+class _RoleCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  const _RoleCard(
+      {required this.icon, required this.title, required this.subtitle});
+
+  @override
+  Widget build(BuildContext context) {
+    const accent = Color(0xFF60A5FA);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: accent, width: 1.5),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: accent),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                Text(subtitle,
+                    style: TextStyle(
+                        fontSize: 13,
+                        height: 1.35,
+                        color: Colors.white.withValues(alpha: 0.7))),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Icon(Icons.check_circle, color: accent, size: 22),
         ],
       ),
     );
