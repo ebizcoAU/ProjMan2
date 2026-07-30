@@ -1,74 +1,112 @@
-// /projects/:id/cost-plan — per-stage cost plan (Portal build step 5).
-// Read + edit the four cost columns (estimated/committed/actual/claimed) per stage,
-// with variance. Gated by money.read on the server (columns are simply absent for a
-// non-financial viewer — this page then shows the no-access state). Edits go through
-// PATCH /projects/:id/stages/:stageId (programme.write).
+// /projects/:id/cost-plan — the money loop (Portal build step 5, wired to P7a + P7b).
+//
+// The four stage cost columns are DERIVED roll-ups, not editable fields (xprojman-10 §5 —
+// they became the single read model once P7 owns them: estimated←estimate lines,
+// committed←purchase orders, actual←supplier invoices, claimed←progress claims). So this
+// page is READ-ONLY and drills down into the source document behind each column. Gated by
+// money.read server-side (columns/rows are simply absent for a non-financial viewer, and
+// under an independent_fixed engagement a Builder's PO/invoice rows never reach the PM).
 'use client';
 
-import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { PortalCard }    from '@/components/portal/PortalCard';
 import { PortalKpi }     from '@/components/portal/PortalKpi';
 import { PortalEmpty }   from '@/components/portal/PortalEmpty';
 import { PortalError }   from '@/components/portal/PortalError';
 import { usePortalData } from '@/components/portal/usePortalData';
-import { projectsApi }   from '@/lib/api';
+import { projectsApi, commercialApi } from '@/lib/api';
 import { ProjectTabs }   from '../_ProjectTabs';
 
 const COLS = [
-  { key: 'estimated_amount', label: 'Estimated' },
-  { key: 'committed_amount', label: 'Committed' },
-  { key: 'actual_amount',    label: 'Actual' },
-  { key: 'claimed_amount',   label: 'Claimed' },
+  { key: 'estimated_amount', label: 'Estimated', src: 'estimate lines' },
+  { key: 'committed_amount', label: 'Committed', src: 'purchase orders' },
+  { key: 'actual_amount',    label: 'Actual',    src: 'supplier invoices' },
+  { key: 'claimed_amount',   label: 'Claimed',   src: 'progress claims' },
 ];
 const money = (v) => v == null || v === '' ? '—'
   : Number(v).toLocaleString('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 });
 const num = (v) => Number(v) || 0;
 
-// One editable cost cell — saves on blur if changed.
-function CostCell({ stageId, col, value, onSave, disabled }) {
-  const [v, setV] = useState(value ?? '');
-  useEffect(() => { setV(value ?? ''); }, [value]);
-  const commit = () => {
-    const norm = v === '' ? null : Number(v);
-    const was = value == null ? null : Number(value);
-    if (norm !== was) onSave(stageId, col, norm);
-  };
+const STATUS_COLOR = {
+  issued: 'var(--brand)', received: 'var(--green)', cancelled: 'var(--dim)',
+  matched: 'var(--brand)', approved: 'var(--green)', disputed: 'var(--red)',
+  submitted: 'var(--amber)', paid: 'var(--green)', declined: 'var(--red)',
+  draft: 'var(--dim)',
+};
+function Pill({ text }) {
   return (
-    <input
-      type="number" value={v} disabled={disabled}
-      onChange={(e) => setV(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-      style={{
-        width: 110, padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--fm)',
-        fontSize: 13, borderRadius: 6, border: '1px solid var(--b1)',
-        background: disabled ? 'var(--s2)' : 'var(--s1)', color: 'var(--text)',
-      }}
-    />
+    <span style={{
+      display: 'inline-block', padding: '2px 8px', borderRadius: 999, fontSize: 11,
+      fontWeight: 700, color: '#fff', background: STATUS_COLOR[text] || 'var(--muted)',
+    }}>{text}</span>
+  );
+}
+const th = { padding: '8px 12px', textAlign: 'left', color: 'var(--dim)', fontSize: 11, fontWeight: 700 };
+const thR = { ...th, textAlign: 'right' };
+const td = { padding: '7px 12px', color: 'var(--text)', fontSize: 13 };
+const tdR = { ...td, textAlign: 'right', fontFamily: 'var(--fm)' };
+
+// A compact source-document table with an empty state.
+function DocTable({ title, count, columns, rows, renderRow }) {
+  return (
+    <PortalCard title={`${title}${count ? ` · ${count}` : ''}`}>
+      {rows.length === 0 ? (
+        <PortalEmpty message={`No ${title.toLowerCase()} yet.`} />
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: 'var(--s2)', borderBottom: '1px solid var(--b1)' }}>
+                {columns.map((c, i) => <th key={i} style={c.right ? thR : th}>{c.label}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={r.id || i} style={{ borderBottom: i < rows.length - 1 ? '1px solid var(--b2)' : 'none' }}>
+                  {renderRow(r)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </PortalCard>
   );
 }
 
 export default function CostPlanPage() {
   const { id } = useParams();
-  const { data, loading, error, refetch } = usePortalData(() => projectsApi.detail(id), [id]);
-  const [saving, setSaving] = useState(null);
-  const [saveError, setSaveError] = useState(null);
-
-  const project = data?.data?.project;
-  const stages = data?.data?.stages || [];
-  const seesMoney = stages.some(s => 'estimated_amount' in s) || (project && 'contract_value' in project);
-
-  const save = async (stageId, col, val) => {
-    setSaving(`${stageId}:${col}`); setSaveError(null);
-    try { await projectsApi.patchStage(id, stageId, { [col]: val }); await refetch(); }
-    catch (err) { setSaveError(err?.response?.data?.message || err.message); }
-    finally { setSaving(null); }
-  };
+  const { data, loading, error } = usePortalData(async () => {
+    const [d, cp, po, inv, cl] = await Promise.all([
+      projectsApi.detail(id),
+      commercialApi.costPlan(id).catch(() => null),
+      commercialApi.purchaseOrders(id).catch(() => null),
+      commercialApi.supplierInvoices(id).catch(() => null),
+      commercialApi.progressClaims(id).catch(() => null),
+    ]);
+    return { data: {
+      project:  d?.data?.data?.project,
+      stages:   d?.data?.data?.stages || [],
+      lines:    cp?.data?.data?.lines || [],
+      pos:      po?.data?.data?.purchase_orders || [],
+      invoices: inv?.data?.data?.supplier_invoices || [],
+      claims:   cl?.data?.data?.claims || [],
+    } };
+  }, [id]);
 
   if (loading) return <div style={{ padding: 20 }}><PortalEmpty message="Loading…" /></div>;
   if (error)   return <div style={{ padding: 20 }}><PortalError message={error} /></div>;
+
+  const project = data?.data?.project;
   if (!project) return <div style={{ padding: 20 }}><PortalError message="Project not found" /></div>;
+
+  const stages   = data.data.stages;
+  const lines    = data.data.lines;
+  const pos      = data.data.pos;
+  const invoices = data.data.invoices;
+  const claims   = data.data.claims;
+  const seesMoney = stages.some(s => 'estimated_amount' in s) || ('contract_value' in project);
+  const stageName = (sid) => { const st = stages.find(s => s.id === sid); return st ? `${st.seq}. ${st.name}` : '—'; };
 
   const total = (col) => stages.reduce((s, st) => s + num(st[col]), 0);
   const variance = (st) => num(st.actual_amount) - num(st.estimated_amount);
@@ -93,19 +131,15 @@ export default function CostPlanPage() {
               color={totalVariance > 0 ? 'var(--red)' : 'var(--green)'} />
           </div>
 
-          {saveError && <div style={{ marginBottom: 12 }}><PortalError message={saveError} /></div>}
-
-          <PortalCard title="Cost plan by stage">
+          <PortalCard title="Cost plan by stage — derived from source documents">
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: 'var(--s2)', borderBottom: '1px solid var(--b1)' }}>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', color: 'var(--dim)', fontSize: 12 }}>#</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', color: 'var(--dim)', fontSize: 12 }}>Stage</th>
-                    {COLS.map(c => (
-                      <th key={c.key} style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--dim)', fontSize: 12 }}>{c.label}</th>
-                    ))}
-                    <th style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--dim)', fontSize: 12 }}>Variance</th>
+                    <th style={th}>#</th>
+                    <th style={th}>Stage</th>
+                    {COLS.map(c => <th key={c.key} style={thR}>{c.label}</th>)}
+                    <th style={thR}>Variance</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -113,16 +147,10 @@ export default function CostPlanPage() {
                     const vr = variance(st);
                     return (
                       <tr key={st.id} style={{ borderBottom: i < stages.length - 1 ? '1px solid var(--b2)' : 'none' }}>
-                        <td style={{ padding: '8px 12px', fontFamily: 'var(--fm)', color: 'var(--muted)' }}>{st.seq}</td>
-                        <td style={{ padding: '8px 12px', color: 'var(--text)' }}>{st.name}</td>
-                        {COLS.map(c => (
-                          <td key={c.key} style={{ padding: '6px 12px', textAlign: 'right' }}>
-                            <CostCell stageId={st.id} col={c.key} value={st[c.key]}
-                              disabled={saving === `${st.id}:${c.key}`} onSave={save} />
-                          </td>
-                        ))}
-                        <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--fm)',
-                          color: vr > 0 ? 'var(--red)' : vr < 0 ? 'var(--green)' : 'var(--dim)' }}>
+                        <td style={{ ...td, fontFamily: 'var(--fm)', color: 'var(--muted)' }}>{st.seq}</td>
+                        <td style={td}>{st.name}</td>
+                        {COLS.map(c => <td key={c.key} style={tdR}>{money(st[c.key])}</td>)}
+                        <td style={{ ...tdR, color: vr > 0 ? 'var(--red)' : vr < 0 ? 'var(--green)' : 'var(--dim)' }}>
                           {vr === 0 ? '—' : money(vr)}
                         </td>
                       </tr>
@@ -131,23 +159,79 @@ export default function CostPlanPage() {
                 </tbody>
                 <tfoot>
                   <tr style={{ borderTop: '2px solid var(--b1)', fontWeight: 700 }}>
-                    <td colSpan={2} style={{ padding: '10px 12px', color: 'var(--text)' }}>Total</td>
-                    {COLS.map(c => (
-                      <td key={c.key} style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'var(--fm)', color: 'var(--text)' }}>
-                        {money(total(c.key))}
-                      </td>
-                    ))}
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'var(--fm)',
-                      color: totalVariance > 0 ? 'var(--red)' : 'var(--green)' }}>{money(totalVariance)}</td>
+                    <td colSpan={2} style={{ ...td, fontWeight: 700 }}>Total</td>
+                    {COLS.map(c => <td key={c.key} style={{ ...tdR, fontWeight: 700 }}>{money(total(c.key))}</td>)}
+                    <td style={{ ...tdR, fontWeight: 700, color: totalVariance > 0 ? 'var(--red)' : 'var(--green)' }}>{money(totalVariance)}</td>
                   </tr>
                 </tfoot>
               </table>
             </div>
             <div style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)' }}>
-              Edit a cell and click away (or press Enter) to save. Contract value:{' '}
-              <strong style={{ color: 'var(--text)' }}>{money(project.contract_value)}</strong>.
+              These columns are read-only roll-ups of the documents below (estimate → committed → actual → claimed).
+              Contract value: <strong style={{ color: 'var(--text)' }}>{money(project.contract_value)}</strong>.
             </div>
           </PortalCard>
+
+          <div style={{ height: 16 }} />
+
+          <DocTable
+            title="Estimate lines" count={lines.length}
+            columns={[{ label: 'Description' }, { label: 'Stage' }, { label: 'Qty', right: true },
+              { label: 'Rate', right: true }, { label: 'Amount', right: true }]}
+            rows={lines}
+            renderRow={(l) => (<>
+              <td style={td}>{l.description}</td>
+              <td style={{ ...td, color: 'var(--muted)' }}>{l.stage_id ? stageName(l.stage_id) : '—'}</td>
+              <td style={tdR}>{num(l.quantity)}{l.unit ? ` ${l.unit}` : ''}</td>
+              <td style={tdR}>{money(l.rate)}</td>
+              <td style={tdR}>{money(l.amount)}</td>
+            </>)}
+          />
+          <div style={{ height: 12 }} />
+
+          <DocTable
+            title="Purchase orders" count={pos.length}
+            columns={[{ label: 'PO#' }, { label: 'Supplier' }, { label: 'Stage' }, { label: 'Owner' },
+              { label: 'Status' }, { label: 'Amount', right: true }]}
+            rows={pos}
+            renderRow={(p) => (<>
+              <td style={{ ...td, fontFamily: 'var(--fm)' }}>#{p.po_number}</td>
+              <td style={td}>{p.supplier_name || (p.counterparty_redacted ? <em style={{ color: 'var(--muted)' }}>[redacted]</em> : '—')}</td>
+              <td style={{ ...td, color: 'var(--muted)' }}>{p.stage_id ? stageName(p.stage_id) : '—'}</td>
+              <td style={td}><Pill text={p.owner_party} /></td>
+              <td style={td}><Pill text={p.status} /></td>
+              <td style={tdR}>{money(p.amount)}</td>
+            </>)}
+          />
+          <div style={{ height: 12 }} />
+
+          <DocTable
+            title="Supplier invoices" count={invoices.length}
+            columns={[{ label: 'Invoice' }, { label: 'Supplier' }, { label: 'Matched PO' }, { label: 'Owner' },
+              { label: 'Status' }, { label: 'Amount', right: true }]}
+            rows={invoices}
+            renderRow={(v) => (<>
+              <td style={{ ...td, fontFamily: 'var(--fm)' }}>{v.invoice_number}</td>
+              <td style={td}>{v.supplier_name || (v.counterparty_redacted ? <em style={{ color: 'var(--muted)' }}>[redacted]</em> : '—')}</td>
+              <td style={{ ...td, color: 'var(--muted)' }}>{v.po_id ? '2-way ✓' : 'direct'}</td>
+              <td style={td}><Pill text={v.owner_party} /></td>
+              <td style={td}><Pill text={v.status} /></td>
+              <td style={tdR}>{money(v.amount)}</td>
+            </>)}
+          />
+          <div style={{ height: 12 }} />
+
+          <DocTable
+            title="Progress claims" count={claims.length}
+            columns={[{ label: 'Claim#' }, { label: 'Stage' }, { label: 'Status' }, { label: 'Amount', right: true }]}
+            rows={claims}
+            renderRow={(c) => (<>
+              <td style={{ ...td, fontFamily: 'var(--fm)' }}>#{c.claim_number}</td>
+              <td style={{ ...td, color: 'var(--muted)' }}>{c.stage_id ? stageName(c.stage_id) : '—'}</td>
+              <td style={td}><Pill text={c.status} /></td>
+              <td style={tdR}>{money(c.amount)}</td>
+            </>)}
+          />
         </>
       )}
     </div>

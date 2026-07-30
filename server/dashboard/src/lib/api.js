@@ -102,6 +102,19 @@ export const authApi = {
   logout:      () => request('POST', '/auth/logout'),
   me:          () => request('GET',  '/auth/me'),
   permissions: () => request('GET',  '/auth/permissions'),
+  // Self-Registration (xprojman-14 Fork A). `user.role` optional; the server allow-list is
+  // {projectManager, builder, developer}. A registrant founds their org → isOrgOwner: true.
+  register: (body) => request('POST', '/auth/register', {
+    ...body, device: { device_uid: webDeviceUid(), device_name: 'Office console', platform: 'web' },
+  }),
+};
+
+// Job Awards — the Builder's identity-level invitation inbox (xprojman-12). Not
+// project-scoped: an invitee can't reach the project until they accept, so the list is
+// GET /job-awards/pending; accept/decline is the project-scoped respond endpoint.
+export const jobAwardsApi = {
+  pending: ()                        => request('GET',  '/job-awards/pending'),
+  respond: (projectId, jaId, accept) => request('POST', `/projects/${projectId}/job-awards/${jaId}/respond`, { accept }),
 };
 
 export const devicesApi = {
@@ -144,6 +157,24 @@ export const projectsApi = {
     request('POST', `/projects/${id}/stages/${stageId}/validate`, { result, reference }),
   // Cost plan — per-stage structure/cost edit (programme.write)
   patchStage: (id, stageId, body) => request('PATCH', `/projects/${id}/stages/${stageId}`, body),
+};
+
+// Commercial (P7a Cost Plan + Progress Claims, P7b Procurement) — read model for the
+// Portal Cost Plan tab. The stage cost columns come off projectsApi.detail(id) as derived
+// roll-ups (never hand-edited — xprojman-10 §5); these expose the source documents behind
+// each column. Engagement-mode redaction is enforced server-side (a Builder's PO/invoice
+// rows simply don't come back to a PM under independent_fixed).
+export const commercialApi = {
+  costPlan:         (id) => request('GET', `/projects/${id}/cost-plan`),
+  purchaseOrders:   (id) => request('GET', `/projects/${id}/purchase-orders`),
+  supplierInvoices: (id) => request('GET', `/projects/${id}/supplier-invoices`),
+  progressClaims:   (id) => request('GET', `/projects/${id}/progress-claims`),
+  suppliers:        ()   => request('GET', '/suppliers'),
+  // Progress-claim workflow (P7a §7.2/§10.6): Builder submits (claims.submit); PM
+  // approves/declines then pays (claims.approve). Submit runs the §10.6 claim-freeze.
+  submitClaim:  (id, body)            => request('POST', `/projects/${id}/progress-claims`, body),
+  approveClaim: (id, claimId, accept) => request('POST', `/projects/${id}/progress-claims/${claimId}/approve`, { accept }),
+  payClaim:     (id, claimId, reference) => request('POST', `/projects/${id}/progress-claims/${claimId}/pay`, { reference }),
 };
 
 // Quality (P6a) — review reads only; writes ride /sync/push from the field app.
@@ -208,6 +239,7 @@ const api = {
   customers:      customersApi,
   stageTemplates: stageTemplatesApi,
   quality:        qualityApi,
+  commercial:     commercialApi,
   admin:          adminApi,
 };
 
