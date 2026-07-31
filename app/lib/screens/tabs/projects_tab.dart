@@ -4,6 +4,7 @@ import '../../config/app_theme.dart';
 import '../../config/router.dart';
 import '../../models/domain.dart';
 import '../../services/project_service.dart';
+import '../../services/permissions_service.dart';
 
 /// Projects — the PM's jobs; tap one to open its 18-stage tracker. "New project"
 /// starts Stage 1 (create). Light operational theme (appspec Decision 1). Costs
@@ -19,6 +20,11 @@ class ProjectsTab extends StatefulWidget {
 class _ProjectsTabState extends State<ProjectsTab> {
   List<Project> _projects = [];
   bool _loading = true;
+  // Whether to show "New project". Gated on projects.write — PM always; builder
+  // once the server grants it (xprojman-17 Q1, matrix v8). Defaults true so a cold
+  // OFFLINE launch never strips create from a PM (Stage-1 is offline-first); we
+  // only hide once permissions have loaded and confirm the role lacks it.
+  bool _canCreate = true;
 
   @override
   void initState() {
@@ -29,9 +35,15 @@ class _ProjectsTabState extends State<ProjectsTab> {
   Future<void> _load() async {
     setState(() => _loading = true);
     final p = await ProjectService.list();
+    await PermissionsService.instance.ensureLoaded();
+    final perms = PermissionsService.instance;
+    // Unknown (offline / not yet loaded) → keep the button; known → honour
+    // projects.write so crew who'd only get FORBIDDEN don't see a dead action.
+    final canCreate = !perms.loaded || perms.has('projects.write');
     if (!mounted) return;
     setState(() {
       _projects = p;
+      _canCreate = canCreate;
       _loading = false;
     });
   }
@@ -62,16 +74,17 @@ class _ProjectsTabState extends State<ProjectsTab> {
                         fontSize: 20,
                         fontWeight: FontWeight.w800)),
                 const Spacer(),
-                FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Op.accent,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
+                if (_canCreate)
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Op.accent,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onPressed: _newProject,
+                    icon: const Icon(Icons.add, size: 20),
+                    label: const Text('New project'),
                   ),
-                  onPressed: _newProject,
-                  icon: const Icon(Icons.add, size: 20),
-                  label: const Text('New project'),
-                ),
               ],
             ),
           ),
@@ -90,20 +103,27 @@ class _ProjectsTabState extends State<ProjectsTab> {
   }
 
   Widget _empty() {
+    // canCreate (PM, or a Builder running their own business) → create your own
+    // jobs. Otherwise (crew) work arrives when the company adds you to a project —
+    // cross-company engagement is PM2-02, not v1 (xprojman-17 Q2).
+    final hint = _canCreate
+        ? 'Tap “New project” to create a job for your business.'
+        : 'You’ll see jobs here once your company adds you to a project.';
     return ListView(
-      children: const [
-        SizedBox(height: 96),
-        Icon(Icons.folder_open_outlined, size: 56, color: Op.muted),
-        SizedBox(height: 12),
-        Center(
+      children: [
+        const SizedBox(height: 96),
+        const Icon(Icons.folder_open_outlined, size: 56, color: Op.muted),
+        const SizedBox(height: 12),
+        const Center(
           child: Text('No projects yet',
               style: TextStyle(
                   color: Op.text, fontSize: 16, fontWeight: FontWeight.w700)),
         ),
-        SizedBox(height: 4),
+        const SizedBox(height: 4),
         Center(
-          child: Text('Tap “New project” to create your first job.',
-              style: TextStyle(color: Op.muted, fontSize: 13)),
+          child: Text(hint,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Op.muted, fontSize: 13)),
         ),
       ],
     );

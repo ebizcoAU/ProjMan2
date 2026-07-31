@@ -102,9 +102,12 @@ class _JobInvitationsScreenState extends State<JobInvitationsScreen> {
             Text('No pending invitations',
                 style: TextStyle(color: Colors.white.withValues(alpha: 0.8))),
             const SizedBox(height: 4),
-            Text('When a manager invites you to a project, it shows up here.',
+            Text(
+                'When someone in your organisation invites you to a project, it '
+                'shows up here. Invitations from other companies come later.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 12)),
+                style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.45), fontSize: 12)),
           ],
         ),
       );
