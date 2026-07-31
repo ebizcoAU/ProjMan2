@@ -102,6 +102,13 @@ export const authApi = {
   logout:      () => request('POST', '/auth/logout'),
   me:          () => request('GET',  '/auth/me'),
   permissions: () => request('GET',  '/auth/permissions'),
+  // OAuth token-exchange (migration_v002): the web gets a provider ID token (Google via
+  // GIS, or a dev-bypass token in dev) and the server verifies it and returns a session —
+  // the SAME user the app created, matched by provider sub or email. This is how a user who
+  // signed up on the app with Google (no password) signs into the Portal.
+  oauth: (provider, token) => request('POST', `/auth/oauth/${provider}`, {
+    token, device: { device_uid: webDeviceUid(), device_name: 'Office console', platform: 'web' },
+  }),
   // Self-Registration (xprojman-14 Fork A). `user.role` optional; the server allow-list is
   // {projectManager, builder, developer}. A registrant founds their org → isOrgOwner: true.
   register: (body) => request('POST', '/auth/register', {
