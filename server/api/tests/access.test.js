@@ -60,8 +60,9 @@ async function pairAs(admin, adminUserId, role, uid, stamp) {
   // v5 (v012, DIRECTIVE 1): + builder/developer/accountant + progress.tick/verify/
   // tax.approve/development.read/panel.manage. v6 (v017, P7a Commercial): + claims.submit
   // (builder) / claims.approve (projectManager).
-  // v7 (v019, P7b Procurement): + po.write (projectManager, builder).
-  ok('permissions: matrixVersion present', d?.matrixVersion === 7, JSON.stringify(d?.matrixVersion));
+  // v7 (v019, P7b): + po.write. v8 (v020, Q1): builder += projects.write.
+  // v9 (v021, P7c): + variations.raise (PM) / variations.approve (client, dormant).
+  ok('permissions: matrixVersion present', d?.matrixVersion === 9, JSON.stringify(d?.matrixVersion));
   ok('permissions: projectManager scope = portfolio', d?.scopeClass === 'portfolio');
   ok('permissions: projectManager has projects.write', d?.permissions?.includes('projects.write'));
   ok('permissions: pairableRoles are the 6 field roles (+ builder, no client)',
@@ -187,6 +188,8 @@ async function pairAs(admin, adminUserId, role, uid, stamp) {
   ok('founder keeps their builder role caps (claims.submit, panel.manage, progress.tick)',
     ['claims.submit', 'panel.manage', 'progress.tick'].every((p) => bPerms?.permissions?.includes(p)),
     JSON.stringify(bPerms?.permissions));
+  ok('builder now holds projects.write (xprojman-17 Q1) — can create its own jobs',
+    bPerms?.permissions?.includes('projects.write'), JSON.stringify(bPerms?.permissions));
   ok('the flag confers ONLY owner caps — NOT PM construction caps (claims.approve/progress.write/money.write)',
     !['claims.approve', 'progress.write', 'money.write'].some((p) => bPerms?.permissions?.includes(p)),
     JSON.stringify(bPerms?.permissions));

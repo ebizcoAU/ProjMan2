@@ -40,6 +40,7 @@ const HoldPointService = require('../services/HoldPointService');
 const EstimateService = require('../services/EstimateService');
 const ClaimService = require('../services/ClaimService');
 const ProcurementService = require('../services/ProcurementService');
+const ContractService = require('../services/ContractService');
 
 router.use(authenticate);
 
@@ -58,6 +59,7 @@ const canWriteMoney = requirePermission('money.write');   // P7a estimate/cost-p
 const canSubmitClaims = requirePermission('claims.submit'); // P7a Builder submits
 const canApproveClaims = requirePermission('claims.approve'); // P7a PM approves/pays
 const canWritePo = requirePermission('po.write');           // P7b procurement writes
+const canRaiseVariation = requirePermission('variations.raise'); // P7c PM raises variations
 
 function validation(req, res) {
   const errors = validationResult(req);
@@ -913,6 +915,107 @@ router.post(
       });
       await audit(req, 'supplier_invoice.status', {
         entity: 'supplier_invoices', entityId: req.params.invId,
+        detail: { project_id: req.params.id, status: result.status },
+      });
+      return res.json({ success: true, data: result });
+    } catch (err) { return sendError(res, err); }
+  }
+);
+
+// ── Commercial P7c — Contracts + Variations (xprojman-10 §4c) ───────────────────────
+// Contract writes reuse money.write; reads by money.read (enforced in ContractService).
+// variations.raise = PM; variations.approve = client (DORMANT until P10 — a PM is refused).
+//   GET  /:id/contracts                  list contracts (+ effective_value roll-up)
+//   POST /:id/contracts                  create a contract      (money.write)
+//   GET  /:id/variations                 list variations
+//   POST /:id/variations                 raise a variation      (variations.raise)
+//   POST /:id/variations/:vid/approve    Client approves/declines (variations.approve — P10)
+router.get('/:id/contracts', async (req, res) => {
+  try {
+    const data = await ContractService.listContracts({
+      orgId: req.auth.orgId, projectId: req.params.id,
+      actor: { role: req.auth.role, userId: req.auth.userId },
+    });
+    return res.json({ success: true, data });
+  } catch (err) { return sendError(res, err); }
+});
+
+router.post(
+  '/:id/contracts',
+  canWriteMoney,
+  [
+    body('party_type').isIn(['client', 'subcontractor', 'supplier']),
+    body('contract_value').optional({ nullable: true }).isFloat({ min: 0 }),
+    body('retention_pct').optional({ nullable: true }).isFloat({ min: 0, max: 100 }),
+    body('party_user_id').optional({ nullable: true }).isString(),
+    body('party_name').optional({ nullable: true }).isString(),
+    body('title').optional({ nullable: true }).isString(),
+  ],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await ContractService.createContract({
+        orgId: req.auth.orgId, projectId: req.params.id,
+        actor: { role: req.auth.role, userId: req.auth.userId },
+        partyType: req.body.party_type, partyUserId: req.body.party_user_id, partyName: req.body.party_name,
+        title: req.body.title, contractValue: req.body.contract_value, retentionPct: req.body.retention_pct,
+      });
+      await audit(req, 'contract.create', {
+        entity: 'contracts', entityId: result.id,
+        detail: { project_id: req.params.id, party_type: result.party_type },
+      });
+      return res.status(201).json({ success: true, data: result });
+    } catch (err) { return sendError(res, err); }
+  }
+);
+
+router.get('/:id/variations', async (req, res) => {
+  try {
+    const data = await ContractService.listVariations({
+      orgId: req.auth.orgId, projectId: req.params.id,
+      actor: { role: req.auth.role, userId: req.auth.userId },
+    });
+    return res.json({ success: true, data });
+  } catch (err) { return sendError(res, err); }
+});
+
+router.post(
+  '/:id/variations',
+  canRaiseVariation,
+  [
+    body('description').trim().notEmpty().withMessage('description is required'),
+    body('amount').optional({ nullable: true }).isFloat(),
+    body('contract_id').optional({ nullable: true }).isString(),
+  ],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await ContractService.raiseVariation({
+        orgId: req.auth.orgId, projectId: req.params.id,
+        actor: { role: req.auth.role, userId: req.auth.userId },
+        contractId: req.body.contract_id, description: req.body.description, amount: req.body.amount,
+      });
+      await audit(req, 'variation.raise', {
+        entity: 'variations', entityId: result.id,
+        detail: { project_id: req.params.id, amount: req.body.amount },
+      });
+      return res.status(201).json({ success: true, data: result });
+    } catch (err) { return sendError(res, err); }
+  }
+);
+
+router.post(
+  '/:id/variations/:vid/approve',
+  [body('accept').optional().isBoolean()],
+  async (req, res) => {
+    try {
+      const result = await ContractService.respondVariation({
+        orgId: req.auth.orgId, projectId: req.params.id, variationId: req.params.vid,
+        actor: { role: req.auth.role, userId: req.auth.userId },
+        accept: req.body.accept !== false,
+      });
+      await audit(req, 'variation.approve', {
+        entity: 'variations', entityId: req.params.vid,
         detail: { project_id: req.params.id, status: result.status },
       });
       return res.json({ success: true, data: result });
