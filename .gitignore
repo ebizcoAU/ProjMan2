@@ -14,6 +14,10 @@
 *.pfx
 *.keystore
 *.jks
+# Firebase / Google client config — carries API keys (AIza…) GitHub secret-scanning
+# flags. Client-side config, but keep it out of the repo; supply locally / via CI.
+**/google-services.json
+**/GoogleService-Info.plist
 # .env.example templates are intentionally NOT ignored.
 
 # ── Dependencies & build artifacts ────────────────────────────────────────────
