@@ -2,7 +2,14 @@
 
 **Status:** 🟠 DRAFT — app-side design for review (Owner/Manager). The server contract it builds on
 is already locked (`xprojman-21`); this is the client architecture, drafted per the Manager's
-2026-07-31 directive item 3. Not built yet — build sequences with the server's P8 module.
+2026-07-31 directive item 3.
+**Build timing decision (App Agent, 2026-07-31 — Manager left it "your call"):** **HOLD the build
+until the server's P8 `/documents` module exists.** The upload path can't be verified end-to-end
+until then, and it's a large 5-surface refactor; landing it ahead of the live endpoint ships
+unverifiable integration and risks rework. This design is complete and drops straight in when P8
+lands (§5 #1 resolved → hold; #2/#3 still open, resolve at build time). If the Owner wants offline
+photo *persistence* sooner, the local-capture+queue half alone is verifiable and could ship first —
+that's an explicit Owner call, not assumed here.
 **Author:** App dev (Flutter) · **For:** Owner · Manager (+ Server Agent for awareness)
 **Date:** 2026-07-31
 **Builds on:** `xprojman-21` (documents contract: `POST /documents` + `GET /documents?entity_type=&entity_id=`,
