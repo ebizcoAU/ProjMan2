@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 
-// The console has no landing page yet — Devices is the proof-of-concept surface.
+// This app is now platform management only (the tenant Portal moved to server/portal).
+// Root → the System Admin entry point.
 export default function Home() {
-  redirect('/devices');
+  redirect('/admin/login');
 }

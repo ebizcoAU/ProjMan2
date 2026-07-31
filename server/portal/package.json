@@ -1,11 +1,11 @@
 {
-  "name": "projman2-platform",
+  "name": "projman2-portal",
   "version": "0.1.0",
-  "description": "ProjMan Platform Management — internal admin/support tool: accounts, subscriptions, billing, device health (Next.js). Tenant Portal lives in server/portal.",
+  "description": "ProjMan Portal — the app's desktop companion for app users (Next.js)",
   "scripts": {
-    "dev": "next dev -p 4110",
+    "dev": "next dev -p 4220",
     "build": "next build",
-    "start": "next start -p 4110"
+    "start": "next start -p 4220"
   },
   "dependencies": {
     "next": "^14.2.5",

@@ -1,0 +1,131 @@
+/* dashboard/src/app/globals.css
+   Ported from Nexus dashboard globals.css with one structural change: Nexus scoped
+   its accessible light theme to `.portal-root` because the admin surfaces kept the
+   original dark theme. ProjMan2 has only the builder console, and its users include
+   60+ / low-vision builders on site — so the accessible light theme IS the theme.
+   Token names are kept verbatim so the ported portal components drop in unchanged. */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* ── Surfaces: light canvas, white elevated cards ─────────────────────── */
+  --bg:  #eaeef4;   /* app canvas (slightly grey so white cards lift)        */
+  --s1:  #ffffff;   /* primary card / sidebar / topbar                       */
+  --s2:  #f6f8fb;   /* card heads, subtle fills                              */
+  --s3:  #eef2f7;   /* hover, inputs                                         */
+  --s4:  #e3e9f1;   /* tracks, deeper fills                                  */
+  --s5:  #d6deea;   /* active fills                                          */
+
+  /* ── Borders: clearly visible ─────────────────────────────────────────── */
+  --b1:  #c4cedd;
+  --b2:  #a7b4c8;
+  --b3:  #8593a9;
+
+  /* ── Text: near-black on white (≈14:1) down to AA secondary (≈6:1) ────── */
+  --text:  #16202e;
+  --dim:   #44516a;
+  --muted: #5b6880;
+
+  /* ── Brand: safety orange, darkened to pass AA as text/border on white ── */
+  --brand:   #c2410c;
+  --bdim:    rgba(249,115,22,.12);
+  --bbright: rgba(194,65,12,.40);
+
+  /* ── Status colours: all AA on white ──────────────────────────────────── */
+  --green:  #15803d; --gdim: rgba(21,128,61,.12);  --gbright: rgba(21,128,61,.40);
+  --red:    #b91c1c; --rdim: rgba(185,28,28,.10);  --rbright: rgba(185,28,28,.40);
+  --yellow: #b45309; --ydim: rgba(180,83,9,.12);   --ybright: rgba(180,83,9,.40);
+  --blue:   #1d4ed8; --bluedim: rgba(29,78,216,.10); --bluebright: rgba(29,78,216,.40);
+  --cyan:   #0e7490; --cyandim: rgba(14,116,144,.12);
+  --purple: #6d28d9; --purpdim: rgba(109,40,217,.10); --purpbright: rgba(109,40,217,.40);
+  --teal:   #0f766e; --tealdim: rgba(15,118,110,.12);
+
+  /* Fonts — Next.js font loader variables set on <html> by layout.js */
+  --fh: var(--font-syne,      'Syne'),           sans-serif;
+  --fb: var(--font-dm-sans,   'DM Sans'),        sans-serif;
+  --fm: var(--font-jetbrains, 'JetBrains Mono'), monospace;
+
+  /* radii */
+  --r: 12px; --rsm: 8px; --rlg: 16px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--fb);
+  /* Accessible base size — the Nexus portal enlarged everything for 60+ users */
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: auto;   /* heavier glyphs read better than thinned */
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--s2); }
+::-webkit-scrollbar-thumb { background: var(--b2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--b3); }
+
+/* ── Buttons / inputs / badges (Nexus classes, kept) ─────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 16px; border-radius: 8px;
+  font-size: 15px; font-weight: 600;
+  cursor: pointer; transition: all .15s;
+  border: none; outline: none; font-family: var(--fb);
+}
+.btn-primary  { background: var(--brand); color: #fff; }
+.btn-primary:hover { background: #9a3412; }
+.btn-ghost    { background: transparent; color: var(--dim); border: 1px solid var(--b2); }
+.btn-ghost:hover { background: var(--s3); color: var(--text); }
+.btn-danger   { background: var(--rdim); color: var(--red); border: 1px solid var(--rbright); }
+.btn-danger:hover { background: rgba(185,28,28,.16); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.input {
+  width: 100%; background: var(--s3); border: 2px solid var(--b1);
+  border-radius: 8px; padding: 10px 14px;
+  color: var(--text); font-size: 15px; font-family: var(--fb);
+  outline: none; transition: border-color .15s;
+}
+.input:focus { border-color: var(--brand); }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 10px; border-radius: 20px;
+  font-size: 13px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+}
+.badge-active  { background: var(--gdim); color: var(--green);  border: 1px solid var(--gborder, rgba(21,128,61,.45)); }
+.badge-revoked { background: var(--rdim); color: var(--red);    border: 1px solid rgba(185,28,28,.45); }
+.badge-pending { background: var(--ydim); color: var(--yellow); border: 1px solid rgba(180,83,9,.45); }
+.badge-muted   { background: var(--s4);   color: var(--dim);    border: 1px solid var(--b2); }
+
+.chip {
+  padding: 5px 12px; border-radius: 20px; font-size: 14px; font-weight: 600;
+  border: 1px solid var(--b2); background: var(--s2); color: var(--dim);
+  cursor: pointer; transition: all .15s; user-select: none; white-space: nowrap;
+}
+.chip:hover { border-color: var(--b3); color: var(--text); }
+.chip.on { border-color: var(--brand); background: var(--bdim); color: var(--brand); }
+
+/* ── Strong, always-visible keyboard / low-vision focus ring ─────────────── */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── Reduced motion ──────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

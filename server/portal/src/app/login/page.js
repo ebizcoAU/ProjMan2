@@ -107,7 +107,7 @@ export default function LoginPage() {
         </button>
 
         <div style={{ marginTop: 16, fontSize: 13, color: 'var(--muted)', textAlign: 'center' }}>
-          Registration and password recovery live in the field app for now.
+          New here? <a href="/signup" style={{ color: 'var(--brand)' }}>Create an account</a>
         </div>
       </form>
     </div>

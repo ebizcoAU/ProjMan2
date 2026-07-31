@@ -25,8 +25,8 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata = {
-  title: 'ProjMan — Platform Management',
-  description: 'ProjMan internal platform ops — accounts, subscriptions, billing, device health',
+  title: 'ProjMan — Portal',
+  description: 'ProjMan Portal — the app’s desktop companion: projects, cost plans, claims, invitations',
 };
 
 export default function RootLayout({ children }) {

@@ -8,6 +8,7 @@ export function ProjectTabs({ id, seesMoney }) {
   const tabs = [
     { href: `/projects/${id}`, label: 'Programme', exact: true },
     ...(seesMoney ? [{ href: `/projects/${id}/cost-plan`, label: 'Cost Plan' }] : []),
+    ...(seesMoney ? [{ href: `/projects/${id}/claims`, label: 'Claims' }] : []),
     { href: `/projects/${id}/quality`, label: 'Quality' },
     { href: `/projects/${id}/field`, label: 'Field' },
   ];
