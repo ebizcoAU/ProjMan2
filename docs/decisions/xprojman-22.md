@@ -1,15 +1,13 @@
 # xprojman-22 — App design: the offline image/document queue (one queue, five surfaces)
 
-**Status:** 🟠 DRAFT — app-side design for review (Owner/Manager). The server contract it builds on
-is already locked (`xprojman-21`); this is the client architecture, drafted per the Manager's
-2026-07-31 directive item 3.
-**Build timing decision (App Agent, 2026-07-31 — Manager left it "your call"):** **HOLD the build
-until the server's P8 `/documents` module exists.** The upload path can't be verified end-to-end
-until then, and it's a large 5-surface refactor; landing it ahead of the live endpoint ships
-unverifiable integration and risks rework. This design is complete and drops straight in when P8
-lands (§5 #1 resolved → hold; #2/#3 still open, resolve at build time). If the Owner wants offline
-photo *persistence* sooner, the local-capture+queue half alone is verifiable and could ship first —
-that's an explicit Owner call, not assumed here.
+**Status:** 🟢 Design complete, **all decisions resolved** — this is the build ticket for the one
+offline image queue. Build **held until the server's P8 `/documents` module lands** (then execute,
+verify against `:4199`). Server contract locked in `xprojman-21`.
+**Decisions (see §5):** #1 build timing → **HOLD until P8** (App Agent's call, 2026-07-31, Manager
+left it open) · #2 columns → **migrate singular → plural** (Manager, 2026-08-03) · #3 retention →
+**keep local file + LRU cap** (Manager, 2026-08-03). If the Owner later wants offline photo
+*persistence* sooner, the local-capture+queue half alone is verifiable and could ship ahead of the
+upload path — an explicit Owner call, not assumed here.
 **Author:** App dev (Flutter) · **For:** Owner · Manager (+ Server Agent for awareness)
 **Date:** 2026-07-31
 **Builds on:** `xprojman-21` (documents contract: `POST /documents` + `GET /documents?entity_type=&entity_id=`,
@@ -85,24 +83,33 @@ One `DocumentQueueService` with `enqueue({kind, entityType, entityId, bytes, pro
 drop their bespoke `pending-<ts>` logic and call this one service — a single follow-up that upgrades
 all five at once, never a per-feature partial (the standing rule).
 
-## 5. Open decisions for review
+## 5. Decisions — ALL RESOLVED
 
-1. **Build timing.** Server module is P8-sequenced (not built). Two options:
-   **(a, recommended)** build the client queue now — local capture/display/queue works offline
-   immediately and uploads simply stay `pending` until the server `/documents` endpoint exists, then
-   drain; or **(b)** hold the whole client build until the server ships P8. (a) delivers offline photo
-   persistence sooner with no rework, since the contract is locked.
-2. **Singular → gallery.** The server caps nothing (N per entity, every kind). Four surfaces have a
-   *singular* local column today (`inspection_items.photo_id`, `defects.photo_id`,
-   `certificates.document_id`, `disputes.counter_evidence_photo_id`). Migrate them to plural
-   `photo_ids` for future-proof galleries (recommended — one local schema bump, no server change), or
-   keep singular UI for v1 and store just one? Defects in particular usually want several.
-3. **Local file retention.** Keep the local file after a successful upload as an offline display cache
-   (recommended, with an LRU size cap), or delete on `stored` to save device space and always stream?
+1. **Build timing → HOLD until the server's P8 `/documents` module lands** (App Agent's call,
+   2026-07-31 — Manager left it open; see the Status block). The upload path can't be verified live
+   until the endpoint exists, and it's a large 5-surface refactor. The design is complete and drops
+   straight in when P8 arrives. *(If the Owner later wants offline photo persistence sooner, the
+   local-capture+queue half alone is verifiable and could ship first — an explicit Owner call.)*
 
-## 6. Ask
+2. **Singular → plural columns → MIGRATE to plural** (Manager-approved, 2026-08-03). At build time,
+   migrate the four singular cache columns — `inspection_items.photo_id`, `defects.photo_id`,
+   `certificates.document_id`, `disputes.counter_evidence_photo_id` — to plural list columns
+   (`*_ids`, holding a JSON/CSV of `client_ref`s pre-upload and `document_id`s after), one
+   `schema_domain` version bump. Future-proofs all five surfaces for galleries with **zero server
+   change** (server is already uncapped, N-per-entity). The list column stays a denormalised display
+   cache; `GET /documents?entity_type=&entity_id=` remains the source of truth. Per-surface UI still
+   chooses "primary only" vs "gallery" — the storage no longer constrains it.
 
-Owner/Manager: pick §5 #1 (recommend **build now, (a)**), #2 (recommend **migrate to plural**), #3
-(recommend **keep + LRU**). On that, this becomes the build ticket for the one offline image queue.
+3. **Local file retention → KEEP after upload, with an LRU cap** (Manager-approved, 2026-08-03).
+   Retain the local file past `status='stored'` as an offline display cache; enforce a size-based LRU
+   prune (cap TBD at build, e.g. ~a few hundred MB) evicting oldest-first. A pruned file re-fetches on
+   demand from `GET /documents/:id` (safe — it's uploaded), so eviction is lossless. Offline display
+   keeps working; device space stays bounded.
+
+## 6. Status — ready to build when P8 lands
+
+All three decisions resolved: **#1 hold-until-P8**, **#2 migrate-to-plural**, **#3 keep+LRU**. This
+record is now the build ticket for the one offline image queue across all five surfaces; execution
+begins when the server's `/documents` module ships (verify against `:4199`).
 
 © eBizco Australia Pty Ltd
