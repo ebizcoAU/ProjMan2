@@ -50,8 +50,7 @@ const NAV = [
   {
     group: null,
     items: [
-      { k: 'dashboard', href: '/devices', label: 'Dashboard', mock: true,
-        tooltip: 'Coming: portfolio KPIs — active projects, claims due, site headcount' },
+      { k: 'dashboard', href: '/dashboard', label: 'Dashboard' },
     ],
   },
   {

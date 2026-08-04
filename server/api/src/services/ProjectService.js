@@ -323,7 +323,129 @@ async function updateStage({ orgId, projectId, stageId, data, auth }) {
   return { id: stageId };
 }
 
+/**
+ * GET /projects/dashboard-summary — the Portal console landing figures.
+ *
+ * WHY THIS EXISTS AS ONE ENDPOINT. The directive it replaces called for the Portal to assemble a
+ * dashboard from the existing per-project reads. That is an N+1: list the projects, then fan out
+ * per project for defects, diary and hold points. Here it is a FIXED number of aggregate queries
+ * regardless of how many jobs the org has, each carrying the same `projectScope` narrowing the rest
+ * of the system uses — so an assigned-scope role's dashboard counts only their own jobs, and a
+ * portfolio role's counts the org.
+ *
+ * MONEY IS GATED, NOT ASSUMED. The original spec put a budget summary in front of "any tenant
+ * user", which breaches §7.2.1: `money.read` is held by projectManager/developer (and conferred on
+ * an org owner), NOT by siteSupervisor/foreperson/tradie/inspector/client. So `money` is `null` for
+ * anyone without it rather than zeroed — null says "not yours to see", zero would be a lie.
+ * Only `projects.contract_value` (the head-contract total) is summed: §7.2.1's engagement-mode
+ * redaction protects the Builder's own cost breakdown, which lives on the stage columns and is
+ * deliberately not touched here.
+ *
+ * "Overdue" is DERIVED from `due_date`, not read from `status` — there is no 'overdue' status in
+ * the enum, and inventing one in the UI would have been wrong.
+ */
+async function dashboardSummary({ orgId, role, userId, isOrgOwner }) {
+  const principal = { role, isOrgOwner };
+  const seesMoney = access.grants(principal, 'money.read');
+
+  // One scope fragment, reused across every aggregate. `p`/`d`/etc. aliases differ per query, so
+  // build it per alias rather than string-patching one.
+  const scopeFor = (alias, col = 'project_id') =>
+    projectScope({ role, userId }, { projectColumn: col, alias });
+
+  const ps = scopeFor('p', 'id');
+  const [[projects]] = await pool.query(
+    `SELECT
+       COUNT(*)                                                            AS total,
+       SUM(p.status = 'draft')                                             AS draft,
+       SUM(p.status = 'active')                                            AS active,
+       SUM(p.status = 'on_hold')                                           AS on_hold,
+       SUM(p.status = 'completed')                                         AS completed,
+       SUM(p.status = 'archived')                                          AS archived,
+       SUM(p.due_date IS NOT NULL AND p.due_date < CURDATE()
+           AND p.status NOT IN ('completed','archived'))                   AS overdue
+     FROM projects p
+     WHERE p.org_id = ? AND p.is_deleted = 0${ps.sql}`,
+    [orgId, ...ps.params]
+  );
+
+  const ds = scopeFor('d');
+  const [[defects]] = await pool.query(
+    `SELECT
+       SUM(d.status = 'open')                                              AS open,
+       SUM(d.status = 'in_progress')                                       AS in_progress,
+       SUM(d.status <> 'closed' AND d.severity = 'high')                   AS high_severity,
+       SUM(d.status <> 'closed' AND d.due_date IS NOT NULL
+           AND d.due_date < CURDATE())                                     AS overdue
+     FROM defects d
+     WHERE d.org_id = ? AND d.is_deleted = 0${ds.sql}`,
+    [orgId, ...ds.params]
+  );
+
+  // The real hold-point signal, not the coarse stage-status proxy the directive suggested:
+  // `blocks_progress = 1 AND status = 'open'` is precisely "this job cannot advance".
+  const hs = scopeFor('h');
+  const [[holdPoints]] = await pool.query(
+    `SELECT COUNT(*) AS open_blocking
+       FROM hold_point_requirements h
+      WHERE h.org_id = ? AND h.status = 'open' AND h.blocks_progress = 1${hs.sql}`,
+    [orgId, ...hs.params]
+  );
+
+  const ss = scopeFor('s');
+  const [[stages]] = await pool.query(
+    `SELECT SUM(s.status = 'blocked') AS blocked, SUM(s.status = 'in_progress') AS in_progress
+       FROM project_stages s
+      WHERE s.org_id = ? AND s.is_deleted = 0${ss.sql}`,
+    [orgId, ...ss.params]
+  );
+
+  // Self-scoped by definition — an invitation is addressed to one person, and this is the same
+  // identity-level inbox GET /job-awards/pending serves (it is NOT membership-gated, which is the
+  // whole point: an invitee is not yet a member).
+  const [[awards]] = await pool.query(
+    `SELECT COUNT(*) AS pending
+       FROM job_awards
+      WHERE org_id = ? AND to_user_id = ? AND status = 'sent'`,
+    [orgId, userId]
+  );
+
+  let money = null;
+  if (seesMoney) {
+    const ms = scopeFor('p', 'id');
+    const [[m]] = await pool.query(
+      `SELECT COALESCE(SUM(p.contract_value), 0) AS contract_value_total
+         FROM projects p
+        WHERE p.org_id = ? AND p.is_deleted = 0
+          AND p.status NOT IN ('archived')${ms.sql}`,
+      [orgId, ...ms.params]
+    );
+    money = { contract_value_total: Number(m.contract_value_total) };
+  }
+
+  const n = (v) => Number(v || 0);
+  return {
+    projects: {
+      total: n(projects.total),
+      by_status: {
+        draft: n(projects.draft), active: n(projects.active), on_hold: n(projects.on_hold),
+        completed: n(projects.completed), archived: n(projects.archived),
+      },
+      overdue: n(projects.overdue),
+    },
+    defects: {
+      open: n(defects.open), in_progress: n(defects.in_progress),
+      high_severity: n(defects.high_severity), overdue: n(defects.overdue),
+    },
+    hold_points: { open_blocking: n(holdPoints.open_blocking) },
+    stages: { blocked: n(stages.blocked), in_progress: n(stages.in_progress) },
+    job_awards: { pending_for_me: n(awards.pending) },
+    // null (not 0) when the caller lacks money.read — see the §7.2.1 note above.
+    money,
+  };
+}
+
 module.exports = {
   listProjects, getProject, createProject, updateProject,
-  createStage, updateStage, assertProjectReachable,
+  createStage, updateStage, assertProjectReachable, dashboardSummary,
 };

@@ -1,6 +1,7 @@
 // Mounted at /projects — transport only. The rules live in services/ProjectService.js.
 //
 //   GET    /projects                       list (filter: ?status=, paginate)
+//   GET    /projects/dashboard-summary     Portal console aggregate (money block gated)
 //   POST   /projects                       create           (org_admin | project_developer)
 //   GET    /projects/:id                   detail + stages + tasks
 //   PATCH  /projects/:id                   update           (org_admin | project_developer)
@@ -131,6 +132,24 @@ router.post(
     }
   }
 );
+
+// ── GET /projects/dashboard-summary ───────────────────────────
+// MUST be registered BEFORE `/:id` — Express matches in order, so with the routes reversed the
+// literal path would be swallowed and "dashboard-summary" would arrive as a project id.
+// One permission-aware aggregate for the Portal console: a fixed number of queries whatever the
+// project count (the per-project fan-out this replaces was an N+1), scoped exactly like every other
+// read, with the money block omitted entirely for callers without `money.read` (§7.2.1).
+router.get('/dashboard-summary', canReadProjects, async (req, res) => {
+  try {
+    const data = await ProjectService.dashboardSummary({
+      orgId: req.auth.orgId, role: req.auth.role, userId: req.auth.userId,
+      isOrgOwner: req.auth.isOrgOwner,
+    });
+    return res.json({ success: true, data });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
 
 // ── GET /projects/:id ─────────────────────────────────────────
 router.get('/:id', canReadProjects, async (req, res) => {

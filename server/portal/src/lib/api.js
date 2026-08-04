@@ -153,6 +153,11 @@ export const projectsApi = {
     return request('GET', `/projects${qs ? `?${qs}` : ''}`);
   },
   detail: (id)        => request('GET',   `/projects/${id}`),
+  // The console landing aggregate. ONE call, permission-aware server-side: `money` comes back
+  // null (not zero) when the caller lacks money.read, so the UI hides the block rather than
+  // rendering a false $0. Deliberately not assembled client-side from per-project reads — that
+  // was the N+1 the endpoint replaces.
+  dashboardSummary: () => request('GET', '/projects/dashboard-summary'),
   create: (body)      => request('POST',  '/projects', body),
   patch:  (id, body)  => request('PATCH', `/projects/${id}`, body),
 
