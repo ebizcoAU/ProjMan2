@@ -30,6 +30,8 @@ const stageTemplatesRoutes = require('./routes/stageTemplates');
 const introductionsRoutes = require('./routes/introductions');
 const jobAwardsRoutes = require('./routes/jobAwards');
 const suppliersRoutes = require('./routes/suppliers');
+const accountsRoutes = require('./routes/accounts');
+const documentsRoutes = require('./routes/documents');
 const adminRoutes = require('./routes/admin');
 
 const app = express();
@@ -137,6 +139,8 @@ app.use('/api/v1/stage-templates', stageTemplatesRoutes);
 app.use('/api/v1/introductions', introductionsRoutes);
 app.use('/api/v1/job-awards',    jobAwardsRoutes);
 app.use('/api/v1/suppliers',     suppliersRoutes);
+app.use('/api/v1/accounts',      accountsRoutes);   // P8b GST/BAS (org-level)
+app.use('/api/v1/documents',     documentsRoutes);  // Documents/Upload (xprojman-21)
 // System Admin dashboard — a SEPARATE mount (not the tenant surface). Platform-admin
 // allowlist only; account & billing layer; cross-tenant by design (dashboardspec §2).
 app.use('/api/v1/admin',         adminRoutes);

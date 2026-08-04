@@ -16,12 +16,20 @@
 const pool = require('../db/pool');
 
 // The tenant-owner capabilities (xprojman-14 / migration v018). These administer the org
-// itself — settings, its users, its devices — as opposed to doing construction work on a
-// project. They are held by the `projectManager` role in the matrix, AND conferred on a
+// itself — settings, its users, its devices, its books — as opposed to doing construction work on
+// a project. They are held by the `projectManager` role in the matrix, AND conferred on a
 // self-registered founder (`users.is_org_owner`) whatever their fixed role, so a Builder who
 // founds their own org can run it without the `builder` role carrying these everywhere (which
 // would leak tenant-owner authority into orgs a builder is merely engaged into — xprojman-08).
-const OWNER_CAPABILITIES = new Set(['org.manage', 'users.manage', 'devices.manage']);
+//
+// `accounts.read` joins them per DECISION #18 (owner-ruled 2026-08-04). A self-registered Builder
+// founder owns their organisation but holds the `builder` role, which has no `accounts.read` — so
+// without this they could not see their OWN org's BAS, TPAR or depreciation. Granting `builder`
+// the permission in the matrix would have been the wrong fix: it would follow them into every org
+// they are merely ENGAGED into, exposing another tenant's books. Conferring it on the org-owner
+// FLAG is inherently org-scoped — you are the owner of exactly one organisation, your own — which
+// is precisely the decoupling this set exists to express.
+const OWNER_CAPABILITIES = new Set(['org.manage', 'users.manage', 'devices.manage', 'accounts.read']);
 const isOwnerCapability = (perm) => OWNER_CAPABILITIES.has(perm);
 
 let CACHE = {

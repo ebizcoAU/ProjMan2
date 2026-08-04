@@ -192,6 +192,41 @@ async function pairAs(admin, userId, role, uid) {
   ok('cost_plus + consent recorded: counterparty identity now visible',
     vis[0].supplier_name === 'Acme Rebar' && !vis[0].counterparty_redacted, JSON.stringify(vis[0]));
 
+  // ── 6. Subcontractor register (§1.4/§3.1 step-in-rights, owner-ruled 2026-08-01) ──
+  //   Under independent_fixed the PM cannot see the Builder's PO/invoice ROWS (proven in §4),
+  //   but MUST see the register: who / committed / owed, aggregates only, no line detail. This
+  //   is a SEPARATE view that does not widen the row-lists, and is NOT gated by consent.
+  const regSubId = crypto.randomUUID();
+  await pool.query(
+    `INSERT INTO subcontractor_engagements (id, org_id, project_id, subcontractor_name, trade, subcontractor_pass_through_consent)
+     VALUES (?, ?, ?, 'Frame Co', 'framing', 0)`, [regSubId, orgId, B.projId]);
+  // Builder commits a PO of 2500 to that sub and the sub invoices 1000 of it (2-way matched).
+  const regPo = await call('POST', `/projects/${B.projId}/purchase-orders`,
+    { stage_id: b9, supplier_id: supplierId, amount: 2500, description: 'Frame labour',
+      subcontractor_engagement_id: regSubId }, builderTok);
+  await call('POST', `/projects/${B.projId}/supplier-invoices`,
+    { po_id: regPo.json.data.id, invoice_number: 'SUB-1', amount: 1000 }, builderTok);
+
+  const pmReg = await call('GET', `/projects/${B.projId}/subcontractor-register`, undefined, pm);
+  const regRow = (pmReg.json.data.subcontractor_register || []).find((r) => r.engagement_id === regSubId);
+  ok('register: PM sees the subcontractor (who) even under independent_fixed',
+    !!regRow && regRow.subcontractor_name === 'Frame Co' && regRow.trade === 'framing', JSON.stringify(pmReg.json));
+  ok('register: committed / invoiced / outstanding aggregates correct (2500 / 1000 / 1500)',
+    !!regRow && regRow.committed_amount === 2500 && regRow.invoiced_amount === 1000 && regRow.outstanding_amount === 1500,
+    JSON.stringify(regRow));
+  ok('register: identity shown WITHOUT pass-through consent (step-in disclosure, not consent-gated)',
+    !!regRow && regRow.subcontractor_name === 'Frame Co', JSON.stringify(regRow));
+  ok('register: carries NO PO/invoice line detail (no amount/po_number/description fields)',
+    !!regRow && regRow.amount === undefined && regRow.po_number === undefined && regRow.description === undefined,
+    Object.keys(regRow || {}).join(','));
+  const pmStillHidden = await call('GET', `/projects/${B.projId}/purchase-orders`, undefined, pm);
+  ok('register does NOT widen the row-list: PM still cannot see the Builder PO rows',
+    !(pmStillHidden.json.data.purchase_orders || []).some((p) => p.id === regPo.json.data.id),
+    JSON.stringify((pmStillHidden.json.data.purchase_orders || []).map((p) => p.owner_party)));
+  const foreReg = await call('GET', `/projects/${B.projId}/subcontractor-register`, undefined, forepersonTok);
+  ok('register: a non-money role (foreperson) is refused (money.read/po.write)',
+    foreReg.status === 403, JSON.stringify(foreReg.json));
+
   console.log(`\n${passed} passed, ${failed} failed`);
   await pool.end();
   process.exit(failed ? 1 : 0);

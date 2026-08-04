@@ -15,6 +15,10 @@
 //                                                    hold-point pass also needs quality.validate)
 //   GET    /projects/:id/defects                    punch-list (?status=) (projects.read)
 //   GET    /projects/:id/certificates                cert register (+expiry) (projects.read)
+//   GET    /projects/:id/fixed-assets                P8a asset register + schedules
+//   POST   /projects/:id/fixed-assets                declare an asset   (money.write)
+//   POST   /projects/:id/fixed-assets/prepare-draft  S18.11 prepare     (money.write)
+//   POST   /projects/:id/fixed-assets/:aid/approve   S18.12 approve     (tax.approve)
 //
 // The web console is the system of record for project structure (projman-01 §4);
 // the field app receives every write here through /sync/pull and pushes progress
@@ -41,6 +45,7 @@ const EstimateService = require('../services/EstimateService');
 const ClaimService = require('../services/ClaimService');
 const ProcurementService = require('../services/ProcurementService');
 const ContractService = require('../services/ContractService');
+const DepreciationService = require('../services/DepreciationService');
 
 router.use(authenticate);
 
@@ -60,6 +65,7 @@ const canSubmitClaims = requirePermission('claims.submit'); // P7a Builder submi
 const canApproveClaims = requirePermission('claims.approve'); // P7a PM approves/pays
 const canWritePo = requirePermission('po.write');           // P7b procurement writes
 const canRaiseVariation = requirePermission('variations.raise'); // P7c PM raises variations
+const canApproveTax = requirePermission('tax.approve');     // P8a S18.12 accountant approval (v012, reused)
 
 function validation(req, res) {
   const errors = validationResult(req);
@@ -922,6 +928,20 @@ router.post(
   }
 );
 
+// GET /:id/subcontractor-register — §1.4 step-in-rights window: per-subcontractor
+// who/committed/owed AGGREGATES, visible to the PM even under independent_fixed (where the
+// PO/invoice ROWS stay hidden). money.read OR po.write. Owner-ruled 2026-08-01; a separate
+// aggregate-only view, never line detail (ProcurementService.subcontractorRegister).
+router.get('/:id/subcontractor-register', async (req, res) => {
+  try {
+    const data = await ProcurementService.subcontractorRegister({
+      orgId: req.auth.orgId, projectId: req.params.id,
+      actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+    });
+    return res.json({ success: true, data });
+  } catch (err) { return sendError(res, err); }
+});
+
 // ── Commercial P7c — Contracts + Variations (xprojman-10 §4c) ───────────────────────
 // Contract writes reuse money.write; reads by money.read (enforced in ContractService).
 // variations.raise = PM; variations.approve = client (DORMANT until P10 — a PM is refused).
@@ -1022,5 +1042,88 @@ router.post(
     } catch (err) { return sendError(res, err); }
   }
 );
+
+// ── Accounting P8a — Fixed assets & depreciation (serverdesignspec §11.2, v022) ─────
+// S18.11 = the system-prepared draft; S18.12 = the accountant's tax.approve write.
+// Asset entry is an explicit declaration (money.write) — see the decision note at the top
+// of DepreciationService for why deriving from capital supplier_invoices is not buildable yet.
+//   GET  /:id/fixed-assets                    the register + schedules (money.read | tax.approve)
+//   POST /:id/fixed-assets                    declare an asset            (money.write)
+//   POST /:id/fixed-assets/prepare-draft      S18.11 prepare schedules    (money.write)
+//   POST /:id/fixed-assets/:assetId/approve   S18.12 draft → approved     (tax.approve)
+router.get(
+  '/:id/fixed-assets',
+  [query('status').optional().isIn(['draft', 'approved'])],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const data = await DepreciationService.listAssets({
+        orgId: req.auth.orgId, projectId: req.params.id,
+        actor: { role: req.auth.role, userId: req.auth.userId }, status: req.query.status,
+      });
+      return res.json({ success: true, data });
+    } catch (err) { return sendError(res, err); }
+  }
+);
+
+router.post(
+  '/:id/fixed-assets',
+  canWriteMoney,
+  [
+    body('description').trim().notEmpty().withMessage('description is required'),
+    body('acquisition_cost').optional({ nullable: true }).isFloat({ min: 0 }),
+    body('acquired_at').optional({ nullable: true, checkFalsy: true }).isISO8601(),
+    body('method').optional().isIn(['prime_cost', 'diminishing_value']),
+    body('effective_life_years').optional({ nullable: true }).isFloat({ min: 0.01 }),
+    body('category').optional({ nullable: true }).isString(),
+    body('source_supplier_invoice_id').optional({ nullable: true }).isString(),
+  ],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await DepreciationService.createAsset({
+        orgId: req.auth.orgId, projectId: req.params.id,
+        actor: { role: req.auth.role, userId: req.auth.userId },
+        description: req.body.description, category: req.body.category,
+        acquisitionCost: req.body.acquisition_cost, acquiredAt: req.body.acquired_at,
+        method: req.body.method, effectiveLifeYears: req.body.effective_life_years,
+        sourceSupplierInvoiceId: req.body.source_supplier_invoice_id,
+      });
+      await audit(req, 'fixed_asset.create', {
+        entity: 'fixed_assets', entityId: result.id,
+        detail: { project_id: req.params.id, description: req.body.description },
+      });
+      return res.status(201).json({ success: true, data: result });
+    } catch (err) { return sendError(res, err); }
+  }
+);
+
+router.post('/:id/fixed-assets/prepare-draft', canWriteMoney, async (req, res) => {
+  try {
+    const result = await DepreciationService.prepareDraft({
+      orgId: req.auth.orgId, projectId: req.params.id,
+      actor: { role: req.auth.role, userId: req.auth.userId },
+    });
+    await audit(req, 'depreciation.prepare_draft', {
+      entity: 'fixed_assets', entityId: req.params.id,
+      detail: { project_id: req.params.id, prepared: result.prepared_count, skipped: result.skipped.length },
+    });
+    return res.json({ success: true, data: result });
+  } catch (err) { return sendError(res, err); }
+});
+
+router.post('/:id/fixed-assets/:assetId/approve', canApproveTax, async (req, res) => {
+  try {
+    const result = await DepreciationService.approveAsset({
+      orgId: req.auth.orgId, projectId: req.params.id, assetId: req.params.assetId,
+      actor: { role: req.auth.role, userId: req.auth.userId },
+    });
+    await audit(req, 'fixed_asset.approve', {
+      entity: 'fixed_assets', entityId: req.params.assetId,
+      detail: { project_id: req.params.id, status: result.status },
+    });
+    return res.json({ success: true, data: result });
+  } catch (err) { return sendError(res, err); }
+});
 
 module.exports = router;

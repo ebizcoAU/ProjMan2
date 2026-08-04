@@ -284,10 +284,78 @@ async function listSupplierInvoices({ orgId, projectId, actor }) {
   return { supplier_invoices: await applyVisibility({ orgId, rows, ctx }) };
 }
 
+// ── Subcontractor register (§1.4 / §3.1 step-in-rights window) ───────────────
+//
+// applyVisibility hides a Builder's PO/invoice ROWS from the PM under independent_fixed —
+// correct for cost-breakdown privacy, but on its own it also hid the one thing
+// portaldesignspec §1.4/§3.1 says the PM MUST retain: the register of WHO the Builder has
+// engaged and HOW MUCH is committed/owed to each, so the PM can exercise step-in rights if
+// the Builder fails. Owner ruling (2026-08-01) resolves the §1.4-vs-§7.2.1 conflict: the PM
+// sees the register (who / committed / owed) but NEVER the PO/invoice line detail.
+//
+// This is that SEPARATE, aggregate-only view — per-subcontractor identity + committed /
+// invoiced / outstanding TOTALS. It returns no rows, no line items, no rates, no margins, so
+// the existing full-hide on listPurchaseOrders/listSupplierInvoices stays exactly as built.
+// Consent (§7.2.1) is NOT re-checked: that gate protects LINE-level rate attribution (which
+// reveals margin) in the cost_plus row-lists; this register carries none of it. The per-sub
+// totals do let a PM infer the Builder's cost base against the head contract — that is the
+// deliberate, owner-ruled trade-off of step-in rights over margin privacy, not a leak.
+async function subcontractorRegister({ orgId, projectId, actor }) {
+  await ProjectService.assertProjectReachable(orgId, projectId, { role: actor.role, userId: actor.userId });
+  if (!canRead(actor.role)) throw new ServiceError('FORBIDDEN', 'Requires permission: money.read or po.write', 403);
+
+  // Identity: every subcontractor the Builder has engaged on this project (who).
+  const [subs] = await pool.query(
+    `SELECT id AS engagement_id, subcontractor_name, trade, subcontractor_user_id
+       FROM subcontractor_engagements
+      WHERE org_id = ? AND project_id = ?
+      ORDER BY subcontractor_name`,
+    [orgId, projectId]
+  );
+  if (subs.length === 0) return { subcontractor_register: [] };
+
+  // Committed (Σ Builder PO, issued/received) and invoiced (Σ Builder invoice, matched/
+  // approved), grouped by engagement — AGGREGATES only, never the underlying rows.
+  const [poAgg] = await pool.query(
+    `SELECT subcontractor_engagement_id AS eid, COALESCE(SUM(amount),0) AS committed
+       FROM purchase_orders
+      WHERE org_id = ? AND project_id = ? AND is_deleted = 0 AND owner_party = 'builder'
+        AND subcontractor_engagement_id IS NOT NULL AND status IN ('issued','received')
+      GROUP BY subcontractor_engagement_id`,
+    [orgId, projectId]
+  );
+  const [invAgg] = await pool.query(
+    `SELECT subcontractor_engagement_id AS eid, COALESCE(SUM(amount),0) AS invoiced
+       FROM supplier_invoices
+      WHERE org_id = ? AND project_id = ? AND is_deleted = 0 AND owner_party = 'builder'
+        AND subcontractor_engagement_id IS NOT NULL AND status IN ('matched','approved')
+      GROUP BY subcontractor_engagement_id`,
+    [orgId, projectId]
+  );
+  const committedBy = new Map(poAgg.map((r) => [r.eid, Number(r.committed)]));
+  const invoicedBy  = new Map(invAgg.map((r) => [r.eid, Number(r.invoiced)]));
+
+  const register = subs.map((s) => {
+    const committed = committedBy.get(s.engagement_id) || 0;
+    const invoiced  = invoicedBy.get(s.engagement_id) || 0;
+    return {
+      engagement_id: s.engagement_id,
+      subcontractor_name: s.subcontractor_name,
+      trade: s.trade,
+      is_platform_user: !!s.subcontractor_user_id,   // raw user id is not exposed — identity is name/trade
+      committed_amount: committed,
+      invoiced_amount: invoiced,
+      outstanding_amount: committed - invoiced,       // §1.4 "owed": remaining committed liability
+    };
+  });
+  return { subcontractor_register: register };
+}
+
 module.exports = {
   createSupplier, listSuppliers,
   createPurchaseOrder, setPoStatus, listPurchaseOrders,
   createSupplierInvoice, setInvoiceStatus, listSupplierInvoices,
+  subcontractorRegister,
   recomputeStageCommitted, recomputeStageActual,
   // exported for tests
   applyVisibility, partyForRole,

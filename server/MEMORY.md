@@ -5,11 +5,77 @@ construction project-management platform. You own **`server/api`** (Node/Express
 MySQL). A separate **app team** owns the Flutter app (`app/`) and the contract docs.
 This file is what a fresh session (after `/clear`) reads to resume.
 
-**One-line status (2026-07-30 — `server/p5-site-ops` PUSHED to origin at `4eb3001`;
-migrations at **v017**; matrix **v6**; **212 tests green** across 10 suites; staging DB
-`c1projman2_staging` @ v017. DONE since v011: DIRECTIVE 1 (v012-v016) + intro QR + Portal
-Field/Team surface + SELF_AWARD guard + **P7a Commercial (Cost Plan + Progress Claims,
-v017)**. IDENTITY = single fixed role (xprojman-08/09); the multi-role/active-role detour
+**★ ONE-LINE STATUS (2026-08-05, branch `server/p5-site-ops`):** migrations **v026**, matrix
+**v12**, **393 tests green across 16 suites** (throwaway :4199 → `c1projman2_e2e`). Dev DB
+`c1projman2` migrated to v026 and **:4100 restarted on matrix v12**. Since the last header:
+**P7 Commercial complete (a/b/c)**; **P8 Accounting COMPLETE (a/b/c)** — `DepreciationService`
+(fixed assets + S18.11 draft / S18.12 `tax.approve`), `TaxService` (GST/BAS prepare-lodge-export),
+`TparService` (TPAR) under org-level `/accounts/{bas,tpar,depreciation}`; **Documents/Upload module
+shipped** (`/documents`, xprojman-21/23 — the app built their offline queue on it and confirmed the
+contract in xprojman-24); decisions **#17** (asset entry = explicit create), **#18**
+(`accounts.read` added to `OWNER_CAPABILITIES` so a Builder-FOUNDER sees their own books),
+**#19** (`documents.read` → builder, engaged jobs only). NEW DEP: **multer**. Still open: Xero/MYOB
+sync deferred (#6); P9 payroll and the Portal Dashboard both unstarted.
+
+**TWO SEPARATE WEB APPS (split 2026-07-31, owner-directed; previously one mixed `dashboard/`):**
+- **`server/portal`** (port **4220**, `projman2-portal`) = the tenant PORTAL — app-users only,
+  the app's desktop companion (projects, cost plan, claims, job-award inbox, signup, org admin).
+  Each app user sees only their own data (org isolation + role scope). NO admin surface, NO
+  `adminApi`. This is where all the P7/console UI work now lives.
+- **`server/dashboard`** (port **4110**, `projman2-platform`) = ProjMan PLATFORM MANAGEMENT —
+  internal admin/support only (`/admin/*`: accounts, subscriptions, billing, device/login health).
+  ZERO app-user content (AdminService boundary-tested). Root → `/admin/login`. **INTERIM — to be
+  REPLACED by porting the Nexus dashboard later ("we don't build from scratch").**
+- Both are Next.js, both proxy `/api` → the API (:4100); the split is frontend-only, one JWT/auth.
+  Both `next build` clean; portal verified listening on 4220. **Split is UNCOMMITTED.**
+- FUTURE (not built): Support→Portal access requires the app user's in-app APPROVAL (a consent
+  handshake). No support-into-tenant path exists today (by design).
+- **PORTAL GOOGLE LOGIN added 2026-07-31** (a Google-app-signup user has no password → couldn't
+  reach the Portal). `authApi.oauth(provider,token)` → `POST /auth/oauth/:provider` (server already
+  verified Google ID tokens, migration_v002). Login page: real **GIS** button when
+  `NEXT_PUBLIC_GOOGLE_CLIENT_ID` set (must be one of server GOOGLE_CLIENT_IDS — 3 already
+  configured); **dev fallback** sends `dev:google:<email>:<name>` (OAUTH_DEV_BYPASS on) → server
+  matches SAME user by sub/email. Verified: app-Google-signup then Portal-Google-login = same user.
+  `next build` clean. Files: `portal/src/lib/api.js`, `portal/src/app/login/page.js`. UNCOMMITTED.
+  For prod: set `NEXT_PUBLIC_GOOGLE_CLIENT_ID` (web) in portal env.
+
+**One-line status (2026-07-31 — `server/p5-site-ops` synced at `22c94b7`+; migrations at **v021**
+(dev DB applied; v020=builder+projects.write matrix v8; v021=P7c Variations/Contracts matrix
+**v9**); **255 tests green** across 12 suites (access 30, procurement 18, variations 9); staging
+`c1projman2_staging` @ v017; **E2E DB `c1projman2_e2e` @ v021** (for app live-E2E, isolated from
+:4100). **P7b COMMITTED+PUSHED (dc9a196). P7c + projects.write (v020/v021) + xprojman-18 answers
+(Q1-Q4) UNCOMMITTED. Purged E2E test data off :4100 dev DB (93 rows, 3 orgs).** **Portal Cost Plan tab WIRED to P7a+P7b reads
+2026-07-31 (dashboard, UNCOMMITTED, `next build` clean): now DERIVED read-only roll-ups
+(was wrongly hand-editable — violated xprojman-10 §5) + drill-downs into estimate lines / POs
+/ supplier invoices / progress claims; engagement-mode redaction shows through (Builder rows
+absent for PM under independent_fixed; [redacted] pill for cost_plus consent). Files:
+`dashboard/src/app/(console)/projects/[id]/cost-plan/page.js`, `dashboard/src/lib/api.js`.
+COMMITTED 22c94b7 (Cost Plan tab + commercial/jobAwards/register API surface).**
+**Portal VISIBILITY modules built 2026-07-31 (Manager directive; `next build` clean, UNCOMMITTED):
+(1) Job Award Inbox `/job-awards` (console) — GET /job-awards/pending + Accept/Decline, PortalNav
+entry; (2) Self-Registration `/signup` (public, spec §2 route) — founds org w/ role builder|PM,
+shows isOrgOwner; login links to it; (3) Progress Claims tab `/projects/[id]/claims` — Builder
+submit / PM approve-decline-pay, gated on /auth/permissions. Files: `(console)/job-awards/page.js`,
+`signup/page.js`, `(console)/projects/[id]/claims/page.js` (new) + `_ProjectTabs.js`, `login/page.js`,
+`components/portal/PortalNav.js` (mod). NOT browser-confirmed (no browser tool).**
+**⚠ TWO FLAGS RAISED (need owner): (A) SPEC CONFLICT — portaldesignspec §1.4/§3.1 says under
+independent_fixed the PM SHOULD SEE the Builder's subcontractor register (who/committed/owed) for
+step-in rights (hiding only margins/rates), but P7b (built to serverdesignspec §7.2.1) HIDES the
+Builder's PO/invoice rows entirely from PM. One spec is stale — needs reconcile before trusting the
+Cost Plan tab under independent_fixed. (B) xprojman-17 (App, 2026-07-31) 4 asks: Q1 should builder
+get projects.write (self-reg builder can't create projects); Q2 self-reg builder (own org) can't be
+cross-org introduced/awarded in v1 → Job Award Inbox empty for them (cross-org=PM2-02?); Q3 docs/
+upload module shape; Q4 throwaway E2E target + :4100 has E2E-Inbox pollution to purge. Q1/Q2 = owner
+calls; Q3/Q4 = mine to answer.**
+DONE since v011: DIRECTIVE 1 (v012-v016) + intro QR + Portal Field/Team surface + SELF_AWARD
+guard + **P7a Commercial (Cost Plan + Progress Claims, v017)** + **`GET /job-awards/pending`
+inbox** (xprojman-11/12) + **Fork A Self-Registration** (xprojman-13/14, v018 — `user.role` on
+`/auth/register` w/ allow-list {projectManager,builder,developer} + `422
+ROLE_NOT_SELF_REGISTRABLE`; org-admin DECOUPLED from role via `users.is_org_owner` conferring
+org/users/devices.manage on a founder; last-admin guards + pairing/oauth gates made
+flag-aware). **COMMITTED + PUSHED 2026-07-30 (commit 21be2cb, `server/p5-site-ops` synced
+to origin — job-awards inbox + Fork A together, 12 files; SELF_AWARD guard was already in
+e802035).** Self-Registration→Introduction→Job Award primitive now has all 3 legs. IDENTITY = single fixed role (xprojman-08/09); the multi-role/active-role detour
 (xprojman-05/06/07) was REVERSED — do not resurrect. NEXT: **P7b Procurement**, then P7c
 Variations. Step E blocked on PM2-02. The blocks below supersede the older v011/8-suite
 figures in this paragraph.):** Phase 1 + AU sign-in · **portal** (`server/dashboard`:

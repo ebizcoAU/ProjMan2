@@ -62,7 +62,20 @@ async function pairAs(admin, adminUserId, role, uid, stamp) {
   // (builder) / claims.approve (projectManager).
   // v7 (v019, P7b): + po.write. v8 (v020, Q1): builder += projects.write.
   // v9 (v021, P7c): + variations.raise (PM) / variations.approve (client, dormant).
-  ok('permissions: matrixVersion present', d?.matrixVersion === 9, JSON.stringify(d?.matrixVersion));
+  // v10 (v023, P8b GST/BAS): + accounts.read (projectManager/accountant/developer) — the
+  // org-level BAS/TPAR/depreciation view. NOT money.read: that one is project-scoped (§9.4),
+  // the wrong shape for a whole-of-entity aggregate. Decision #13.
+  // v11 (v024, Documents): + documents.write (foreperson/builder — the capturers who own a surface
+  // but hold no quality.write). PM/supervisor/inspector reach DELETE via existing quality.write.
+  // v12 (v025, decision #19): + documents.read (builder only) — sees documents on ENGAGED jobs.
+  // Narrow on purpose: granting builder `projects.read` would hand over the whole project-detail
+  // surface (/projects, /:id, /inspections, /defects, /certificates, /members) as a side effect.
+  ok('permissions: matrixVersion present', d?.matrixVersion === 12, JSON.stringify(d?.matrixVersion));
+  ok('permissions: projectManager has accounts.read (v10)', d?.permissions?.includes('accounts.read'),
+    JSON.stringify(d?.permissions));
+  ok('permissions: projectManager does NOT need documents.write (quality.write covers DELETE)',
+    !d?.permissions?.includes('documents.write') && d?.permissions?.includes('quality.write'),
+    JSON.stringify(d?.permissions));
   ok('permissions: projectManager scope = portfolio', d?.scopeClass === 'portfolio');
   ok('permissions: projectManager has projects.write', d?.permissions?.includes('projects.write'));
   ok('permissions: pairableRoles are the 6 field roles (+ builder, no client)',
