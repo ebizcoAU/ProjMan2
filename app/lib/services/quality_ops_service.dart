@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import 'db_service.dart';
@@ -47,17 +48,17 @@ class QualityOpsService {
       'reference', 'document_id', 'notes', 'is_deleted',
     ],
     'inspection_items': [
-      'inspection_id', 'seq', 'description', 'result', 'note', 'photo_id',
+      'inspection_id', 'seq', 'description', 'result', 'note', 'photo_ids',
       'is_deleted',
     ],
     'defects': [
       'project_id', 'stage_id', 'location', 'trade', 'description',
       'assigned_to', 'assigned_to_name', 'due_date', 'severity', 'status',
-      'photo_id', 'photo_after_id', 'is_deleted',
+      'photo_ids', 'photo_after_ids', 'is_deleted',
     ],
     'certificates': [
       'project_id', 'stage_id', 'type', 'reference', 'issued_by', 'issued_at',
-      'expires_at', 'document_id', 'notes', 'is_deleted',
+      'expires_at', 'document_ids', 'notes', 'is_deleted',
     ],
   };
 
@@ -183,16 +184,18 @@ class QualityOpsService {
     await _reload(projectId);
   }
 
+  /// Persist an item. Mutate [item] (result/note/photoIds) before calling, or
+  /// pass [result]/[note] for the common single-field edits. The photo cache
+  /// list is mutated in place by the caller (append the queue's `client_ref`)
+  /// — same mutate-then-persist shape as [updateDefect].
   Future<void> updateInspectionItem(
     String projectId,
     InspectionItemEntry item, {
     ItemResult? result,
     String? note,
-    String? photoId,
   }) async {
     if (result != null) item.result = result;
     if (note != null) item.note = note;
-    if (photoId != null) item.photoId = photoId;
     await _writeInspectionItem(item);
     await _reload(projectId);
   }
@@ -205,7 +208,7 @@ class QualityOpsService {
       'description': e.description,
       'result': e.result.name,
       'note': e.note,
-      'photo_id': e.photoId,
+      'photo_ids': _encIds(e.photoIds),
       'is_deleted': 0,
       'created_at': DateTime.now().millisecondsSinceEpoch,
       'updated_at': DateTime.now().millisecondsSinceEpoch,
@@ -274,8 +277,8 @@ class QualityOpsService {
       'due_date': e.dueDate == null ? null : _dateStr(e.dueDate!),
       'severity': e.severity.name,
       'status': _defectStatusWire(e.status),
-      'photo_id': e.photoId,
-      'photo_after_id': e.photoAfterId,
+      'photo_ids': _encIds(e.photoIds),
+      'photo_after_ids': _encIds(e.photoAfterIds),
       'is_deleted': 0,
       'created_at': DateTime.now().millisecondsSinceEpoch,
       'updated_at': DateTime.now().millisecondsSinceEpoch,
@@ -302,7 +305,7 @@ class QualityOpsService {
       'issued_by': e.issuedBy,
       'issued_at': e.issuedAt == null ? null : _dateStr(e.issuedAt!),
       'expires_at': e.expiresAt == null ? null : _dateStr(e.expiresAt!),
-      'document_id': e.documentId,
+      'document_ids': _encIds(e.documentIds),
       'notes': e.notes,
       'is_deleted': 0,
       'created_at': DateTime.now().millisecondsSinceEpoch,
@@ -459,6 +462,21 @@ class QualityOpsService {
         _ => DefectStatus.open,
       };
 
+  /// The plural photo/document cache columns hold a JSON array of ids —
+  /// `client_ref`s while un-uploaded, `document_id`s once the queue swaps them
+  /// (xprojman-22 §5 #2, DocumentQueueService). Null/empty → an empty list.
+  static String? _encIds(List<String> ids) =>
+      ids.isEmpty ? null : jsonEncode(ids);
+
+  static List<String> _decIds(Object? raw) {
+    if (raw == null || (raw is String && raw.isEmpty)) return [];
+    try {
+      return (jsonDecode(raw as String) as List).map((e) => e.toString()).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
   static String _dateStr(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-'
       '${d.month.toString().padLeft(2, '0')}-'
@@ -565,7 +583,7 @@ class InspectionItemEntry {
   String description;
   ItemResult result;
   String? note;
-  String? photoId;
+  final List<String> photoIds; // client_refs / document_ids (display cache)
 
   InspectionItemEntry({
     String? id,
@@ -574,8 +592,9 @@ class InspectionItemEntry {
     required this.description,
     this.result = ItemResult.pending,
     this.note,
-    this.photoId,
-  }) : id = id ?? const Uuid().v4();
+    List<String>? photoIds,
+  })  : id = id ?? const Uuid().v4(),
+        photoIds = photoIds ?? [];
 
   static InspectionItemEntry _fromRow(Map<String, Object?> r) =>
       InspectionItemEntry(
@@ -586,7 +605,7 @@ class InspectionItemEntry {
         result: ItemResult.values.firstWhere((v) => v.name == r['result'],
             orElse: () => ItemResult.pending),
         note: r['note'] as String?,
-        photoId: r['photo_id'] as String?,
+        photoIds: QualityOpsService._decIds(r['photo_ids']),
       );
 }
 
@@ -606,8 +625,8 @@ class DefectEntry {
   DefectStatus status;
   final DateTime? closedAt; // server-stamped (PROTECTED)
   final String? closedBy; // server-stamped (PROTECTED)
-  String? photoId;
-  String? photoAfterId;
+  final List<String> photoIds; // "before" evidence (display cache)
+  final List<String> photoAfterIds; // "after" / rectification evidence
 
   DefectEntry({
     String? id,
@@ -625,9 +644,11 @@ class DefectEntry {
     this.status = DefectStatus.open,
     this.closedAt,
     this.closedBy,
-    this.photoId,
-    this.photoAfterId,
-  }) : id = id ?? const Uuid().v4();
+    List<String>? photoIds,
+    List<String>? photoAfterIds,
+  })  : id = id ?? const Uuid().v4(),
+        photoIds = photoIds ?? [],
+        photoAfterIds = photoAfterIds ?? [];
 
   static DefectEntry _fromRow(Map<String, Object?> r) => DefectEntry(
         id: r['id'] as String,
@@ -646,8 +667,8 @@ class DefectEntry {
         status: QualityOpsService._defectStatusFromWire(r['status']),
         closedAt: QualityOpsService._parseDt(r['closed_at']),
         closedBy: r['closed_by'] as String?,
-        photoId: r['photo_id'] as String?,
-        photoAfterId: r['photo_after_id'] as String?,
+        photoIds: QualityOpsService._decIds(r['photo_ids']),
+        photoAfterIds: QualityOpsService._decIds(r['photo_after_ids']),
       );
 }
 
@@ -660,7 +681,7 @@ class CertificateEntry {
   String? issuedBy;
   DateTime? issuedAt;
   DateTime? expiresAt;
-  String? documentId;
+  final List<String> documentIds; // client_refs / document_ids (display cache)
   String notes;
 
   CertificateEntry({
@@ -672,9 +693,10 @@ class CertificateEntry {
     this.issuedBy,
     this.issuedAt,
     this.expiresAt,
-    this.documentId,
+    List<String>? documentIds,
     this.notes = '',
-  }) : id = id ?? const Uuid().v4();
+  })  : id = id ?? const Uuid().v4(),
+        documentIds = documentIds ?? [];
 
   bool get lapsingSoon =>
       expiresAt != null &&
@@ -689,7 +711,7 @@ class CertificateEntry {
         issuedBy: r['issued_by'] as String?,
         issuedAt: QualityOpsService._parseDt(r['issued_at']),
         expiresAt: QualityOpsService._parseDt(r['expires_at']),
-        documentId: r['document_id'] as String?,
+        documentIds: QualityOpsService._decIds(r['document_ids']),
         notes: (r['notes'] as String?) ?? '',
       );
 }

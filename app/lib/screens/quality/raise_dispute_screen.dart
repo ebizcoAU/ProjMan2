@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 import '../../config/app_theme.dart';
 import '../../services/dispute_service.dart';
+import '../../widgets/photo_capture.dart';
 
 /// "Raise a dispute" (appdesignspecification.md §2.7): the disputing party
 /// flags a specific record and attaches counter-evidence — an in-app action,
@@ -48,8 +50,11 @@ class _RaiseDisputeSheet extends StatefulWidget {
 
 class _RaiseDisputeSheetState extends State<_RaiseDisputeSheet> {
   final _reason = TextEditingController();
-  String? _photoId; // placeholder pattern — real queue lands with documents module
+  String? _photoRef; // queue client_ref for the counter-evidence photo
   bool _busy = false;
+  // Mint the dispute id up front so counter-evidence queues against it before
+  // the row is written (order-free link, xprojman-21 §P1).
+  final String _disputeId = const Uuid().v4();
 
   @override
   void dispose() {
@@ -60,14 +65,27 @@ class _RaiseDisputeSheetState extends State<_RaiseDisputeSheet> {
   Future<void> _submit() async {
     setState(() => _busy = true);
     await DisputeService.instance.raise(
+      id: _disputeId,
       projectId: widget.projectId,
       subjectType: widget.subjectType,
       subjectId: widget.subjectId,
       subjectLabel: widget.subjectLabel,
       reason: _reason.text.trim(),
-      counterEvidencePhotoId: _photoId,
+      counterEvidencePhotoIds: _photoRef == null ? null : [_photoRef!],
     );
     if (mounted) Navigator.pop(context, true);
+  }
+
+  Future<void> _attachEvidence() async {
+    // Disputes are local-only today (no server table); the document still
+    // uploads order-free against the dispute id as a `general` kind and links
+    // automatically when the disputes server surface eventually ships.
+    final ref = await captureAndEnqueue(context,
+        entityType: 'dispute',
+        entityId: _disputeId,
+        projectId: widget.projectId,
+        kind: 'general');
+    if (ref != null && mounted) setState(() => _photoRef = ref);
   }
 
   @override
@@ -116,18 +134,17 @@ class _RaiseDisputeSheetState extends State<_RaiseDisputeSheet> {
             ),
             const SizedBox(height: 12),
             OutlinedButton.icon(
-              onPressed: () => setState(() =>
-                  _photoId = 'pending-${DateTime.now().millisecondsSinceEpoch}'),
-              icon: Icon(_photoId == null
+              onPressed: _attachEvidence,
+              icon: Icon(_photoRef == null
                   ? Icons.add_a_photo_outlined
                   : Icons.check_circle_outline),
-              label: Text(_photoId == null
+              label: Text(_photoRef == null
                   ? 'Attach counter-evidence photo'
                   : 'Photo attached'),
               style: OutlinedButton.styleFrom(
-                foregroundColor: _photoId == null ? Op.muted : Op.success,
+                foregroundColor: _photoRef == null ? Op.muted : Op.success,
                 side: BorderSide(
-                    color: _photoId == null ? Op.border : Op.success),
+                    color: _photoRef == null ? Op.border : Op.success),
                 minimumSize: const Size.fromHeight(44),
               ),
             ),

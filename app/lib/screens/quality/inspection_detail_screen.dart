@@ -3,6 +3,7 @@ import '../../config/app_theme.dart';
 import '../../models/domain.dart';
 import '../../services/permissions_service.dart';
 import '../../services/quality_ops_service.dart';
+import '../../widgets/photo_capture.dart';
 import 'raise_dispute_screen.dart';
 
 /// A single inspection's checklist (appspec §5.5, servdesignspec §12.4). Items
@@ -179,6 +180,16 @@ class _InspectionDetailScreenState extends State<InspectionDetailScreen> {
               if (item.note?.isNotEmpty == true)
                 Text(item.note!,
                     style: const TextStyle(color: Op.muted, fontSize: 12)),
+              if (item.photoIds.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Row(children: [
+                    const Icon(Icons.photo_outlined, size: 12, color: Op.muted),
+                    const SizedBox(width: 3),
+                    Text('${item.photoIds.length} photo(s)',
+                        style: const TextStyle(color: Op.muted, fontSize: 11.5)),
+                  ]),
+                ),
             ],
           ),
         ),
@@ -221,10 +232,13 @@ class _InspectionDetailScreenState extends State<InspectionDetailScreen> {
   }
 
   Future<void> _addItemPhoto(InspectionItemEntry item) async {
-    // Placeholder id — the real offline image queue lands with the documents
-    // module (Decision 1); same pattern as Site Diary/Deliveries.
-    await _svc.updateInspectionItem(_pid, item,
-        photoId: 'pending-${DateTime.now().millisecondsSinceEpoch}');
+    // Real offline image queue (xprojman-22): capture → enqueue → cache the
+    // client_ref on the item; upload rides the queue when there's signal.
+    final ref = await captureAndEnqueue(context,
+        entityType: 'inspection_item', entityId: item.id, projectId: _pid);
+    if (ref == null) return;
+    item.photoIds.add(ref);
+    await _svc.updateInspectionItem(_pid, item);
     if (mounted) setState(() {});
   }
 

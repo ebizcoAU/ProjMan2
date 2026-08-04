@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../config/app_theme.dart';
 import '../../models/domain.dart';
 import '../../services/site_ops_service.dart';
+import '../../widgets/photo_capture.dart';
 
 /// Site Diary (appspec §5.3) — the app's most important screen. Single-purpose,
 /// linear in the order a supervisor thinks: **work done → delays → proof**. Auto
@@ -264,10 +265,15 @@ class _SiteDiaryViewState extends State<SiteDiaryView> {
           ),
       ]);
 
-  // Photo capture rides the offline image queue as the documents module lands
-  // (§11.2, photo_ids JSON). Placeholder id for now so the strip is live.
-  void _addPhoto() => setState(
-      () => _entry.photoIds.add('pending-${_entry.photoIds.length + 1}'));
+  // Photo capture rides the one offline image queue (xprojman-22): capture →
+  // enqueue against this diary version's id → cache the client_ref in
+  // `photo_ids`; upload flushes when there's signal. The diary row need not be
+  // saved first — the document links by id, order-free (xprojman-21 §P1).
+  Future<void> _addPhoto() async {
+    final ref = await captureAndEnqueue(context,
+        entityType: 'site_diary', entityId: _entry.id, projectId: _pid);
+    if (ref != null && mounted) setState(() => _entry.photoIds.add(ref));
+  }
 
   Widget _actionBar() {
     if (_entry.isFinal) {

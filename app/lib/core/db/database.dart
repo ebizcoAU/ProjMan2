@@ -14,7 +14,9 @@ class DatabaseManager {
   ///   v2 — site ops: site_diary/site_attendance/deliveries (P5, servdesignspec §11)
   ///   v3 — quality: inspections/inspection_items/defects/certificates (P6a, §12)
   ///   v4 — disputes (appdesignspecification.md §2.7, local-only — no sync yet)
-  static const int currentVersion = 4;
+  ///   v5 — offline document/image queue: upload_queue + singular→plural cache
+  ///        columns (xprojman-22/23 — one queue, five capture surfaces)
+  static const int currentVersion = 5;
 
   static Database? _instance;
 
@@ -50,6 +52,7 @@ class DatabaseManager {
       await _createSiteOpsIndexes(txn);
       await _createQualityIndexes(txn);
       await _createDisputeIndexes(txn);
+      await _createUploadQueueIndexes(txn);
     });
     // ignore: avoid_print
     print('✅ [DB] Created projman2.db v$version '
@@ -83,6 +86,24 @@ class DatabaseManager {
           await txn.execute(stmt);
         }
         await _createDisputeIndexes(txn);
+      });
+    }
+    if (oldVersion < 5) {
+      await db.transaction((txn) async {
+        // Migrate the four singular cache columns → plural list columns
+        // (xprojman-22 §5 #2). The existing singular values are all
+        // `pending-<ts>` placeholders that point at no real file or document,
+        // so we add the plural columns EMPTY rather than carry junk forward —
+        // the queue re-populates them from real captures + the list endpoint.
+        // SQLite can add a column but not rename one, so the old singular
+        // columns stay in place, vestigial and unread.
+        for (final stmt in _v5AlterColumns) {
+          await txn.execute(stmt);
+        }
+        for (final stmt in DomainSchema.v5) {
+          await txn.execute(stmt);
+        }
+        await _createUploadQueueIndexes(txn);
       });
     }
     // ignore: avoid_print
@@ -201,6 +222,33 @@ class DatabaseManager {
     );
     await txn.execute(
       'CREATE INDEX IF NOT EXISTS idx_cert_dirty ON certificates(is_dirty)',
+    );
+  }
+
+  // v5 (xprojman-22 §5 #2) — add the plural cache columns to the four tables
+  // that carried singular ones. Empty on add; the queue fills them. See the
+  // `oldVersion < 5` branch for why nothing is copied across.
+  static const List<String> _v5AlterColumns = [
+    'ALTER TABLE inspection_items ADD COLUMN photo_ids TEXT',
+    'ALTER TABLE defects ADD COLUMN photo_ids TEXT',
+    'ALTER TABLE defects ADD COLUMN photo_after_ids TEXT',
+    'ALTER TABLE certificates ADD COLUMN document_ids TEXT',
+    'ALTER TABLE disputes ADD COLUMN counter_evidence_photo_ids TEXT',
+  ];
+
+  // Upload queue (xprojman-22) — the outbox scan (pending/failed first) and the
+  // LRU prune (oldest last_access_at first among uploaded rows).
+  static Future<void> _createUploadQueueIndexes(Transaction txn) async {
+    await txn.execute(
+      'CREATE INDEX IF NOT EXISTS idx_upload_queue_status ON upload_queue(status)',
+    );
+    await txn.execute(
+      'CREATE INDEX IF NOT EXISTS idx_upload_queue_entity '
+      'ON upload_queue(entity_type, entity_id)',
+    );
+    await txn.execute(
+      'CREATE INDEX IF NOT EXISTS idx_upload_queue_lru '
+      'ON upload_queue(last_access_at)',
     );
   }
 

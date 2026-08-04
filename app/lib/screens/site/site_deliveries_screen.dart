@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 import '../../config/app_theme.dart';
 import '../../models/domain.dart';
 import '../../services/site_ops_service.dart';
+import '../../widgets/photo_capture.dart';
 
 /// Deliveries (appspec §5.3) — photograph a docket against the job; the delivery
 /// *proof* record. v1 captures supplier/PO as free text (no commercial module
@@ -118,7 +120,7 @@ class _SiteDeliveriesScreenState extends State<SiteDeliveriesScreen> {
       backgroundColor: Op.surface,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
-      builder: (_) => const _AddDeliverySheet(),
+      builder: (_) => _AddDeliverySheet(projectId: _pid),
     );
     if (d != null && mounted) {
       await _svc.addDelivery(_pid, d);
@@ -148,7 +150,8 @@ class _SiteDeliveriesScreenState extends State<SiteDeliveriesScreen> {
 }
 
 class _AddDeliverySheet extends StatefulWidget {
-  const _AddDeliverySheet();
+  final String projectId;
+  const _AddDeliverySheet({required this.projectId});
 
   @override
   State<_AddDeliverySheet> createState() => _AddDeliverySheetState();
@@ -160,6 +163,9 @@ class _AddDeliverySheetState extends State<_AddDeliverySheet> {
   final _po = TextEditingController();
   final _notes = TextEditingController();
   final _photoIds = <String>[];
+  // Mint the delivery's id up front so a docket photo can be queued against it
+  // before the row is saved (order-free link, xprojman-21 §P1).
+  final String _deliveryId = const Uuid().v4();
 
   @override
   void dispose() {
@@ -202,6 +208,7 @@ class _AddDeliverySheetState extends State<_AddDeliverySheet> {
               onPressed: () => Navigator.pop(
                 context,
                 DeliveryEntry(
+                  id: _deliveryId,
                   supplierName: _supplier.text.trim(),
                   docketNo: _docket.text.trim(),
                   poReference: _po.text.trim(),
@@ -217,9 +224,16 @@ class _AddDeliverySheetState extends State<_AddDeliverySheet> {
     );
   }
 
+  Future<void> _captureDocket() async {
+    final ref = await captureAndEnqueue(context,
+        entityType: 'delivery',
+        entityId: _deliveryId,
+        projectId: widget.projectId);
+    if (ref != null && mounted) setState(() => _photoIds.add(ref));
+  }
+
   Widget _docketPhoto() => InkWell(
-        onTap: () =>
-            setState(() => _photoIds.add('pending-${_photoIds.length + 1}')),
+        onTap: _captureDocket,
         borderRadius: BorderRadius.circular(10),
         child: Container(
           height: 90,

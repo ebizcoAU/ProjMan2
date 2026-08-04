@@ -144,7 +144,7 @@ class DomainSchema {
       description       TEXT,
       result            TEXT DEFAULT 'pending',
       note              TEXT,
-      photo_id          TEXT,
+      photo_ids         TEXT,
       device_id         TEXT,
       is_deleted        INTEGER DEFAULT 0,
       is_dirty          INTEGER DEFAULT 0,
@@ -179,8 +179,8 @@ class DomainSchema {
       status            TEXT DEFAULT 'open',
       closed_at         TEXT,
       closed_by         TEXT,
-      photo_id          TEXT,
-      photo_after_id    TEXT,
+      photo_ids         TEXT,
+      photo_after_ids   TEXT,
       device_id         TEXT,
       is_deleted        INTEGER DEFAULT 0,
       is_dirty          INTEGER DEFAULT 0,
@@ -206,7 +206,7 @@ class DomainSchema {
       issued_by         TEXT,
       issued_at         TEXT,
       expires_at        TEXT,
-      document_id       TEXT,
+      document_ids      TEXT,
       notes             TEXT,
       device_id         TEXT,
       is_deleted        INTEGER DEFAULT 0,
@@ -238,7 +238,7 @@ class DomainSchema {
       raised_by                TEXT,
       raised_by_name           TEXT,
       reason                   TEXT NOT NULL,
-      counter_evidence_photo_id TEXT,
+      counter_evidence_photo_ids TEXT,
       status                   TEXT DEFAULT 'open',
       resolution_note          TEXT,
       resolved_by              TEXT,
@@ -256,6 +256,36 @@ class DomainSchema {
     )
   ''';
 
+  // ── upload_queue — the one offline document/image queue (xprojman-22 §2) ────
+  // Files live on the filesystem (app-documents dir); this holds only metadata.
+  // ONE queue behind all five capture surfaces (inspection_item / defect /
+  // certificate / site_diary / delivery). `client_ref` is the app-minted uuid
+  // that is BOTH the stable offline handle and the server's idempotency key
+  // (xprojman-21/23: idempotent on (org_id, client_ref)); `document_id` is the
+  // server-minted id, filled once uploaded. `(entity_type, entity_id, kind)`
+  // mirrors the server's `documents` row exactly so enqueue → POST is a field
+  // copy, and `entity_id` = the OWNING row's app UUID makes the link order-free.
+  static const String uploadQueue = '''
+    CREATE TABLE IF NOT EXISTS upload_queue (
+      client_ref        TEXT PRIMARY KEY NOT NULL,
+      local_path        TEXT NOT NULL,
+      kind              TEXT NOT NULL,
+      entity_type       TEXT NOT NULL,
+      entity_id         TEXT NOT NULL,
+      project_id        TEXT,
+      original_filename TEXT,
+      mime_type         TEXT,
+      size_bytes        INTEGER,
+      document_id       TEXT,
+      status            TEXT DEFAULT 'pending',
+      attempts          INTEGER DEFAULT 0,
+      last_error        TEXT,
+      created_at        INTEGER,
+      uploaded_at       INTEGER,
+      last_access_at    INTEGER
+    )
+  ''';
+
   /// v2 upgrade step (P5, servdesignspec §11).
   static const List<String> v2 = [siteDiary, siteAttendance, deliveries];
 
@@ -267,5 +297,12 @@ class DomainSchema {
   /// v4 upgrade step (appdesignspecification.md §2.7 — dispute mechanism).
   static const List<String> v4 = [disputes];
 
-  static const List<String> all = [...v2, ...v3, ...v4];
+  /// v5 upgrade step (xprojman-22/23 — the one offline document/image queue).
+  /// Fresh installs get the plural cache columns directly (baked into the CREATE
+  /// statements above); existing installs are ALTERed in DatabaseManager. This
+  /// list only carries the net-new table; the singular→plural column moves are
+  /// handled as ALTERs there (SQLite can add but not rename a column in-place).
+  static const List<String> v5 = [uploadQueue];
+
+  static const List<String> all = [...v2, ...v3, ...v4, ...v5];
 }

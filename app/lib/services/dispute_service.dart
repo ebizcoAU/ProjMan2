@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:uuid/uuid.dart';
 import 'db_service.dart';
 import 'session_service.dart';
@@ -42,16 +43,21 @@ class DisputeService {
   /// Raise a dispute against a specific record — [subjectType]/[subjectId]
   /// identify what's being contested (e.g. `'inspection_item'` + the item's
   /// id); [subjectLabel] is a human-readable summary shown in the queue.
+  /// [id] lets the caller mint the dispute's UUID up front so a
+  /// counter-evidence photo can be queued against it before the row is written
+  /// (the document links by this id — order-free, xprojman-21 §P1).
   Future<DisputeEntry> raise({
+    String? id,
     String? projectId,
     required String subjectType,
     required String subjectId,
     String? subjectLabel,
     required String reason,
-    String? counterEvidencePhotoId,
+    List<String>? counterEvidencePhotoIds,
   }) async {
     final user = await SessionService.currentUser();
     final entry = DisputeEntry(
+      id: id,
       projectId: projectId,
       subjectType: subjectType,
       subjectId: subjectId,
@@ -59,7 +65,7 @@ class DisputeService {
       raisedBy: user?['id']?.toString(),
       raisedByName: (user?['full_name'] ?? user?['fullName'])?.toString(),
       reason: reason,
-      counterEvidencePhotoId: counterEvidencePhotoId,
+      counterEvidencePhotoIds: counterEvidencePhotoIds,
     );
     await _write(entry);
     return entry;
@@ -97,7 +103,8 @@ class DisputeService {
       'raised_by': e.raisedBy,
       'raised_by_name': e.raisedByName,
       'reason': e.reason,
-      'counter_evidence_photo_id': e.counterEvidencePhotoId,
+      'counter_evidence_photo_ids':
+          e.counterEvidencePhotoIds.isEmpty ? null : jsonEncode(e.counterEvidencePhotoIds),
       'status': _statusWire(e.status),
       'resolution_note': e.resolutionNote,
       'resolved_by': e.resolvedBy,
@@ -129,6 +136,15 @@ class DisputeService {
         'resolved' => DisputeStatus.resolved,
         _ => DisputeStatus.open,
       };
+
+  static List<String> _decodeIds(Object? raw) {
+    if (raw == null || (raw is String && raw.isEmpty)) return [];
+    try {
+      return (jsonDecode(raw as String) as List).map((e) => e.toString()).toList();
+    } catch (_) {
+      return [];
+    }
+  }
 }
 
 enum DisputeStatus { open, reviewing, resolved }
@@ -142,7 +158,7 @@ class DisputeEntry {
   final String? raisedBy;
   final String? raisedByName;
   final String reason;
-  final String? counterEvidencePhotoId;
+  final List<String> counterEvidencePhotoIds; // client_refs / document_ids
   DisputeStatus status;
   String? resolutionNote;
   String? resolvedBy;
@@ -159,7 +175,7 @@ class DisputeEntry {
     this.raisedBy,
     this.raisedByName,
     required this.reason,
-    this.counterEvidencePhotoId,
+    List<String>? counterEvidencePhotoIds,
     this.status = DisputeStatus.open,
     this.resolutionNote,
     this.resolvedBy,
@@ -167,6 +183,7 @@ class DisputeEntry {
     this.resolvedAt,
     int? createdAtMs,
   })  : id = id ?? const Uuid().v4(),
+        counterEvidencePhotoIds = counterEvidencePhotoIds ?? [],
         createdAtMs = createdAtMs ?? DateTime.now().millisecondsSinceEpoch;
 
   static DisputeEntry _fromRow(Map<String, Object?> r) => DisputeEntry(
@@ -178,7 +195,8 @@ class DisputeEntry {
         raisedBy: r['raised_by'] as String?,
         raisedByName: r['raised_by_name'] as String?,
         reason: (r['reason'] as String?) ?? '',
-        counterEvidencePhotoId: r['counter_evidence_photo_id'] as String?,
+        counterEvidencePhotoIds:
+            DisputeService._decodeIds(r['counter_evidence_photo_ids']),
         status: DisputeService._statusFromWire(r['status']),
         resolutionNote: r['resolution_note'] as String?,
         resolvedBy: r['resolved_by'] as String?,

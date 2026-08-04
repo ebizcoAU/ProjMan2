@@ -3,6 +3,7 @@ import '../../config/app_theme.dart';
 import '../../models/domain.dart';
 import '../../services/permissions_service.dart';
 import '../../services/quality_ops_service.dart';
+import '../../widgets/photo_capture.dart';
 
 /// Defects (appspec §5.5) — the punch-list: location, description, trade,
 /// photo, assign, due (§12.5). Open defects do NOT block stage completion in
@@ -256,6 +257,11 @@ class _DefectSheetState extends State<_DefectSheet> {
   late DefectSeverity _severity = widget.existing?.severity ?? DefectSeverity.medium;
   late DefectStatus _status = widget.existing?.status ?? DefectStatus.open;
   bool _busy = false;
+  // The row being composed — for a NEW defect this holds a stable id up front so
+  // photos queue against it before it's saved (order-free, xprojman-21 §P1);
+  // for an edit it IS the existing row, so before/after photos append in place.
+  late final DefectEntry _draft =
+      widget.existing ?? DefectEntry(projectId: widget.projectId, description: '');
 
   bool get _isEdit => widget.existing != null;
 
@@ -341,7 +347,12 @@ class _DefectSheetState extends State<_DefectSheet> {
               ),
             const SizedBox(height: 12),
             _dueDateRow(),
+            const SizedBox(height: 12),
+            _photoRow('Photograph the defect', _draft.photoIds, after: false),
             if (_isEdit) ...[
+              const SizedBox(height: 12),
+              _photoRow('Rectification photo (after)', _draft.photoAfterIds,
+                  after: true),
               const SizedBox(height: 12),
               const Text('Status',
                   style: TextStyle(
@@ -411,10 +422,38 @@ class _DefectSheetState extends State<_DefectSheet> {
         ),
       );
 
+  Future<void> _capturePhoto({required bool after}) async {
+    final ref = await captureAndEnqueue(context,
+        entityType: 'defect', entityId: _draft.id, projectId: widget.projectId);
+    if (ref == null) return;
+    setState(() => (after ? _draft.photoAfterIds : _draft.photoIds).add(ref));
+  }
+
+  Widget _photoRow(String label, List<String> ids, {required bool after}) =>
+      InkWell(
+        onTap: () => _capturePhoto(after: after),
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          decoration: BoxDecoration(
+            color: Op.bg,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: ids.isEmpty ? Op.border : Op.accent),
+          ),
+          child: Row(children: [
+            Icon(ids.isEmpty ? Icons.add_a_photo_outlined : Icons.check_circle,
+                size: 18, color: ids.isEmpty ? Op.muted : Op.accent),
+            const SizedBox(width: 8),
+            Text(ids.isEmpty ? label : '${ids.length} photo(s) — $label',
+                style: TextStyle(
+                    color: ids.isEmpty ? Op.muted : Op.accent, fontSize: 13)),
+          ]),
+        ),
+      );
+
   Future<void> _save() async {
     setState(() => _busy = true);
-    final e = widget.existing ??
-        DefectEntry(projectId: widget.projectId, description: '');
+    final e = _draft;
     e.location = _nullIfEmpty(_location.text);
     e.trade = _nullIfEmpty(_trade.text);
     e.description = _description.text.trim();

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/db_service.dart';
+import '../services/document_queue_service.dart';
 import '../models/domain.dart';
 
 // ── Field-app tab sub-page toggles ────────────────────────────────────────────
@@ -41,5 +42,8 @@ final databaseServiceProvider = FutureProvider<DatabaseService>((ref) async {
 // ── App initialisation — DB ready; sync wiring arrives at P3 ──────────────────
 final appInitializationProvider = FutureProvider<bool>((ref) async {
   await ref.watch(databaseServiceProvider.future);
+  // Start the offline document/image queue: wire its connectivity trigger and
+  // flush any captures that were queued while offline (xprojman-22).
+  await DocumentQueueService.instance.start();
   return true;
 });

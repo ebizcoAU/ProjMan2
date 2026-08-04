@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import '../config/build_config.dart';
 import 'device_service.dart';
 import 'session_service.dart';
@@ -212,6 +213,161 @@ class NexusService {
   /// Authenticated POST — same token-attach + refresh-on-401-and-retry as GET.
   static Future<ApiResult> authedPost(String path, Map<String, dynamic> body) =>
       _authed((bearer) => _post(path, body: body, bearer: bearer));
+
+  /// Authenticated DELETE — token-attach + refresh-on-401-and-retry.
+  static Future<ApiResult> authedDelete(String path) =>
+      _authed((bearer) => _delete(path, bearer: bearer));
+
+  /// Authenticated multipart POST — the document/image upload path (xprojman-23).
+  /// One `file` part (raw bytes from [filePath]) plus string [fields]. Uploads
+  /// get a longer ceiling than JSON calls (a 25 MB file over a slow link). The
+  /// same refresh-on-401-and-retry applies — a token that expires mid-queue-flush
+  /// recovers transparently. The retry re-reads the file, so it is idempotent on
+  /// `(org_id, client_ref)` server-side (a 200 `duplicate:true` on the retry).
+  static Future<ApiResult> authedMultipart(
+    String path, {
+    required Map<String, String> fields,
+    required String filePath,
+    String fileField = 'file',
+  }) =>
+      _authed((bearer) => _multipart(path,
+          fields: fields,
+          filePath: filePath,
+          fileField: fileField,
+          bearer: bearer));
+
+  /// Authenticated GET of raw bytes — streams a document back (`GET
+  /// /documents/:id`). Used to re-fetch a locally-evicted file (the LRU cache,
+  /// xprojman-22 §5 #3) or to render a doc uploaded by someone else / from the
+  /// web. Refreshes once on 401 like the JSON helpers.
+  static Future<BytesResult> authedGetBytes(String path) async {
+    var res = await _getBytes(path, bearer: await SessionService.accessToken());
+    if (res.status == 401 && await refresh()) {
+      res = await _getBytes(path, bearer: await SessionService.accessToken());
+    }
+    return res;
+  }
+
+  static const _uploadTimeout = Duration(seconds: 60);
+
+  static Future<ApiResult> _multipart(
+    String path, {
+    required Map<String, String> fields,
+    required String filePath,
+    required String fileField,
+    String? bearer,
+  }) async {
+    final uri = Uri.parse('$API_BASE_URL$path');
+    final sw = Stopwatch()..start();
+    debugPrint('[Nexus] → MULTIPART $uri (${fields['client_ref']})');
+    try {
+      final req = http.MultipartRequest('POST', uri);
+      if (bearer != null) req.headers['Authorization'] = 'Bearer $bearer';
+      req.fields.addAll(fields);
+      req.files.add(await http.MultipartFile.fromPath(fileField, filePath));
+      final streamed = await req.send().timeout(_uploadTimeout);
+      final resp = await http.Response.fromStream(streamed).timeout(_uploadTimeout);
+      final Map<String, dynamic> json =
+          resp.body.isEmpty ? {} : jsonDecode(resp.body) as Map<String, dynamic>;
+      final ok = resp.statusCode >= 200 &&
+          resp.statusCode < 300 &&
+          json['success'] != false;
+      debugPrint('[Nexus] ← MULTIPART $path → ${resp.statusCode} '
+          'in ${sw.elapsedMilliseconds}ms ok=$ok code=${json['code']}');
+      return ApiResult(
+        success: ok,
+        status: resp.statusCode,
+        data: _payload(json),
+        code: json['code']?.toString(),
+        message: json['message']?.toString(),
+      );
+    } on SocketException catch (e) {
+      debugPrint('[Nexus] ← MULTIPART $path network error: $e');
+      return const ApiResult(
+          success: false, status: 0, data: {}, code: 'NETWORK',
+          message: 'Cannot reach the server. Check your connection.');
+    } on TimeoutException catch (e) {
+      debugPrint('[Nexus] ← MULTIPART $path timeout: $e');
+      return const ApiResult(
+          success: false, status: 0, data: {}, code: 'NETWORK',
+          message: 'The upload took too long. It will retry.');
+    } catch (e) {
+      debugPrint('[Nexus] ← MULTIPART $path error: $e');
+      return ApiResult(
+          success: false, status: 0, data: const {}, code: 'CLIENT_ERROR',
+          message: e.toString());
+    }
+  }
+
+  static Future<ApiResult> _delete(String path, {String? bearer}) async {
+    final uri = Uri.parse('$API_BASE_URL$path');
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15);
+    try {
+      final req = await client.deleteUrl(uri);
+      if (bearer != null) {
+        req.headers.set(HttpHeaders.authorizationHeader, 'Bearer $bearer');
+      }
+      final resp = await req.close().timeout(_requestTimeout);
+      final text =
+          await resp.transform(utf8.decoder).join().timeout(_requestTimeout);
+      final Map<String, dynamic> json =
+          text.isEmpty ? {} : jsonDecode(text) as Map<String, dynamic>;
+      final ok = resp.statusCode >= 200 &&
+          resp.statusCode < 300 &&
+          json['success'] != false;
+      return ApiResult(
+        success: ok,
+        status: resp.statusCode,
+        data: _payload(json),
+        code: json['code']?.toString(),
+        message: json['message']?.toString(),
+      );
+    } on SocketException {
+      return const ApiResult(
+          success: false, status: 0, data: {}, code: 'NETWORK',
+          message: 'Cannot reach the server.');
+    } on TimeoutException {
+      return const ApiResult(
+          success: false, status: 0, data: {}, code: 'NETWORK',
+          message: 'The server took too long to respond.');
+    } catch (e) {
+      return ApiResult(
+          success: false, status: 0, data: const {}, code: 'CLIENT_ERROR',
+          message: e.toString());
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  static Future<BytesResult> _getBytes(String path, {String? bearer}) async {
+    final uri = Uri.parse('$API_BASE_URL$path');
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15);
+    try {
+      final req = await client.getUrl(uri);
+      if (bearer != null) {
+        req.headers.set(HttpHeaders.authorizationHeader, 'Bearer $bearer');
+      }
+      final resp = await req.close().timeout(_uploadTimeout);
+      if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        // Drain so the socket is reusable, then report the status.
+        await resp.drain<void>();
+        return BytesResult(status: resp.statusCode, bytes: null);
+      }
+      final bytes = await consolidateHttpClientResponseBytes(resp)
+          .timeout(_uploadTimeout);
+      return BytesResult(status: resp.statusCode, bytes: bytes);
+    } on SocketException {
+      return const BytesResult(status: 0, bytes: null);
+    } on TimeoutException {
+      return const BytesResult(status: 0, bytes: null);
+    } catch (_) {
+      return const BytesResult(status: 0, bytes: null);
+    } finally {
+      client.close(force: true);
+    }
+  }
 
   /// Runs an authed request; on `401` refreshes once and retries the same call.
   static Future<ApiResult> _authed(
@@ -485,6 +641,16 @@ class NexusService {
       organisation: res.data['organisation'] as Map<String, dynamic>?,
     );
   }
+}
+
+/// A raw-bytes response from [NexusService.authedGetBytes] — a streamed
+/// document. [bytes] is null on any non-2xx or transport failure; [status]
+/// distinguishes 404 (gone) from 0 (offline) for the caller.
+class BytesResult {
+  final int status;
+  final Uint8List? bytes;
+  const BytesResult({required this.status, required this.bytes});
+  bool get ok => status >= 200 && status < 300 && bytes != null;
 }
 
 /// A decoded API response. Callers read [success] + [code] (§1.6) and pull

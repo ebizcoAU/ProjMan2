@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 import '../../config/app_theme.dart';
 import '../../models/domain.dart';
 import '../../services/permissions_service.dart';
 import '../../services/quality_ops_service.dart';
+import '../../widgets/photo_capture.dart';
 
 /// Certificates (appspec §5.5) — the statutory-document register + expiry
 /// tracking (§12.6): BA2/BA3/OC, termite, waterproofing warranties, etc.
@@ -171,8 +173,11 @@ class _CertificateSheetState extends State<_CertificateSheet> {
   final _notes = TextEditingController();
   DateTime? _issuedAt;
   DateTime? _expiresAt;
-  String? _documentId;
+  String? _documentRef; // queue client_ref for the attached signed document
   bool _busy = false;
+  // Mint the certificate id up front so the document queues against it before
+  // the row is saved (order-free link, xprojman-21 §P1).
+  final String _certId = const Uuid().v4();
 
   @override
   void dispose() {
@@ -278,11 +283,19 @@ class _CertificateSheetState extends State<_CertificateSheet> {
         ),
       );
 
-  // Document capture rides the offline image queue as the documents module
-  // lands (Decision 1); placeholder id for now so the row is live.
+  // Document capture rides the one offline image queue (xprojman-22): capture →
+  // enqueue against this certificate's id → cache the client_ref; upload
+  // flushes when there's signal.
+  Future<void> _attachDocument() async {
+    final ref = await captureAndEnqueue(context,
+        entityType: 'certificate',
+        entityId: _certId,
+        projectId: widget.projectId);
+    if (ref != null && mounted) setState(() => _documentRef = ref);
+  }
+
   Widget _documentRow() => InkWell(
-        onTap: () => setState(
-            () => _documentId = 'pending-${DateTime.now().millisecondsSinceEpoch}'),
+        onTap: _attachDocument,
         borderRadius: BorderRadius.circular(10),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -293,13 +306,13 @@ class _CertificateSheetState extends State<_CertificateSheet> {
           ),
           child: Row(children: [
             Icon(
-                _documentId == null
+                _documentRef == null
                     ? Icons.attach_file
                     : Icons.check_circle,
                 color: Op.accent, size: 18),
             const SizedBox(width: 8),
             Text(
-                _documentId == null
+                _documentRef == null
                     ? 'Attach the signed document'
                     : 'Document attached',
                 style: const TextStyle(color: Op.accent, fontSize: 13)),
@@ -310,13 +323,14 @@ class _CertificateSheetState extends State<_CertificateSheet> {
   Future<void> _save() async {
     setState(() => _busy = true);
     final e = CertificateEntry(
+      id: _certId,
       projectId: widget.projectId,
       type: _type,
       reference: _nullIfEmpty(_reference.text),
       issuedBy: _nullIfEmpty(_issuedBy.text),
       issuedAt: _issuedAt,
       expiresAt: _expiresAt,
-      documentId: _documentId,
+      documentIds: _documentRef == null ? null : [_documentRef!],
       notes: _notes.text.trim(),
     );
     await QualityOpsService.instance.recordCertificate(widget.projectId, e);
