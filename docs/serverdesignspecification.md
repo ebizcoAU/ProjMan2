@@ -360,28 +360,73 @@ On approval, the server issues a VeriTrade web session tied to the person's own
 
 ### 7.5 `PM2-02` — the identity-scoped evidence domain
 
-**The single most important open design decision downstream of the data core**,
-and the hard blocker on VeriTrade (`veritradedesignspecification.md` §2). A
-Tradie's evidence must span many Builders' tenants and be portable, owned by
-the individual — in direct tension with `org_id` isolation.
+**⚠ CORRECTION (2026-08-05/06): this was NOT an open decision — it was already
+signed off.** Everything below this paragraph, previously framed as "two
+questions to answer before this is built," was actually resolved on
+**2026-07-22** in `docs/decisions/projman-02.md` (Status: 🟢 APPROVED, owner +
+NexusPM). That approval never got carried forward into this section when it
+was rewritten under the `PM2-02` name on 27 July — an internal citation gap,
+not a real re-opening. The same stale framing then propagated into
+`devroadmap.md`'s decision ledger and was repeated at face value in
+`xprojman-08/09/13/17/18` by both teams for two weeks. **What is actually
+outstanding is not a decision, it's a build: `projman-02` §9 promised a
+follow-up `projman-03` domain-table spec (`engagements`/`identities`/
+`attestations` schema + endpoints), but that record slot was reused for
+CPC50220 alignment instead, so the schema-level spec was never written and
+none of the three tables exist in any migration.** §13 is that missing spec,
+drafted now to close the gap.
 
-**Proposed reconciliation:** project data stays locked inside each Builder's
-org; each qualifying interaction (a validated inspection, a signed diary entry,
-a completed stage, a matched invoice) emits a **signed attestation** into a
-person-owned, identity-scoped evidence store outside any one tenant — a third
-isolation domain alongside `org_id` and `self`. The counterpart org is
-anonymised in any score or summary that leaves the person's own record.
+**The resolved architecture (projman-02, 2026-07-22), for reference:**
 
-**Two questions to answer before this is built, not during:**
+A Tradie's evidence must span many Builders' tenants and be portable, owned by
+the individual — in direct tension with `org_id` isolation. **Reconciliation
+(as built into the design, not yet into code):** project data stays locked
+inside each Builder's org; each qualifying interaction (a validated
+inspection, a signed diary entry, a completed stage, a matched invoice) emits
+a **signed attestation** into a person-owned, identity-scoped evidence store
+outside any one tenant — a third isolation domain alongside `org_id` and
+`self`. The counterpart org is anonymised in any score or summary that leaves
+the person's own record.
+
+**The two questions this section used to pose as open — RULED 2026-07-22:**
 
 1. Is a person a full account that **owns** a cross-org evidence record, or is
-   a profile assembled only at read time? *(Recommend: owned record — the only
-   answer consistent with "immutable, tamper-proof.")*
+   a profile assembled only at read time? **RULED: owned record (Decision A →
+   A1)** — a tradie registers once, owns their evidence store; engagements
+   link builders' projects to that identity.
 2. Does a multi-Builder Tradie hold **one session with many project-grants**,
-   or **many sessions switched between**?
+   or **many sessions switched between**? **RULED: A1+B2 synthesis** — one
+   owned identity ties together per-builder session-contexts; each context
+   stays single-org, so the proven `org_id` isolation filter (16/16,
+   `isolation.test.js`) is reused unmodified per context, not rewritten.
 
-This becomes `PM2-02` as a decision record before any of §7.4 or VeriTrade's
-backend (`veritradedesignspecification.md` §11) is built.
+`projman-02` §10 additionally already answers the four implementation
+mechanics that would otherwise block a build spec: org signing keys
+(server-generated Ed25519, encrypted at rest via envelope encryption — public
+key freely distributable; a separate app-generated device key for QR signing,
+public-only on the server), attestation signature verification (verify on
+every trust-decision read, cache `signature_valid` on the row, re-verify on
+issuer-key rotation), trust-score computation (on-demand + 24h cache +
+event-invalidate on new attestation, not a batch job), and engagement
+revocation (server-driven tombstone — scope resolution stops serving
+immediately, sessions invalidated, next pull returns an explicit
+`engagement_revoked` tombstone; the person's own locally-authored evidence
+still flows to their identity store, only the builder's scoped project data
+is torn down).
+
+**Scope has grown slightly since 22 July without reopening the architecture**
+— PM2-02 now also explicitly gates true cross-org Job Award (PM in org A
+awarding a self-registered Builder in org B, `xprojman-18` Q2) and org-less
+crew self-registration (Fork B/C, `xprojman-13`), in addition to the original
+VeriTrade evidence-portability case. Both are the same "portable cross-tenant
+identity" primitive projman-02 already designed — no new decision needed,
+just confirmation the one design covers them (it does: an `engagement`
+scope-class session-context is exactly a cross-org grant, regardless of which
+product consumes it).
+
+This becomes §13 as a build spec before any of §7.4 or VeriTrade's backend
+(`veritradedesignspecification.md` §11) is built — there is no decision-record
+step left to schedule.
 
 ### 7.6 Deactivation, not erasure — the server-side rule
 
@@ -427,13 +472,15 @@ requires, not a rewrite:
 | C | Portal: collapse the "Dashboard + Public Portal" pages into one Portal app with role-scoped route groups | A |
 | D | Deactivation endpoint correction (§7.6) | A |
 | D2 | Stage-level patches (§8): `S1.3` unit-count declaration, `S10.5` hold point, `S11.9` split, `S12.8`/`S12.9` hybrid auto-flag, `S16.7`/`S17.2` `jurisdiction` field + state-certificate reference table, `S18.11`/`S18.12` split | A |
-| E | `PM2-02` decision record — resolve before F | B, C |
+| E | `PM2-02` **build** — `engagements`/`identities`/`attestations` schema + endpoints per §13 (architecture already approved 2026-07-22, `projman-02.md`; this is code, not a decision) | B, C |
 | F | VeriTrade login endpoints (§7.4) + evidence export | E |
 | G | VeriTrade's own backend (search, licence-verification integration) | F |
 
-Steps A–D2 are safe to start immediately — no dependency on `PM2-02`. E is a
-design decision, not code, and should be scheduled as such rather than
-discovered mid-build.
+Steps A–D2 are safe to start immediately — no dependency on `PM2-02`. **E is a
+build step, not a design decision** (corrected 2026-08-05/06 — see §7.5); it
+was previously mis-scheduled as a decision-record conversation, but the
+architecture was signed off 2026-07-22 and only the migration/endpoints were
+never written.
 
 ---
 
@@ -441,7 +488,7 @@ discovered mid-build.
 
 | # | Decision | Status |
 |---|---|---|
-| 1 | `PM2-02` — owned record vs. read-time assembly; one session vs. many | **Blocking VeriTrade** |
+| 1 | ~~`PM2-02` — owned record vs. read-time assembly; one session vs. many~~ | **RESOLVED 2026-07-22** (`projman-02.md`: A1 owned record, A1+B2 session synthesis) — mis-listed here as open since 27 July; corrected 2026-08-05/06. What's actually blocking VeriTrade is the **build** (§13), not this decision |
 | 2 | ~~Introduction PIN/QR mechanic~~ | **Resolved:** ordinary login, not a separate PIN — see §7.3 |
 | 3 | ~~Job Award's exact signature mechanic~~ | **Resolved:** lightweight tap + `S9.9` deposit pairing (§7.3). **New, genuinely open:** does this satisfy contract-execution law state by state — solicitor confirmation needed, not a server-design call |
 | 4 | Whether `quality.validate`'s narrow `is_validated`-only scope is fully enforced in the existing built Quality module, or whether a broader grant survived from the pre-correction matrix | **Audit before shipping step A** |
@@ -872,6 +919,175 @@ itself when the ATO updates rates next financial year.
 | 23 | Superannuation fund routing — model each employee's nominated/stapled fund in v1, or treat SG as an accrual-only liability with actual fund payment handled entirely outside ProjMan2 | **Accrual-only for v1** — matches P8's export-first minimalism; choice-of-fund/stapled-fund lookup is real, separate compliance surface worth its own pass |
 | 24 | `site_attendance` (P5) is project-scoped; a pay run is org-level and an employee may work multiple projects in one period. Does P9 auto-aggregate attendance into `hours_ordinary`, or is that a manual entry in v1? | **Manual entry for v1** — attendance was designed as a muster/safety record (`geo_verified` proves presence, not minutes worked), not a timesheet; automatic aggregation is a real v2 feature, not a v1 blocker |
 | 25 | Modern Award pay-rate engine (classification base rates, penalty rates, overtime loadings, allowances) — in scope for any P9 phase, or fully out of v1 (§12.2)? | **Fully out of v1** — this is its own large ruled-rates domain; v1 assumes the org already knows the rate it's paying |
+
+---
+
+## 13. `PM2-02` — identity-scoped evidence domain: the build spec (design draft, specify-then-build)
+
+**Architecture already approved** (`projman-02.md`, 2026-07-22 — see the corrected §7.5).
+This section is the missing piece: the concrete schema, session mechanics, and endpoint
+plan that lets that approval actually be built. Offered for owner review before any
+migration is written, same specify-then-build gate §11/§12 went through.
+
+### 13.0 The one thing projman-02 left implicit — the identity anchor
+
+`users` (migration v001) has a **globally unique `email`** and a **NOT NULL `org_id`** —
+a person is, today, exactly one row in exactly one org. That's not an oversight to work
+around; it's the thing that makes Decision A (§7.5, "owned record") cheap: **a person's
+identity IS their existing `users.id`.** No parallel person-entity table is needed, and
+no relaxation of the email-uniqueness or org-nullability invariants — both of which
+Fork B (`xprojman-13`) already rejected for v1 on exactly this scope-creep basis.
+
+What was actually missing is the **cross-org bridge**: today `project_members.user_id`
+(v004) requires the user to already hold a `users` row *inside that org* — which the
+global email uniqueness makes impossible for a second org. `engagements` is that bridge:
+a grant that lets an **existing, home-org `users.id`** see a scoped slice of a
+**different** org's project, without ever creating a second `users` row for that person.
+This is what B2 ("many session-contexts") resolves to concretely: not a second account,
+one grant record per foreign org a person is engaged into.
+
+**Not to be confused with the reversed multi-role work** (`xprojman-08`/`09`, v017
+halted). That reversal was about one identity holding *two different roles*
+(`self-award` risk). This is orthogonal: **the person's fixed role never changes**
+across contexts — a `tradie` stays a `tradie` in every org they're engaged into; only
+*which org's project data is in view* changes, gated by a grant, not a role swap.
+`xprojman-08` §6 says this outright: "single-role neither unlocks nor blocks it."
+
+### 13.1 Data model (new migration, home org `org_id` scoped except `attestations`)
+
+```sql
+-- engagements — the cross-org bridge (A1+B2). Lives in the ENGAGING org (the builder
+-- who is pulling in an outside person), points at a home-org user by id. No FK to a
+-- project_members row — this IS the alternative to needing one.
+engagements(
+  id, org_id,                        -- the engaging org (NOT the person's home org)
+  project_id,                        -- the specific project the grant covers
+  identity_user_id,                  -- FK users.id — the person's home-org row, wherever it lives
+  role ENUM(...same field-role set as job_awards.role_offered...),
+  scope_json,                        -- the resolved pull slice: {project_id, stage_range?}
+  status ENUM('pending','active','revoked') NOT NULL DEFAULT 'pending',
+  initiated_by,                      -- users.id, the engaging org's principal
+  granted_at?, revoked_at?,
+  is_deleted, created_at )
+
+-- identities — NOT a person record (§13.0); a thin evidence-aggregate companion,
+-- 1:1 with a home-org users.id. Exists so trust-score caching and evidence listing
+-- have a row to hang off without bloating `users` with cross-cutting columns.
+identities(
+  user_id PRIMARY KEY,                -- FK users.id, home org
+  trust_score_cache DECIMAL(5,2) NULL,
+  trust_score_computed_at DATETIME NULL,  -- 24h cache, event-invalidated (projman-02 §10.3)
+  created_at )
+
+-- attestations — the evidence store itself. Deliberately NOT org_id-scoped as its
+-- primary access key: queryable by the OWNING identity from any context, and by the
+-- issuing org only for what that org itself issued (projman-02 §5).
+attestations(
+  id,
+  subject_user_id,                    -- FK users.id — whose evidence this is (the owner)
+  issuing_org_id,                     -- FK organisations.id — anonymised in any score/
+                                       -- summary leaving the person's own record (§7.5)
+  engagement_id?,                     -- FK engagements.id when emitted under a cross-org
+                                       -- grant; NULL when emitted in the person's home org
+  source_type,                        -- 'inspection'|'diary_entry'|'stage_complete'|
+                                       -- 'invoice_matched'|... — the qualifying event kind
+  source_id,                          -- soft ref to the row that triggered emission
+  payload_json,                       -- the frozen evidence content (§1.4 evidentiary
+                                       -- discipline — same pattern as job_awards.document_hash)
+  signature,                          -- Ed25519, signed by the ISSUING org's key at emission
+  signature_valid TINYINT(1) NULL,    -- cached verify result (projman-02 §10.2)
+  signature_verified_at DATETIME NULL,
+  created_at,
+  KEY idx_attest_subject (subject_user_id, created_at) )
+```
+
+`engagements` sits where `job_awards` sits today, but crosses the tenant boundary
+`job_awards` never had to — that's the whole reason it's a new table rather than an
+extension of `job_awards`/`introductions`, which stay same-org (`xprojman-18` Q2).
+
+### 13.2 Session mechanics — how a device selects an active engagement
+
+The token still resolves to exactly one `org_id` per request (§2's isolation
+guarantee, untouched — projman-02 §7 says so explicitly: "this record adds
+engagement- and identity-scoping *alongside* org-scoping; it does not relax org
+isolation"). What's new: **which `org_id` a given request resolves to can now be the
+engaging org, not just the home org**, when the session is running in an active
+engagement context.
+
+- **Login stays exactly as it is today** — the person logs in against their home
+  `users` row, home `org_id`, same JWT shape.
+- **A new, explicit context switch**: `POST /engagements/:id/activate` (self,
+  requires `status='active'` on that engagement) mints a **second, short-lived
+  token** scoped to `org_id = engagements.org_id` (the engaging org) with a
+  `scope_json` restriction baked in, alongside — not replacing — the home-org
+  session. This mirrors B2's "device switches between session-contexts," made
+  concrete: two live tokens, the device picks which one a given screen uses,
+  exactly like `job_awards`/`introductions` already assume ordinary logins do
+  the QR handshake rather than a special mode.
+- **Sync pull under an engagement token**: `SyncService.pullDeltas` gains one new
+  branch — when the token carries `engagement_scope`, resolve rows via
+  `scope_json` (project-and-stage-range slice) instead of the flat `org_id` filter,
+  reusing the exact query-shaping precedent §7.2.1's engagement-mode redaction
+  already established for `builder_engagement_type`. **The existing single-org
+  filter for an ordinary token is not touched** — this is a new branch, not a
+  rewrite (projman-02 §5/§10 "feasibility: confirmed... without touching the
+  isolation filter").
+
+### 13.3 Attestation emission — hook points, not new plumbing
+
+Every domain service that already exists has the qualifying-event moment named:
+`TaskProgressService.verify()`, `InspectionService.complete()`, `SiteOpsService`
+diary sign-off, `StageProgressionService` stage completion, `ProcurementService`
+invoice match. Emission is one call at the end of each — `AttestationService.emit
+({subjectUserId, issuingOrgId, engagementId?, sourceType, sourceId, payload})` —
+signs with the issuing org's Ed25519 key (§13.4) and inserts one row. No existing
+service needs its own logic rewritten, only one call added at its already-identified
+completion point.
+
+### 13.4 Endpoints (per `projman-02` §5, unchanged from the 2026-07-22 sign-off)
+
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/engagements/initiate` | engaging-org principal, `panel.manage` — signed QR payload `{v,org,project,id,nonce,role,expires}` |
+| `POST` | `/engagements/request` | the scanning party — shares their verified profile, creates `status='pending'` |
+| `GET` | `/engagements/pending` | engaging-org principal — inbound requests |
+| `POST` | `/engagements/confirm` | engaging-org principal — `status='active'`, `scope_json` set |
+| `POST` | `/engagements/:id/activate` | the engaged person, self — mints the second engagement-scoped token (§13.2, new since the 07-22 sign-off — the sign-off specified the grant lifecycle but not the token mechanic) |
+| `POST` | `/engagements/:id/revoke` | engaging-org principal — server-driven tombstone (§7.5, projman-02 §10.4) |
+| `GET` | `/identity/evidence` | the owner — their attestation set + trust score |
+| `GET` | `/identity/:id/profile` | with consent — verified profile for the QR exchange |
+| `POST` | `/identity/share` | the owner — grants a named party/engagement a consented, time-boxed profile/evidence read |
+
+### 13.5 Access & matrix plan
+
+- `engagement` as a `scope_class` value already exists in `scopeClassFor`'s doc
+  comment (`lib/access.js`) but is wired nowhere — this is where it gets a real
+  resolver: an `engagement`-scoped request resolves rows via `engagements.scope_json`
+  instead of a role's normal `assigned`/`portfolio` reach.
+- `panel.manage` (already granted to `projectManager`/`builder` for their own crew,
+  §7.2) is reused verbatim for `/engagements/initiate`/`/confirm` — an engagement
+  is Job Award's cross-org sibling, not a new capability concept.
+- No new permission proposed for `/identity/*` — those are self-scoped by construction
+  (`GET /identity/evidence` = the caller's own row; `/identity/share` = the caller
+  granting their own data), the same shape as `self` scope class already covers.
+
+### 13.6 Migration sequencing (next free = v027)
+
+| Migration | Contents |
+|---|---|
+| **v027** | `engagements`, `identities`, `attestations` (§13.1); `engagement` scope_class resolver wiring in `lib/access.js` + `SyncService.pullDeltas` (§13.2) |
+| **v028** (or additive to v027) | `AttestationService` + emission calls added to the five existing domain services (§13.3) — code-only where possible, may not need its own migration |
+
+No matrix-version bump — no new *permission* is introduced (§13.5), only a new
+scope-class resolver and a new token shape.
+
+### 13.7 Open items for owner ruling (narrow — the architecture itself is not reopened)
+
+| # | Decision | Recommendation |
+|---|---|---|
+| 26 | Two live tokens per device (home + active engagement) vs. one token that embeds multiple scopes (§13.2) | **Two tokens** — keeps the existing single-scope token shape untouched everywhere else in the codebase; the device/App just holds a second one, closer to a "second login" than a token-format change |
+| 27 | Engagement token lifetime — same as a normal session, or deliberately short-lived (re-activate per visit)? | **Short-lived** (recommend session-length, not indefinite) — an engagement can be revoked (§7.5); a long-lived token would keep serving stale `scope_json` between revocation checks longer than necessary |
+| 28 | `attestations.issuing_org_id` — anonymised at read time for the owner's own evidence view, or only in third-party/VeriTrade-facing summaries? | **Only third-party-facing** — the owner should always see who actually attested to what; anonymisation (§7.5) protects the *counterparty* from exposure to *other* counterparties, not from the subject themselves |
 
 ---
 
