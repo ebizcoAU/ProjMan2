@@ -85,7 +85,7 @@ Four layers:
 Gateway/middleware  — auth, org_id resolution, rate limiting, request logging
 Service layer       — AuthService, SyncService, ProjectService, ProgrammeService,
                        CostPlanService, ComplianceService, EvidenceService (new, §7)
-Domain modules      — P4–P9 (projects, site ops, safety/quality, commercial,
+Domain modules      — P4–P8 (projects, site ops, safety/quality, commercial,
                        accounting, tax) — see §8
 Data layer          — MySQL c1projman2, migration-versioned, sync-registry-driven
 ```
@@ -99,7 +99,7 @@ extracted from current routes with no behaviour change — structure only.
 
 See `devroadmap.md` §11 for the authoritative phase table (P1–P12 plus the
 independent Dashboard track). This spec's remaining sections map onto that
-table as follows: §6 → P10, §7 → P10/P12, §8 → P4–P9 (already built, patches
+table as follows: §6 → P10, §7 → P10/P12, §8 → P4–P8 (already built, patches
 noted inline).
 
 ---
@@ -412,7 +412,7 @@ requires, not a rewrite:
 | Site operations (diary, attendance, deliveries) | ✅ Built | Diary sign-off authority is Site Supervisor's alone (append-only rule already correct); no schema change. **New (v3.4):** `S10.5` (survey set-out) is now a hard `is_hold_point` blocking Stage 11 — was recorded evidence only |
 | Quality (inspections, defects, certificates) | ✅ Built | Inspector's write permission narrows to `quality.validate` on `is_validated` rows only, per §7.2's matrix — verify no broader `quality.write` grant survived from the pre-correction matrix. **New (v3.4), three schema-relevant changes:** (1) `S11.9` splits into three named `hold_point_requirements` rows — electrician's rough-in certificate, plumber's rough-in certificate, PC overall verification (pour renumbers to `S11.12`); (2) `S12.8`/`S12.9` (core compression / compaction tests) auto-flag as required when Stage 2's `S2.4` hazard-audit finding already recorded the triggering soil/hazard condition, falling back to manual Inspector judgement only where `S2.4` captured nothing relevant — needs a `triggered_by_finding_id` link back to the `S2.4` record; (3) `hold_point_requirements` gains a **`jurisdiction` column** — first needed for `S16.7`, the mains energisation certificate, a genuine new statutory hold point required nationwide but named differently per state (COES VIC/WA, CCEW NSW, Certificate of Testing & Compliance QLD, CoC NT/SA, CES ACT/TAS); a reference table mapping state → certificate name/requirement is new infrastructure, not just a column. `S17.2` (driveway/crossover) uses the same `jurisdiction` field but stays a PM-checked manual flag, not a statutory hold point — council-level variation is too fine-grained for a national reference table |
 | Commercial (estimating, POs, variations, claims) | ✅ Built (P7 target) | **Superseded by the engagement-mode framework (§7.2.1):** Builder's `money.write` visibility to PM is no longer a flat exclusion — it depends on `builder_engagement_type`, plus the subcontractor `subcontractor_pass_through_consent` gate on line-level attribution |
-| Accounting & AU tax | ✅ Built (P8–P9 target) | **New (v3.4):** `S18.11`/`S18.12` split — the fixed-asset/depreciation step now writes a **draft only** (`S18.11`, no external transmission), gated behind a new protected `tax.approve` write (`S18.12`, held by the new `accountant` role, §7.2) before ATO lodgement fires. Downstream Stage 18 sub-steps renumber: old `S18.12`→`S18.13` (handover email), old `S18.13`→`S18.14` (client sign-off — **also fixes a stale citation**: `portaldesignspecification.md` previously cited the old `S18.13` for this), old `S18.14`→`S18.15` (status=completed), old `S18.15`→`S18.16` (VeriTrade attestation hand-off) |
+| Accounting & AU tax | ✅ Built (P8 target). **P9 payroll CANCELLED 2026-08-05 — see §12; PAYG/superannuation payroll is out of scope for ProjMan.** | **New (v3.4):** `S18.11`/`S18.12` split — the fixed-asset/depreciation step now writes a **draft only** (`S18.11`, no external transmission), gated behind a new protected `tax.approve` write (`S18.12`, held by the new `accountant` role, §7.2) before ATO lodgement fires. Downstream Stage 18 sub-steps renumber: old `S18.12`→`S18.13` (handover email), old `S18.13`→`S18.14` (client sign-off — **also fixes a stale citation**: `portaldesignspecification.md` previously cited the old `S18.13` for this), old `S18.14`→`S18.15` (status=completed), old `S18.15`→`S18.16` (VeriTrade attestation hand-off) |
 | CPC50220 alignment (`cpc_units`, `cpc_feature_map`, `cpc_evidence`) | Reference/tagging buildable now; evidence-generation gated on `PM2-02` | Unchanged design, dependency restated in `devroadmap.md` §8 |
 
 ---
@@ -457,7 +457,7 @@ discovered mid-build.
 
 ## 11. P8 — Accounting & AU Tax module (design draft, specify-then-build)
 
-Expands the one-line §8 row ("Accounting & AU tax — P8–P9 target") into a buildable
+Expands the one-line §8 row ("Accounting & AU tax — P8 target") into a buildable
 design. **Decisions #6/#12–#16 ruled by owner 2026-08-01 (§11.4); P8a authorised and in
 build (migration v022). P8b/P8c specified, not yet authorised.** The `accountant` role +
 `tax.approve` permission (v012)
@@ -487,7 +487,7 @@ Within (B), two delivery increments:
   worksheet, GST transaction listing, depreciation schedule — is a **pure function of data
   ProjMan2 already holds**. No OAuth, no rate limits, no external dependency; the
   accountant downloads and lodges. Fully decoupled, shippable now.
-- **(b2) Xero/MYOB API sync (later increment, P8.x / P9).** Push the same facts over the
+- **(b2) Xero/MYOB API sync (later increment, P8.x).** Push the same facts over the
   Xero API and pull reconciliation back. Same source facts as (b1), so **(b1)'s tables are
   the substrate (b2) syncs from — no rework**, exactly the two-phase shape used for
   documents (REST now / presigned later) and online orders.
@@ -506,8 +506,9 @@ of P8a–P8c; only the sync adapter waits. P8a is now authorised to build (§11.
 | **P8c** | **TPAR** — annual contractor-payments report assembled from the existing payment spine + export file. | `project_payments` (`tpar_reportable`, `payee_user_id` → payee org `abn`) |
 
 **Out of P8 v1 (explicitly):** native double-entry GL / chart of accounts (obviated by (B));
-live Xero/MYOB API sync (b2, gated on #6); **PAYG/super payroll** — a large distinct domain,
-proposed for **P9**, not folded in here (flag below).
+live Xero/MYOB API sync (b2, gated on #6); **PAYG/super payroll** — was proposed for P9 (flag
+below), **but P9 was CANCELLED by owner directive 2026-08-05 (§12) — payroll is out of scope
+for ProjMan entirely, not deferred.**
 
 ### 11.2 Data model (greenfield tables — REST-mediated, not sync-registry)
 
@@ -678,10 +679,199 @@ any project-level cost figures these surface.
 | 13 | **`accounts.read` new permission vs. reuse `money.read`.** | **RULED: new `accounts.read`** — BAS/TPAR are org-level aggregates, not the project-scoped cost figures `money.read` governs. Granted `org_admin` + `accountant`; `developer` read included. Added in P8b (matrix v9→v10). |
 | 14 | **`tax.approve` extended vs. new `tax.lodge`.** | **RULED: extend `tax.approve`** to all tax-artifact lockings (depreciation approve + BAS lock + TPAR lock) — the accountant is the single tax gatekeeper; no new verb. |
 | 15 | **BAS basis** — cash vs. accrual (AU SMEs may elect). | **RULED: default `accrual`**, with a `basis` column per `tax_periods` row so an org can elect cash later without a schema change. |
-| 16 | **PAYG/super payroll** — P8 or P9? | **RULED: P9**, separate — payroll is a distinct domain; P8 stays entity/project tax. Not in P8 scope. |
+| 16 | **PAYG/super payroll** — P8 or P9? | **RULED: P9**, separate — payroll is a distinct domain; P8 stays entity/project tax. Not in P8 scope. **SUPERSEDED 2026-08-05: P9 itself CANCELLED by owner directive — payroll is out of scope for ProjMan entirely, not merely deferred to a separate phase. See §12.** |
 | 18 | **⚠ OPEN — can a Builder-founder see their own org's accounts?** `accounts.read` went to `projectManager`/`accountant`/`developer` (v023). A **self-registered Builder who founded their own org** holds the `builder` role, so they cannot see their own BAS/TPAR. Granting `builder` the permission is the WRONG fix — it would leak `accounts.read` into every org they are merely *engaged* into, exactly the xprojman-08 trap `OWNER_CAPABILITIES` exists to prevent. The right fix is adding `accounts.read` to `OWNER_CAPABILITIES` in `lib/access.js` (owner-flag conferred, org-scoped by definition) — a **code** change, deliberately not smuggled into a migration. **Awaiting owner ruling before P8b's service layer.** |
 | 17 | **Asset-entry path** — explicit create endpoint vs. derive from capital `supplier_invoices`. | **RULED: (A) explicit create endpoint** (built 2026-08-02). (B) is not buildable on v022 — no capital flag on `supplier_invoices`, and `method`/`effective_life_years`/`category` are accountant judgements absent from any invoice. Kept as a later additive path via the soft `source_supplier_invoice_id`. Full reasoning in §11.2. |
 | 7 | Accountant login (carried from §10). | **RULED: no accountant login** — export-first; PM/org_admin downloads and hands off, or the accountant uses the existing narrow `assigned`-scope login. No change. |
+
+---
+
+## 12. P9 — AU Payroll (PAYG/Superannuation) module — ❌ CANCELLED 2026-08-05
+
+**Status: CANCELLED by owner directive (2026-08-05).** Payroll (PAYG withholding +
+Superannuation Guarantee) is **out of scope for ProjMan**, full stop — not deferred, not a
+future increment. P9 is removed from the build plan (`devroadmap.md` §11); no further work
+proceeds against this section. The draft below is kept **for the record only** (why it was
+scoped this way, and what was considered) — it is not a build target and must not be picked
+up without a new owner-initiated decision to reopen it.
+
+~~**Decision #16 (§11.4) already ruled P9 as its own domain, separate from P8** — this section
+is that draft, offered for owner review before any build starts, in the same
+specify-then-build shape §11 used for P8.~~
+
+### 12.0 What ports from Nexus, and what doesn't
+
+`~/Documents/Dev/nexus/api/src/routes/accounting/payroll.js` +
+`src/services/accounting/taxService.js` is the only payroll precedent in the codebase
+family, so it's the natural starting point — **but only its shape.** Nexus payroll is
+built for Vietnam: `nexus_payroll_periods`/`nexus_payroll_lines` compute Vietnamese
+personal income tax (PIT) plus BHXH/BHYT/BHTN (social/health/unemployment insurance),
+three withholding regimes that have no AU equivalent. **The interface concept carries
+over — a pay run is a period containing one line per employee, moving
+draft → approved → paid — but every tax figure inside a line has to be replaced
+outright**, not adapted: AU withholding is PAYG (via ATO tax tables) and the employer
+contribution is Superannuation Guarantee (SG), not an employee/employer insurance
+split. There's a second thing Nexus's shape does that ProjMan2 must NOT copy: its
+`approve` step auto-posts a journal entry (`journal.postX()`) against
+`nexus_accounts`/`nexus_journal_entries`. ProjMan2 has no general ledger — decision #6
+(§11.0) deliberately kept the GL external (Xero/MYOB or the accountant) — so P9's
+`approve`/`pay` steps must stay pure status stamps, exactly like P8a's `tax.approve`
+gate on `fixed_assets`, not a journal-posting event.
+
+The other AU-specific complication Nexus has nothing to teach on: **Modern Award pay
+rates.** Construction wages aren't a flat salary lookup — the relevant Award (e.g. the
+*Building and Construction General On-site Award*) sets base rates by classification
+plus a lattice of penalty rates, overtime loadings, and allowances (travel, tool,
+site) that a real payroll engine must apply. That is a large, separate body of rules
+data — flagged out of v1 scope below (§12.2), not designed away.
+
+### 12.1 The gating decision — STP lodgment in or out for v1 (mirrors §11.0 Decision #6)
+
+- **(A) Native STP lodgment.** ProjMan2 becomes an ATO-recognised Digital Service
+  Provider, submitting each pay event directly over the SBR2 channel. Requires DSP
+  registration and ongoing ATO conformance testing — the same "standing liability to
+  track format/rate changes and effectively certify a tax engine" shape decision #6
+  weighed against option (A) there, arguably heavier here because STP reporting is
+  legally mandatory for every employer on every payday, not an optional integration.
+- **(B) Facts-here, lodge-there (RECOMMENDED for v1).** ProjMan2 computes and stores
+  the source-of-truth pay-run facts (gross, PAYGW, SG accrual per employee) and
+  exports an STP-shaped pay-event file per run; the org's existing STP-enabled
+  software (Xero/MYOB — the same providers already in play for decision #6) or their
+  BAS/tax agent performs the actual lodgment. Reuses the exact external-ledger
+  relationship already ruled for P8 rather than standing up a second one.
+
+**Recommend (B)**, for the same reasons #6 gave: ProjMan2 stays out of the
+tax-engine-certification business, and (b1)'s tables would be the substrate a later
+SBR2 integration (b2-equivalent) could sync from without rework, if ever justified.
+
+### 12.2 Scope of P9 v1 (under the recommendation)
+
+| Phase | Deliverable | Uses / builds on |
+|---|---|---|
+| **P9a** | **Pay runs & PAYG withholding** — draft pay run, per-employee lines, gross → PAYGW → net, approve (`tax.approve`, locks the run) | `tax.approve` (v012, decision #14 precedent) |
+| **P9b** | **Superannuation Guarantee** — SG accrual per line at the org's configured rate; quarterly SG-due reporting (SG has its own ATO due dates, separate from the pay cycle) | `org_payroll_config` (§12.4) |
+| **P9c** | **STP-shaped export + payslips** — per-run pay-event export (§12.1(B)) and a per-employee payslip artifact | P9a, P9b |
+
+**Out of P9 v1 (explicitly):** live SBR2/STP lodgment (b2-equivalent, gated on a future
+go on §12.1); **Award rate engine** (classification-based base rates, penalty rates,
+overtime loadings, allowances) — construction Awards are a large, separate rules
+domain and this draft assumes `gross_amount`/`hours_*` are entered against a rate the
+org already knows, not derived from an Award lookup; leave accrual (annual/personal/
+RDO — construction Awards commonly carry RDO) is a later increment; workers'
+compensation premium calculation.
+
+### 12.3 Scope-defining decision — who is paid via payroll (new; must be ruled before the data model is final)
+
+No Nexus analogue helps here, because ProjMan2's engagement model (§7.2.1) has no MAOI
+precedent. Under `builder_engagement_type='employee'` a Builder already **is** company
+staff, paid via payroll rather than progress claims (P7c) — that's implied by the enum
+name itself. But payroll plausibly also needs to cover directly-employed staff who
+aren't Builders at all — a `siteSupervisor`/`foreperson`/`tradie` genuinely on the
+org's books, as distinct from an independently-engaged subcontractor tradie who
+invoices (closer to `independent_fixed`). Nothing in the schema today distinguishes
+"employed" from "engaged" for those roles — `users`/`project_members` carry a `role`,
+not an employment classification.
+
+- **(A)** Payroll only ever pays a Builder in `employee` mode — narrowest, matches the
+  one place "employee" already exists in the schema, ships fastest.
+- **(B)** A general `employment_type` flag (`users` or an org-level staff roster),
+  independent of any one project's job award, covering any directly-employed role,
+  with `employee`-mode Builder as one instance of it.
+
+**Recommend (B)** as the eventually-correct shape — payroll shouldn't exist only
+because a Builder happened to be engaged as staff — but **(A) is buildable now with
+zero new modelling**, and (B) can be added later as a superset without invalidating
+(A)'s pay-run rows. Flagging for owner ruling rather than picking silently, because it
+changes who `payroll_lines.payee_user_id` is allowed to reference.
+
+### 12.4 Data model (draft — REST-mediated, org-level, not sync-registry; structure ported from Nexus, AU tax content new)
+
+```sql
+payroll_periods(         -- one per pay run
+  id, org_id,
+  period_start DATE, period_end DATE, pay_date DATE,
+  status ENUM('draft','approved','paid') NOT NULL DEFAULT 'draft',
+  total_gross DECIMAL(14,2), total_paygw DECIMAL(14,2),
+  total_super DECIMAL(14,2), total_net DECIMAL(14,2),
+  approved_by?, approved_at?,       -- tax.approve — mirrors P8's single-gatekeeper decision (#14)
+  paid_at?,
+  is_deleted, created_at,
+  UNIQUE (org_id, period_start, period_end) )
+
+payroll_lines(            -- one per employee per pay run
+  id, org_id, period_id,
+  payee_user_id,                        -- scope per §12.3's ruling
+  hours_ordinary DECIMAL(8,2), hours_overtime DECIMAL(8,2),
+  gross_amount DECIMAL(12,2), allowances DECIMAL(12,2),
+  tax_free_threshold_claimed TINYINT(1) NOT NULL DEFAULT 1,  -- selects the PAYGW schedule row
+  paygw_amount DECIMAL(12,2),           -- resolved from payg_withholding_rates at calc time
+  super_guarantee_amount DECIMAL(12,2), -- ordinary_time_earnings × org_payroll_config.sg_rate
+  net_amount DECIMAL(12,2),
+  created_at )
+
+payg_withholding_rates(   -- system reference table (like cpc_units) — NOT org-scoped, one shared
+  id,                      -- ATO schedule, versioned so a lodged run keeps its original figures
+  effective_from DATE, pay_cycle ENUM('weekly','fortnightly','monthly'),
+  threshold_claimed TINYINT(1) NOT NULL,
+  income_from DECIMAL(12,2), income_to DECIMAL(12,2) NULL,
+  formula_a DECIMAL(10,6), formula_b DECIMAL(12,2) )  -- ATO NAT 1004-style: tax = income×a − b
+
+org_payroll_config(       -- one per org — config, not hardcoded (mirrors Nexus's
+  org_id,                  -- getConfig('cit_rate') pattern, and the existing devroadmap.md
+  sg_rate DECIMAL(5,4) NOT NULL,          -- commitment: "superannuation, config rate, not hardcoded")
+  sg_rate_effective_from DATE,
+  pay_cycle ENUM('weekly','fortnightly','monthly') NOT NULL DEFAULT 'fortnightly' )
+```
+
+`payg_withholding_rates` being a shared reference table versioned by `effective_from`
+is the same principle P8b used for `tax_periods`' cached BAS roll-up: a lodged/paid
+pay run must keep reporting what it was calculated against, not silently re-price
+itself when the ATO updates rates next financial year.
+
+### 12.5 Calculation notes
+
+- **PAYGW is a tax-table lookup, not a bracket formula in code.** The ATO tables
+  already fold in the tax-free threshold, Medicare levy, and STSL (student loan)
+  repayment per coefficient row — `formula_a`/`formula_b` above is the standard
+  NAT 1004 shape (`tax = income × a − b`). Coefficients change roughly annually
+  (occasionally mid-year); the versioned table is this module's equivalent of decision
+  #6 option (A)'s "standing liability to track rate changes" concern, scaled down —
+  one published schedule, not a certified tax engine.
+- **Superannuation Guarantee applies to Ordinary Time Earnings, not gross pay
+  including overtime.** OTE is a defined, narrower ATO term than `gross_amount` once
+  overtime or certain allowances are itemised — this needs an explicit per-component
+  OTE flag if/when allowances are broken out, otherwise SG is quietly over- or
+  under-accrued. Flagging as a build-time detail to get right, not a design blocker.
+- **No auto-journal-entry on approve/pay** (§12.0) — `approved`/`paid` are pure status
+  stamps; the pay-event export is what the org's external ledger consumes, same
+  boundary P8 draws around Xero/MYOB.
+
+### 12.6 Access & matrix plan (draft)
+
+- **Approve** reuses `tax.approve` (accountant) — consistent with decision #14's
+  "single tax gatekeeper, no new verb" ruling; no new approval permission proposed.
+- **Read** (payroll register, payslips) is an org-level financial aggregate like
+  BAS/TPAR — reuse `accounts.read` (decision #13's precedent) rather than the
+  project-scoped `money.read`. No new read permission proposed.
+- **Write** (create a draft run, enter hours) has no existing analogue: P7's
+  `money.write` is project-scoped and payroll carries no `project_id`. New permission
+  proposed below (decision #22).
+- **`OWNER_CAPABILITIES`** — a Builder-founder with no `accountant`/`projectManager`
+  role would hit the same "can't see my own org's numbers" gap decision #18 already
+  ruled on for BAS/TPAR. Since #18 put `accounts.read` in `OWNER_CAPABILITIES`
+  (`lib/access.js`), reusing `accounts.read` for payroll read means this is **already
+  resolved** — no new ruling needed here, just noting the inheritance.
+
+### 12.7 Open decisions for owner ruling
+
+| # | Decision | Recommendation |
+|---|---|---|
+| 20 | STP lodgment — native SBR2 vs. export-first for v1 (§12.1) | **(B) export-first** — mirrors decision #6's reasoning exactly |
+| 21 | Who is paid via payroll — `employee`-mode Builder only, or a general org staff roster (§12.3) | **(B)** is the correct eventual shape; **(A)** is what v1 should actually build (zero new modelling, (B) addable later as a superset) |
+| 22 | New `payroll.write` permission vs. reusing an existing one (§12.6) — neither `money.write` (project-scoped) nor `accounts.read` (a read grant) fits an org-level payroll WRITE | **New `payroll.write`**, granted to `projectManager` + `accountant` (mirrors `accounts.read`'s v1 grant set, decision #13) |
+| 23 | Superannuation fund routing — model each employee's nominated/stapled fund in v1, or treat SG as an accrual-only liability with actual fund payment handled entirely outside ProjMan2 | **Accrual-only for v1** — matches P8's export-first minimalism; choice-of-fund/stapled-fund lookup is real, separate compliance surface worth its own pass |
+| 24 | `site_attendance` (P5) is project-scoped; a pay run is org-level and an employee may work multiple projects in one period. Does P9 auto-aggregate attendance into `hours_ordinary`, or is that a manual entry in v1? | **Manual entry for v1** — attendance was designed as a muster/safety record (`geo_verified` proves presence, not minutes worked), not a timesheet; automatic aggregation is a real v2 feature, not a v1 blocker |
+| 25 | Modern Award pay-rate engine (classification base rates, penalty rates, overtime loadings, allowances) — in scope for any P9 phase, or fully out of v1 (§12.2)? | **Fully out of v1** — this is its own large ruled-rates domain; v1 assumes the org already knows the rate it's paying |
 
 ---
 
