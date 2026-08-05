@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../config/app_theme.dart';
 import '../../models/domain.dart';
 import '../../services/site_ops_service.dart';
@@ -75,6 +76,10 @@ class _SiteDiaryViewState extends State<SiteDiaryView> {
               const SizedBox(height: 16),
               if (_entry.isFinal) _finalBanner(),
               _sectionLabel('Work done today'),
+              // Was silent when empty — on a finalised day with nothing
+              // logged, the section rendered as just a label and a gap, no
+              // indication that's the actual (correct) state (audit C3).
+              if (_entry.workDone.isEmpty) _emptyLineHint(),
               ..._entry.workDone.asMap().entries.map(_workLine),
               if (!_readOnly) _addLineField(),
               const SizedBox(height: 20),
@@ -142,14 +147,24 @@ class _SiteDiaryViewState extends State<SiteDiaryView> {
             color: Op.success.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(10)),
         child: Row(children: const [
-          Icon(Icons.lock, size: 16, color: Color(0xFF047857)),
+          Icon(Icons.lock, size: 16, color: Op.successText),
           SizedBox(width: 8),
           Expanded(
             child: Text('Finalised — the legal record for today. Corrections '
                 'create a new version.',
-                style: TextStyle(color: Color(0xFF047857), fontSize: 12.5)),
+                style: TextStyle(color: Op.successText, fontSize: 12.5)),
           ),
         ]),
+      );
+
+  Widget _emptyLineHint() => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(
+            _readOnly
+                ? 'Nothing was recorded for this day.'
+                : 'Nothing added yet — log what the crew got done below.',
+            style: const TextStyle(
+                color: Op.muted, fontSize: 13, fontStyle: FontStyle.italic)),
       );
 
   Widget _sectionLabel(String s) => Padding(
@@ -164,15 +179,22 @@ class _SiteDiaryViewState extends State<SiteDiaryView> {
         child: Row(children: [
           const Padding(
             padding: EdgeInsets.only(top: 2, right: 8),
-            child: Icon(Icons.check, size: 16, color: Op.success),
+            child: Icon(Icons.check, size: 16, color: Op.successText),
           ),
           Expanded(
               child: Text(e.value,
                   style: const TextStyle(color: Op.text, fontSize: 14.5))),
           if (!_readOnly)
-            InkWell(
-              onTap: () => setState(() => _entry.workDone.removeAt(e.key)),
-              child: const Icon(Icons.close, size: 16, color: Op.muted),
+            // Was a bare InkWell around a 16px icon — under the 48dp target
+            // (audit finding B4). IconButton gets the Material minimum for free.
+            IconButton(
+              iconSize: 16,
+              color: Op.muted,
+              onPressed: () {
+                HapticFeedback.selectionClick();
+                setState(() => _entry.workDone.removeAt(e.key));
+              },
+              icon: const Icon(Icons.close),
             ),
         ]),
       );
@@ -240,14 +262,10 @@ class _SiteDiaryViewState extends State<SiteDiaryView> {
       );
 
   Widget _photoStrip() => Row(children: [
-        for (final _ in _entry.photoIds)
-          Container(
-            width: 56,
-            height: 56,
-            margin: const EdgeInsets.only(right: 8),
-            decoration: BoxDecoration(
-                color: Op.border, borderRadius: BorderRadius.circular(8)),
-            child: const Icon(Icons.image, color: Op.muted),
+        for (final id in _entry.photoIds)
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: PhotoThumb(idOrRef: id, size: 56),
           ),
         if (!_readOnly)
           InkWell(
@@ -303,14 +321,12 @@ class _SiteDiaryViewState extends State<SiteDiaryView> {
           child: const Text('Finalise diary'),
         ),
       ),
-      const SizedBox(width: 10),
-      IconButton(
-        onPressed: null, // voice — disabled until later in P5 (Decision 5)
-        tooltip: 'Voice entry — coming soon',
-        icon: const Icon(Icons.mic_none, color: Op.muted),
-      ),
     ]);
   }
+  // Voice entry mic button removed — it was a permanently disabled icon
+  // with no way to discover "coming soon" beyond a tooltip mobile users
+  // rarely trigger (audit finding E2). Voice is still coming in P5
+  // (Decision 5); re-add the button when it actually does something.
 
   Widget _bar(List<Widget> children) => Container(
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
@@ -351,6 +367,7 @@ class _SiteDiaryViewState extends State<SiteDiaryView> {
       ),
     );
     if (ok == true) {
+      HapticFeedback.mediumImpact(); // sign-off — a critical, one-way action
       await _svc.finalise(_pid, _entry);
       if (!mounted) return;
       setState(() {});

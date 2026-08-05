@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../config/app_theme.dart';
 import '../../models/domain.dart';
 import '../../services/dispute_service.dart';
@@ -156,19 +157,21 @@ class _DisputesQueueViewState extends State<DisputesQueueView> {
   }
 
   Widget _statusChip(DisputeStatus s) {
-    final (color, label) = switch (s) {
-      DisputeStatus.open => (Op.warning, 'Open'),
-      DisputeStatus.reviewing => (Op.accent, 'Reviewing'),
-      DisputeStatus.resolved => (Op.success, 'Resolved'),
+    // fill = pale vivid tint for the chip; ink = dark *Text variant for the
+    // label drawn on top — the vivid hue alone fails contrast at 11px (audit A3).
+    final (fill, ink, label) = switch (s) {
+      DisputeStatus.open => (Op.warning, Op.warningText, 'Open'),
+      DisputeStatus.reviewing => (Op.accent, Op.accent, 'Reviewing'),
+      DisputeStatus.resolved => (Op.success, Op.successText, 'Resolved'),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.15),
+          color: fill.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(8)),
       child: Text(label,
           style:
-              TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
+              TextStyle(color: ink, fontSize: 11, fontWeight: FontWeight.w700)),
     );
   }
 
@@ -187,7 +190,9 @@ class _DisputesQueueViewState extends State<DisputesQueueView> {
       ]);
 
   Future<void> _open(DisputeEntry d) async {
-    final changed = await showModalBottomSheet<bool>(
+    // The sheet pops a reason string, not a bare bool, so this can show the
+    // right confirmation instead of a generic one (audit E4).
+    final changed = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Op.surface,
@@ -195,7 +200,14 @@ class _DisputesQueueViewState extends State<DisputesQueueView> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
       builder: (_) => _DisputeDetailSheet(dispute: d, canReview: _canReview),
     );
-    if (changed == true) _hydrate();
+    if (changed != null && mounted) {
+      _hydrate();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(changed == 'resolved'
+              ? 'Dispute resolved'
+              : 'Marked as reviewing'),
+          duration: const Duration(seconds: 2)));
+    }
   }
 }
 
@@ -219,16 +231,18 @@ class _DisputeDetailSheetState extends State<_DisputeDetailSheet> {
   }
 
   Future<void> _resolve() async {
+    HapticFeedback.mediumImpact(); // closes out the dispute — critical
     setState(() => _busy = true);
     await DisputeService.instance
         .resolve(widget.dispute, resolutionNote: _note.text.trim());
-    if (mounted) Navigator.pop(context, true);
+    if (mounted) Navigator.pop(context, 'resolved');
   }
 
   Future<void> _markReviewing() async {
+    HapticFeedback.lightImpact();
     setState(() => _busy = true);
     await DisputeService.instance.markReviewing(widget.dispute);
-    if (mounted) Navigator.pop(context, true);
+    if (mounted) Navigator.pop(context, 'reviewing');
   }
 
   @override
@@ -305,7 +319,9 @@ class _DisputeDetailSheetState extends State<_DisputeDetailSheet> {
                 if (d.status == DisputeStatus.open) const SizedBox(width: 10),
                 Expanded(
                   child: FilledButton(
-                    style: FilledButton.styleFrom(backgroundColor: Op.success),
+                    // Dark fill — white label text on the vivid Op.success
+                    // measured 1.92:1 (audit finding B).
+                    style: FilledButton.styleFrom(backgroundColor: Op.successText),
                     onPressed: _note.text.trim().isEmpty || _busy ? null : _resolve,
                     child: _busy
                         ? const SizedBox(

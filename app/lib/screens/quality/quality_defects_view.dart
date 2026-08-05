@@ -174,19 +174,21 @@ class _QualityDefectsViewState extends State<QualityDefectsView> {
   }
 
   Widget _statusChip(DefectStatus s) {
-    final (color, label) = switch (s) {
-      DefectStatus.open => (Op.warning, 'Open'),
-      DefectStatus.inProgress => (Op.accent, 'In progress'),
-      DefectStatus.closed => (Op.success, 'Closed'),
+    // fill = pale vivid tint for the chip; ink = dark *Text variant for the
+    // label drawn on top — the vivid hue alone fails contrast at 11px (audit A3).
+    final (fill, ink, label) = switch (s) {
+      DefectStatus.open => (Op.warning, Op.warningText, 'Open'),
+      DefectStatus.inProgress => (Op.accent, Op.accent, 'In progress'),
+      DefectStatus.closed => (Op.success, Op.successText, 'Closed'),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.15),
+          color: fill.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(8)),
       child: Text(label,
           style:
-              TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
+              TextStyle(color: ink, fontSize: 11, fontWeight: FontWeight.w700)),
     );
   }
 
@@ -217,7 +219,10 @@ class _QualityDefectsViewState extends State<QualityDefectsView> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
       builder: (_) => _DefectSheet(projectId: _pid, team: _team),
     );
-    if (result == true && mounted) setState(() {});
+    if (result == true && mounted) {
+      setState(() {});
+      _toast('Defect raised');
+    }
   }
 
   Future<void> _openDefect(DefectEntry d) async {
@@ -231,8 +236,14 @@ class _QualityDefectsViewState extends State<QualityDefectsView> {
       builder: (_) =>
           _DefectSheet(projectId: _pid, team: _team, existing: d),
     );
-    if (result == true && mounted) setState(() {});
+    if (result == true && mounted) {
+      setState(() {});
+      _toast('Defect updated');
+    }
   }
+
+  void _toast(String m) => ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(m), duration: const Duration(seconds: 2)));
 }
 
 class _DefectSheet extends StatefulWidget {

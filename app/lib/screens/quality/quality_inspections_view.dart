@@ -120,7 +120,7 @@ class _QualityInspectionsViewState extends State<QualityInspectionsView> {
                             fontWeight: FontWeight.w700)),
                     if (i.isHoldPoint) ...[
                       const SizedBox(width: 6),
-                      _badge('HOLD POINT', Op.warning),
+                      _badge('HOLD POINT', fill: Op.warning, ink: Op.warningText),
                     ],
                   ]),
                   const SizedBox(height: 2),
@@ -144,19 +144,26 @@ class _QualityInspectionsViewState extends State<QualityInspectionsView> {
     );
   }
 
-  Widget _badge(String text, Color color) => Container(
+  // fill = pale vivid tint for the chip background; ink = dark *Text variant
+  // for the label — the vivid colour alone fails contrast at 10px (audit A3).
+  Widget _badge(String text, {required Color fill, required Color ink}) =>
+      Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
         decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.15),
+            color: fill.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(6)),
         child: Text(text,
             style: TextStyle(
-                color: color, fontSize: 10, fontWeight: FontWeight.w800)),
+                color: ink, fontSize: 10, fontWeight: FontWeight.w800)),
       );
 
+  // Dark *Text tints, not the vivid badge colours — this tuple drives both a
+  // small icon and a text label (`_card` below), and the vivid Op.success/
+  // Op.warning fail contrast as text/small-icon colour (audit A3). Fail uses
+  // danger, not warning — warning is reserved for pending/due (audit A1).
   (IconData, Color, String) _statusVisual(InspectionEntry i) => switch (i.result) {
-        InspectionResult.pass => (Icons.check_circle, Op.success, 'Pass'),
-        InspectionResult.fail => (Icons.cancel, Op.warning, 'Fail'),
+        InspectionResult.pass => (Icons.check_circle, Op.successText, 'Pass'),
+        InspectionResult.fail => (Icons.cancel, Op.dangerText, 'Fail'),
         InspectionResult.pending => (Icons.pending_outlined, Op.muted, 'Pending'),
       };
 
@@ -255,8 +262,7 @@ class _NewInspectionSheetState extends State<_NewInspectionSheet> {
               padding: const EdgeInsets.only(top: 6),
               child: Text(
                   'A pass here can validate this hold point and unblock the stage.',
-                  style: TextStyle(
-                      color: Op.warning.withValues(alpha: 0.9), fontSize: 12)),
+                  style: TextStyle(color: Op.warningText, fontSize: 12)),
             ),
           const SizedBox(height: 12),
           _field(_notes, 'Notes (optional)'),

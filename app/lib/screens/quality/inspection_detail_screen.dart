@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../config/app_theme.dart';
 import '../../models/domain.dart';
 import '../../services/permissions_service.dart';
@@ -111,13 +112,16 @@ class _InspectionDetailScreenState extends State<InspectionDetailScreen> {
 
   Widget _resultBanner(InspectionEntry i) {
     final pass = i.result == InspectionResult.pass;
-    final color = pass ? Op.success : Op.warning;
+    // Pale tint uses the vivid brand hue (decorative); icon+text use the dark
+    // *Text variant — the vivid hue alone fails contrast as text (audit A3).
+    final fill = pass ? Op.success : Op.danger;
+    final ink = pass ? Op.successText : Op.dangerText;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      color: color.withValues(alpha: 0.12),
+      color: fill.withValues(alpha: 0.12),
       child: Row(children: [
-        Icon(pass ? Icons.check_circle : Icons.cancel, color: color, size: 18),
+        Icon(pass ? Icons.check_circle : Icons.cancel, color: ink, size: 18),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
@@ -126,7 +130,7 @@ class _InspectionDetailScreenState extends State<InspectionDetailScreen> {
                       ? 'Passed — this hold point is validated.'
                       : 'Passed.')
                   : 'Failed.',
-              style: TextStyle(color: color, fontWeight: FontWeight.w700)),
+              style: TextStyle(color: ink, fontWeight: FontWeight.w700)),
         ),
       ]),
     );
@@ -139,21 +143,24 @@ class _InspectionDetailScreenState extends State<InspectionDetailScreen> {
             color: Op.warning.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(10)),
         child: const Row(children: [
-          Icon(Icons.lock_clock, size: 16, color: Op.warning),
+          Icon(Icons.lock_clock, size: 16, color: Op.warningText),
           SizedBox(width: 8),
           Expanded(
             child: Text(
                 'Hold point — a pass validates this stage. Only an inspector '
                 'can complete a hold-point pass.',
-                style: TextStyle(color: Op.warning, fontSize: 12.5)),
+                style: TextStyle(color: Op.warningText, fontSize: 12.5)),
           ),
         ]),
       );
 
   Widget _itemRow(InspectionItemEntry item) {
+    // Fail is a DANGER state, not a warning (audit A1) — amber was also being
+    // reused for "pending/hold point", making a genuine fail hard to spot at a
+    // glance. Text/icon colour uses the dark *Text variant (audit A3/B3).
     final (icon, tint) = switch (item.result) {
-      ItemResult.pass => (Icons.check_circle, Op.success),
-      ItemResult.fail => (Icons.cancel, Op.warning),
+      ItemResult.pass => (Icons.check_circle, Op.successText),
+      ItemResult.fail => (Icons.cancel, Op.dangerText),
       ItemResult.na => (Icons.remove_circle_outline, Op.muted),
       ItemResult.pending => (Icons.radio_button_unchecked, Op.muted),
     };
@@ -166,11 +173,14 @@ class _InspectionDetailScreenState extends State<InspectionDetailScreen> {
         border: Border.all(color: Op.border),
       ),
       child: Row(children: [
-        InkWell(
-          onTap: _canWrite ? () => _cycleItem(item) : null,
-          child: Icon(icon, color: tint, size: 22),
+        // Was a bare InkWell around a 22px icon — ~22×22 hit box, well under
+        // the 48dp target for what's this screen's primary interaction
+        // (audit finding B3). IconButton gets the Material minimum for free.
+        IconButton(
+          onPressed: _canWrite ? () => _cycleItem(item) : null,
+          icon: Icon(icon, color: tint, size: 22),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 4),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -180,14 +190,21 @@ class _InspectionDetailScreenState extends State<InspectionDetailScreen> {
               if (item.note?.isNotEmpty == true)
                 Text(item.note!,
                     style: const TextStyle(color: Op.muted, fontSize: 12)),
+              // Was a count-only label ("N photo(s)"), never the photo itself
+              // (audit finding — "photos visible?" was answered "no").
               if (item.photoIds.isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.only(top: 2),
+                  padding: const EdgeInsets.only(top: 6),
                   child: Row(children: [
-                    const Icon(Icons.photo_outlined, size: 12, color: Op.muted),
-                    const SizedBox(width: 3),
-                    Text('${item.photoIds.length} photo(s)',
-                        style: const TextStyle(color: Op.muted, fontSize: 11.5)),
+                    for (final id in item.photoIds.take(4))
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: PhotoThumb(idOrRef: id, size: 32),
+                      ),
+                    if (item.photoIds.length > 4)
+                      Text('+${item.photoIds.length - 4}',
+                          style: const TextStyle(
+                              color: Op.muted, fontSize: 11.5)),
                   ]),
                 ),
             ],
@@ -213,13 +230,18 @@ class _InspectionDetailScreenState extends State<InspectionDetailScreen> {
   }
 
   Future<void> _raiseDispute(InspectionItemEntry item) async {
-    await showRaiseDisputeSheet(
+    final raised = await showRaiseDisputeSheet(
       context,
       projectId: _pid,
       subjectType: 'inspection_item',
       subjectId: item.id,
       subjectLabel: item.description,
     );
+    if (raised == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Dispute raised'),
+          duration: Duration(seconds: 2)));
+    }
   }
 
   Future<void> _cycleItem(InspectionItemEntry item) async {
@@ -308,8 +330,8 @@ class _InspectionDetailScreenState extends State<InspectionDetailScreen> {
                     ? () => _complete(InspectionResult.fail)
                     : null,
                 style: OutlinedButton.styleFrom(
-                    foregroundColor: Op.warning,
-                    side: const BorderSide(color: Op.warning)),
+                    foregroundColor: Op.dangerText,
+                    side: const BorderSide(color: Op.dangerText)),
                 child: const Text('Fail'),
               ),
             ),
@@ -319,7 +341,9 @@ class _InspectionDetailScreenState extends State<InspectionDetailScreen> {
                 onPressed: _canWrite && !passBlocked && !_busy
                     ? () => _complete(InspectionResult.pass)
                     : null,
-                style: FilledButton.styleFrom(backgroundColor: Op.success),
+                // The light Op.success is unreadable under the white label
+                // (1.92:1 — audit finding B) — the fill itself needs to be dark.
+                style: FilledButton.styleFrom(backgroundColor: Op.successText),
                 child: _busy
                     ? const SizedBox(
                         width: 18,
@@ -336,6 +360,7 @@ class _InspectionDetailScreenState extends State<InspectionDetailScreen> {
   }
 
   Future<void> _complete(InspectionResult result) async {
+    HapticFeedback.mediumImpact(); // a hold-point pass/fail verdict — critical
     setState(() => _busy = true);
     final res = await _svc.completeInspection(_pid, widget.inspectionId,
         result: result);

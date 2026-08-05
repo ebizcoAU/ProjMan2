@@ -106,7 +106,9 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                           fontSize: 16,
                           fontWeight: FontWeight.w700)),
                   const SizedBox(height: 8),
-                  ..._stages.map(_stageRow),
+                  // No indication before this if _stages came back empty —
+                  // just the label above and nothing underneath (audit finding).
+                  if (_stages.isEmpty) _emptyStages() else ..._stages.map(_stageRow),
                 ],
               ),
             ),
@@ -189,6 +191,24 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     );
   }
 
+  Widget _emptyStages() => Container(
+        padding: const EdgeInsets.symmetric(vertical: 32),
+        alignment: Alignment.center,
+        child: Column(
+          children: const [
+            Icon(Icons.playlist_add_check_circle_outlined,
+                size: 44, color: Op.muted),
+            SizedBox(height: 10),
+            Text('No stages loaded',
+                style: TextStyle(
+                    color: Op.text, fontSize: 14, fontWeight: FontWeight.w700)),
+            SizedBox(height: 4),
+            Text('Pull to refresh, or check back shortly.',
+                style: TextStyle(color: Op.muted, fontSize: 12.5)),
+          ],
+        ),
+      );
+
   Widget _stageRow(ProjectStage s) {
     final g = _gate(s);
     return Container(
@@ -252,7 +272,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
               child: Icon(
                 s.isValidated ? Icons.verified_outlined : Icons.lock_outline,
                 size: 18,
-                color: s.isValidated ? Op.success : Op.warning,
+                color: s.isValidated ? Op.successText : Op.warningText,
               ),
             ),
         ],
@@ -260,15 +280,18 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     );
   }
 
-  /// (colour, icon, label) for a stage's gate status.
+  /// (colour, icon, label) for a stage's gate status. The colour drives the
+  /// badge circle's pale fill (`.withValues(alpha: 0.14)`, still fine with the
+  /// dark variant) AND the digit/icon/label text drawn on top of it — so it
+  /// must be a *Text variant, not the vivid badge hue (audit A3).
   (Color, IconData, String) _gate(ProjectStage s) {
     switch (s.status) {
       case 'complete':
-        return (Op.success, Icons.check_circle, 'Complete');
+        return (Op.successText, Icons.check_circle, 'Complete');
       case 'in_progress':
         return (Op.accent, Icons.play_circle_fill, 'In progress');
       case 'blocked':
-        return (Op.warning, Icons.lock, 'Blocked');
+        return (Op.warningText, Icons.lock, 'Blocked');
       case 'skipped':
         return (Op.muted, Icons.remove_circle_outline, 'Skipped');
       default:

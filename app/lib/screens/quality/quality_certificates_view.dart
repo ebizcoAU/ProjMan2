@@ -87,7 +87,7 @@ class _QualityCertificatesViewState extends State<QualityCertificatesView> {
               color: (lapsing ? Op.warning : Op.border).withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(8)),
           child: Icon(Icons.verified_outlined,
-              color: lapsing ? Op.warning : Op.muted),
+              color: lapsing ? Op.warningText : Op.muted),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -108,19 +108,22 @@ class _QualityCertificatesViewState extends State<QualityCertificatesView> {
             ],
           ),
         ),
-        if (lapsing) _badge('LAPSING SOON', Op.warning),
+        if (lapsing) _badge('LAPSING SOON', fill: Op.warning, ink: Op.warningText),
       ]),
     );
   }
 
-  Widget _badge(String text, Color color) => Container(
+  // fill = pale vivid tint for the chip; ink = dark *Text variant for the
+  // label — the vivid hue alone fails contrast at 10px (audit A3).
+  Widget _badge(String text, {required Color fill, required Color ink}) =>
+      Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
         decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.15),
+            color: fill.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(6)),
         child: Text(text,
             style: TextStyle(
-                color: color, fontSize: 10, fontWeight: FontWeight.w800)),
+                color: ink, fontSize: 10, fontWeight: FontWeight.w800)),
       );
 
   Widget _empty() => ListView(children: [
@@ -152,7 +155,12 @@ class _QualityCertificatesViewState extends State<QualityCertificatesView> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
       builder: (_) => _CertificateSheet(projectId: _pid),
     );
-    if (result == true && mounted) setState(() {});
+    if (result == true && mounted) {
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Certificate recorded'),
+          duration: Duration(seconds: 2)));
+    }
   }
 }
 

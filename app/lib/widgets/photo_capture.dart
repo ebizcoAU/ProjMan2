@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../config/app_theme.dart';
@@ -54,6 +55,60 @@ Future<String?> captureAndEnqueue(
       SnackBar(content: Text('That image is $mb MB — over the $cap MB limit.')),
     );
     return null;
+  }
+}
+
+/// A small square thumbnail for a captured/queued photo — audit finding
+/// 2026-08-05 ("photos not visible"): every capture surface only ever showed
+/// a count or a generic grey box, never the actual image. Renders the local
+/// file for [idOrRef] (a `client_ref` pre-upload, or a `document_id` still on
+/// disk post-upload — [DocumentQueueService.localFile] resolves either).
+/// Deliberately does NOT fall back to a network fetch when the file isn't
+/// local (e.g. LRU-evicted, or hydrated from another device) — that would
+/// mean every list render could trigger a silent download; shows a neutral
+/// "stored, not cached here" placeholder instead.
+class PhotoThumb extends StatelessWidget {
+  final String idOrRef;
+  final double size;
+  final VoidCallback? onTap;
+  const PhotoThumb({
+    super.key,
+    required this.idOrRef,
+    this.size = 56,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Material(
+          color: Op.border,
+          child: InkWell(
+            onTap: onTap,
+            child: FutureBuilder<File?>(
+              future: DocumentQueueService.instance.localFile(idOrRef),
+              builder: (context, snap) {
+                final file = snap.data;
+                if (file != null) {
+                  return Image.file(file,
+                      fit: BoxFit.cover, width: size, height: size);
+                }
+                final waiting = snap.connectionState == ConnectionState.waiting;
+                return Icon(
+                  waiting ? Icons.image_outlined : Icons.cloud_outlined,
+                  color: Op.muted,
+                  size: size * 0.4,
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

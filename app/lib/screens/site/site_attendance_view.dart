@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../config/app_theme.dart';
 import '../../models/domain.dart';
 import '../../services/site_ops_service.dart';
@@ -76,7 +77,7 @@ class _SiteAttendanceViewState extends State<SiteAttendanceView> {
                   borderRadius: BorderRadius.circular(20)),
               child: Text('on site: $onSite',
                   style: TextStyle(
-                      color: onSite > 0 ? const Color(0xFF047857) : Op.muted,
+                      color: onSite > 0 ? Op.successText : Op.muted,
                       fontSize: 13,
                       fontWeight: FontWeight.w700)),
             ),
@@ -121,16 +122,24 @@ class _SiteAttendanceViewState extends State<SiteAttendanceView> {
               ],
             ),
           ),
-          TextButton(
+          // Was a bare TextButton — the lowest-emphasis style for what this
+          // whole screen exists to do ("one-tap check-in/out", audit finding
+          // B5). Promoted to a tonal fill so it reads as the row's primary
+          // action, not incidental text.
+          FilledButton.tonal(
             onPressed: () => _toggle(e),
+            style: FilledButton.styleFrom(
+              backgroundColor: Op.accent.withValues(alpha: 0.12),
+              foregroundColor: Op.accent,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+            ),
             child: Text(
                 e.checkInAt == null
                     ? 'Check in'
                     : e.checkOutAt == null
                         ? 'Check out'
                         : 'Re-open',
-                style: const TextStyle(
-                    color: Op.accent, fontWeight: FontWeight.w700)),
+                style: const TextStyle(fontWeight: FontWeight.w700)),
           ),
         ],
       ),
@@ -144,19 +153,21 @@ class _SiteAttendanceViewState extends State<SiteAttendanceView> {
       padding: const EdgeInsets.only(left: 8),
       child: Row(children: [
         Icon(ok ? Icons.place : Icons.wrong_location,
-            size: 13, color: ok ? const Color(0xFF047857) : Op.warning),
+            size: 13, color: ok ? Op.successText : Op.warningText),
         const SizedBox(width: 2),
         Text(ok ? 'Site' : 'off-site',
             style: TextStyle(
-                color: ok ? const Color(0xFF047857) : Op.warning,
+                color: ok ? Op.successText : Op.warningText,
                 fontSize: 11,
                 fontWeight: FontWeight.w600)),
       ]),
     );
   }
 
+  // Used as both an icon and small-label text colour below — needs the dark
+  // *Text variant, not the vivid badge colour (audit A3: 1.92:1 on white).
   (IconData, Color, String) _status(AttendanceEntry e) {
-    if (e.present) return (Icons.check_circle, Op.success, 'present');
+    if (e.present) return (Icons.check_circle, Op.successText, 'present');
     if (e.checkOutAt != null) return (Icons.logout, Op.muted, 'signed out');
     return (Icons.circle_outlined, Op.muted, 'not checked in');
   }
@@ -168,6 +179,11 @@ class _SiteAttendanceViewState extends State<SiteAttendanceView> {
           border: Border(top: BorderSide(color: Op.border)),
         ),
         child: Row(children: [
+          // "Scan QR" (self-check-in) removed — it was a permanently disabled
+          // button with no path to ever being enabled yet, just dead-looking
+          // UI on the row (audit finding E2). Re-add when that ships in P5;
+          // "Add person" now gets the room it always needed as the sole
+          // secondary action.
           Expanded(
             child: OutlinedButton.icon(
               onPressed: _addPerson,
@@ -179,18 +195,12 @@ class _SiteAttendanceViewState extends State<SiteAttendanceView> {
             ),
           ),
           const SizedBox(width: 10),
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: null, // QR self-check-in — optional, later in P5
-              icon: const Icon(Icons.qr_code_scanner, size: 18),
-              label: const Text('Scan QR'),
-            ),
-          ),
-          const SizedBox(width: 10),
           FilledButton(
             onPressed: canAllOut ? _allOut : null,
+            // Dark fill, not the vivid Op.warning — white label text on the
+            // light amber measured 2.15:1 (audit finding B).
             style: FilledButton.styleFrom(
-                backgroundColor: Op.warning,
+                backgroundColor: Op.warningText,
                 disabledBackgroundColor: Op.border),
             child: const Text('All Out'),
           ),
@@ -208,19 +218,35 @@ class _SiteAttendanceViewState extends State<SiteAttendanceView> {
     );
     if (e != null && mounted) {
       await _svc.addPerson(_pid, e);
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {});
+        _toast('${e.personName} added to the muster');
+      }
     }
   }
 
+  // No haptic/toast on every toggle here — the row itself changes state
+  // instantly (icon/status/button label), and a supervisor musters many
+  // people back to back; a snackbar per tap would be noise, not feedback
+  // (audit E4 asked for consistency, not a toast on literally everything).
+  // A light tap still confirms the press registered.
   Future<void> _toggle(AttendanceEntry e) async {
+    HapticFeedback.lightImpact();
     await _svc.toggleCheck(_pid, e);
     if (mounted) setState(() {});
   }
 
   Future<void> _allOut() async {
+    HapticFeedback.mediumImpact();
     await _svc.allOut(_pid);
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {});
+      _toast('Everyone signed out');
+    }
   }
+
+  void _toast(String m) => ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(m), duration: const Duration(seconds: 2)));
 
   Widget _empty() => ListView(children: const [
         SizedBox(height: 72),

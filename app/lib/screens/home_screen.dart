@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../config/app_theme.dart';
 import '../config/providers.dart';
+import '../services/db_service.dart';
 import '../services/permissions_service.dart';
 import 'tabs/projects_tab.dart';
 import 'tabs/site_tab.dart';
@@ -117,6 +120,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ],
             ),
           ),
+          // Was only visible two taps deep (Profile → Device & Sync) — the
+          // directive's "offline state must be clear and always visible"
+          // wasn't met anywhere users actually work offline (audit finding,
+          // Profile screen-review). One indicator, visible from every tab.
+          actions: [
+            _SyncIndicator(onTap: () {
+              setState(() => _selectedIndex = 4);
+              ref.read(profilePageProvider.notifier).state = 1;
+            }),
+          ],
         ),
         body: IndexedStack(index: _selectedIndex, children: screens),
         bottomNavigationBar: NavigationBar(
@@ -129,6 +142,71 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 label: t.titles.first,
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Always-on offline-state indicator (audit finding, "offline state must be
+/// clear and always visible") — lives in the shell's AppBar so it's visible
+/// regardless of which tab is active, not just on Profile → Device & Sync.
+/// Polls the local queue depth; sync pushes/pulls don't currently emit an
+/// event ([SyncEvents] only covers pull-triggered data changes), so a short
+/// poll is the simplest correct option without adding a new event channel.
+class _SyncIndicator extends StatefulWidget {
+  final VoidCallback onTap;
+  const _SyncIndicator({required this.onTap});
+
+  @override
+  State<_SyncIndicator> createState() => _SyncIndicatorState();
+}
+
+class _SyncIndicatorState extends State<_SyncIndicator> {
+  int _pending = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _poll();
+    _timer = Timer.periodic(const Duration(seconds: 8), (_) => _poll());
+  }
+
+  Future<void> _poll() async {
+    try {
+      final rows = await DatabaseService().rawQuery(
+          "SELECT COUNT(*) AS n FROM sync_queue WHERE status = 'pending'");
+      final n = (rows.first['n'] as int?) ?? 0;
+      if (mounted) setState(() => _pending = n);
+    } catch (_) {
+      // Offline-first: a query failure here shouldn't crash the shell —
+      // just leave the indicator showing its last-known state.
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final synced = _pending == 0;
+    final color = synced ? Op.successText : Op.warningText;
+    return IconButton(
+      tooltip: synced
+          ? 'All changes synced'
+          : '$_pending change${_pending == 1 ? '' : 's'} waiting to sync — tap for details',
+      onPressed: widget.onTap,
+      icon: Badge(
+        isLabelVisible: _pending > 0,
+        label: Text('$_pending'),
+        backgroundColor: Op.warningText,
+        child: Icon(
+          synced ? Icons.cloud_done_outlined : Icons.cloud_upload_outlined,
+          color: color,
         ),
       ),
     );

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../services/nexus_service.dart';
 import '../../widgets/auth_scaffold.dart';
 import '../../widgets/auth_extras.dart';
@@ -47,6 +48,7 @@ class _JobInvitationsScreenState extends State<JobInvitationsScreen> {
   }
 
   Future<void> _respond(JobInvitation inv, bool accept) async {
+    HapticFeedback.mediumImpact(); // accepting/declining a job — critical
     setState(() => _busyId = inv.id);
     final res = await NexusService.respondJobAward(
       projectId: inv.projectId,

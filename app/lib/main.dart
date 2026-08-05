@@ -48,12 +48,33 @@ class _ProjMan2AppState extends ConsumerState<ProjMan2App> {
     ];
     const supportedLocales = <Locale>[Locale('en', 'AU')];
 
+    // Structural touch-target fix (polish audit 2026-08-05, finding B2): most
+    // screens call FilledButton/OutlinedButton.styleFrom() to set only a colour,
+    // so they fall back to Material 3's ~40dp default height — under the 48dp
+    // minimum. Setting it once here means every button gets it without relying
+    // on each screen remembering to; a screen can still override explicitly.
+    const minButtonSize = Size(64, 48);
+    final buttonThemes = (
+      filled: FilledButtonThemeData(
+        style: FilledButton.styleFrom(minimumSize: minButtonSize),
+      ),
+      outlined: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(minimumSize: minButtonSize),
+      ),
+      text: TextButtonThemeData(
+        style: TextButton.styleFrom(minimumSize: minButtonSize),
+      ),
+    );
+
     final lightTheme = ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(
         seedColor: const Color(0xFF0066FF),
         brightness: Brightness.light,
       ),
+      filledButtonTheme: buttonThemes.filled,
+      outlinedButtonTheme: buttonThemes.outlined,
+      textButtonTheme: buttonThemes.text,
     );
     final darkTheme = ThemeData(
       useMaterial3: true,
@@ -61,6 +82,9 @@ class _ProjMan2AppState extends ConsumerState<ProjMan2App> {
         seedColor: const Color(0xFF0066FF),
         brightness: Brightness.dark,
       ),
+      filledButtonTheme: buttonThemes.filled,
+      outlinedButtonTheme: buttonThemes.outlined,
+      textButtonTheme: buttonThemes.text,
     );
 
     return routerAsync.when(

@@ -171,8 +171,13 @@ class _ProjectsTabState extends State<ProjectsTab> {
                       ),
                       const SizedBox(width: 8),
                     ],
+                    _statusDot(p.status),
+                    const SizedBox(width: 5),
                     Text((p.status ?? 'active').replaceAll('_', ' '),
-                        style: const TextStyle(color: Op.muted, fontSize: 12)),
+                        style: TextStyle(
+                            color: _statusInk(p.status),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600)),
                   ]),
                   const SizedBox(height: 8),
                   Text(p.name,
@@ -194,4 +199,28 @@ class _ProjectsTabState extends State<ProjectsTab> {
       ),
     );
   }
+
+  // Was plain grey text for every status — "is it easy to see which projects
+  // are active?" audit finding answered "no". Enum per migration v003
+  // (`draft|active|on_hold|completed|archived`).
+  Widget _statusDot(String? status) => Container(
+        width: 7,
+        height: 7,
+        decoration:
+            BoxDecoration(color: _statusVivid(status), shape: BoxShape.circle),
+      );
+
+  Color _statusVivid(String? status) => switch (status) {
+        'active' => Op.success,
+        'on_hold' => Op.warning,
+        'completed' => Op.accent,
+        _ => Op.muted, // draft, archived, unknown
+      };
+
+  Color _statusInk(String? status) => switch (status) {
+        'active' => Op.successText,
+        'on_hold' => Op.warningText,
+        'completed' => Op.accent,
+        _ => Op.muted,
+      };
 }

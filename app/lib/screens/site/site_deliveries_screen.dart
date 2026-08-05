@@ -124,7 +124,11 @@ class _SiteDeliveriesScreenState extends State<SiteDeliveriesScreen> {
     );
     if (d != null && mounted) {
       await _svc.addDelivery(_pid, d);
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Delivery logged'), duration: Duration(seconds: 2)));
+      }
     }
   }
 

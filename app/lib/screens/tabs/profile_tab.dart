@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import '../../config/app_theme.dart';
 import '../../config/build_config.dart';
 import '../../config/router.dart';
 import '../../services/session_service.dart';
@@ -111,6 +113,7 @@ class _ProfileTabState extends State<ProfileTab> {
       ),
     );
     if (confirm != true) return;
+    HapticFeedback.mediumImpact();
     await NexusService.logout();
     if (!mounted) return;
     context.go(AppRoutes.login);
@@ -373,18 +376,22 @@ class _SyncChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final synced = pending == 0;
-    final color = synced ? const Color(0xFF34D399) : const Color(0xFFF59E0B);
+    // fill = pale vivid tint for the card; ink = dark *Text variant for the
+    // icon drawn on top (audit A3/A4 — this literal wasn't on the Op token
+    // system at all before).
+    final fill = synced ? Op.success : Op.warning;
+    final ink = synced ? Op.successText : Op.warningText;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
+        color: fill.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
+        border: Border.all(color: fill.withValues(alpha: 0.4)),
       ),
       child: Row(
         children: [
           Icon(synced ? Icons.cloud_done_outlined : Icons.cloud_upload_outlined,
-              color: color),
+              color: ink),
           const SizedBox(width: 12),
           Expanded(
             child: Text(

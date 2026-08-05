@@ -74,7 +74,12 @@ class _ProgrammeScreenState extends State<ProgrammeScreen> {
                 children: [
                   _readOnlyBanner(),
                   const SizedBox(height: 16),
-                  if (_isMultiUnit) _lineOfBalanceStub() else _body(),
+                  if (_stages.isEmpty)
+                    _empty()
+                  else if (_isMultiUnit)
+                    _lineOfBalanceStub()
+                  else
+                    _body(),
                 ],
               ),
             ),
@@ -98,6 +103,28 @@ class _ProgrammeScreenState extends State<ProgrammeScreen> {
                 style: TextStyle(color: Op.accent, fontSize: 12.5)),
           ),
         ]),
+      );
+
+  // No empty-state existed before (audit finding C1) — an empty _stages list
+  // rendered a blank Column with no indication anything was wrong.
+  Widget _empty() => Container(
+        padding: const EdgeInsets.symmetric(vertical: 48),
+        alignment: Alignment.center,
+        child: Column(
+          children: [
+            const Icon(Icons.timeline_outlined, size: 52, color: Op.muted),
+            const SizedBox(height: 12),
+            const Text('No programme yet',
+                style: TextStyle(
+                    color: Op.text, fontSize: 15, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            const Text(
+                'This project has no stages loaded. Pull to refresh, or check '
+                'back once the 18-stage schedule has been set up.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Op.muted, fontSize: 13)),
+          ],
+        ),
       );
 
   Widget _lineOfBalanceStub() => Container(
@@ -168,7 +195,10 @@ class _ProgrammeScreenState extends State<ProgrammeScreen> {
   }
 
   Widget _bar(ProjectStage s) {
-    final color = _gateColor(s);
+    // fill drives the pale tile tint/border (fine vivid); ink is the dark
+    // *Text variant for the "S{seq}" label drawn on top (audit A3).
+    final fill = _gateColor(s);
+    final ink = _gateTextColor(s);
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: Tooltip(
@@ -177,16 +207,16 @@ class _ProgrammeScreenState extends State<ProgrammeScreen> {
           width: 96,
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.14),
+            color: fill.withValues(alpha: 0.14),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: color.withValues(alpha: 0.4)),
+            border: Border.all(color: fill.withValues(alpha: 0.4)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('S${s.seq}',
                   style: TextStyle(
-                      color: color, fontSize: 11, fontWeight: FontWeight.w800)),
+                      color: ink, fontSize: 11, fontWeight: FontWeight.w800)),
               const SizedBox(height: 2),
               Text(s.name,
                   maxLines: 2,
@@ -210,6 +240,21 @@ class _ProgrammeScreenState extends State<ProgrammeScreen> {
         return Op.warning;
       case 'skipped':
         return Op.muted;
+      default:
+        return Op.muted;
+    }
+  }
+
+  /// Dark-text counterpart to [_gateColor] — the vivid colour is only safe as
+  /// a pale tile tint, not as the label text drawn on top (audit A3).
+  Color _gateTextColor(ProjectStage s) {
+    switch (s.status) {
+      case 'complete':
+        return Op.successText;
+      case 'in_progress':
+        return Op.accent;
+      case 'blocked':
+        return Op.warningText;
       default:
         return Op.muted;
     }

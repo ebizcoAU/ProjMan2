@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 import '../../config/app_theme.dart';
 import '../../services/dispute_service.dart';
@@ -63,6 +64,7 @@ class _RaiseDisputeSheetState extends State<_RaiseDisputeSheet> {
   }
 
   Future<void> _submit() async {
+    HapticFeedback.mediumImpact(); // a formal escalation — critical
     setState(() => _busy = true);
     await DisputeService.instance.raise(
       id: _disputeId,
@@ -142,17 +144,19 @@ class _RaiseDisputeSheetState extends State<_RaiseDisputeSheet> {
                   ? 'Attach counter-evidence photo'
                   : 'Photo attached'),
               style: OutlinedButton.styleFrom(
-                foregroundColor: _photoRef == null ? Op.muted : Op.success,
+                foregroundColor: _photoRef == null ? Op.muted : Op.successText,
                 side: BorderSide(
-                    color: _photoRef == null ? Op.border : Op.success),
-                minimumSize: const Size.fromHeight(44),
+                    color: _photoRef == null ? Op.border : Op.successText),
+                minimumSize: const Size.fromHeight(48),
               ),
             ),
             const SizedBox(height: 18),
             SizedBox(
               width: double.infinity,
               child: FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: Op.warning),
+                // Dark fill — white label text on the vivid Op.warning
+                // measured 2.15:1 (audit finding B).
+                style: FilledButton.styleFrom(backgroundColor: Op.warningText),
                 onPressed: _reason.text.trim().isEmpty || _busy ? null : _submit,
                 child: _busy
                     ? const SizedBox(
