@@ -35,6 +35,7 @@ const suppliersRoutes = require('./routes/suppliers');
 const accountsRoutes = require('./routes/accounts');
 const documentsRoutes = require('./routes/documents');
 const adminRoutes = require('./routes/admin');
+const veritradeRoutes = require('./routes/veritrade');
 
 const app = express();
 
@@ -145,6 +146,7 @@ app.use('/api/v1/identity',      identityRoutes);
 app.use('/api/v1/suppliers',     suppliersRoutes);
 app.use('/api/v1/accounts',      accountsRoutes);   // P8b GST/BAS (org-level)
 app.use('/api/v1/documents',     documentsRoutes);  // Documents/Upload (xprojman-21)
+app.use('/api/v1/veritrade',     veritradeRoutes);  // VeriTrade V1 core loop
 // System Admin dashboard — a SEPARATE mount (not the tenant surface). Platform-admin
 // allowlist only; account & billing layer; cross-tenant by design (dashboardspec §2).
 app.use('/api/v1/admin',         adminRoutes);

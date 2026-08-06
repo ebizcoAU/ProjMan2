@@ -55,7 +55,8 @@ function issueCode({ orgId, userId }) {
   return { code, expires_in: CODE_TTL_SECONDS };
 }
 
-/** Shared writer for both the scan and (future) veritrade_engage paths. Idempotent. */
+/** Writer for the in-person QR-scan path (same-org only — see `crossOrgEngage` below
+ * for VeriTrade's separate, deliberately cross-org path). Idempotent. */
 async function record({ orgId, actorUserId, otherUserId, initiatedBy = 'app_qr_scan', deviceSignature }) {
   if (String(actorUserId) === String(otherUserId)) {
     throw new ServiceError('VALIDATION_ERROR', 'Cannot introduce a user to themselves', 400);
@@ -119,4 +120,51 @@ async function listContacts({ orgId, userId }) {
   return { contacts: rows };
 }
 
-module.exports = { exists, issueCode, scanCode, listContacts, record };
+/**
+ * VeriTrade Engage (veritradedesignspecification.md §7) — the remote equivalent of a
+ * QR scan. Deliberately the ONE caller allowed to cross the org boundary here: both
+ * parties are already App-authenticated (VeriTrade's own login gate, spec §4), so the
+ * identity-proving work a QR scan normally does is already satisfied — this is not a
+ * bypass of Introduction, it's the same primitive fed from a profile view instead of
+ * an in-person scan. `scanCode` above stays same-org-only on purpose (an in-person
+ * handshake presumes colleagues); this is a separate, narrow path, not a relaxation
+ * of `record()`. Stored under the ENGAGING (searching) party's own org — that's where
+ * any later Job Award on the strength of this contact would be raised from.
+ *
+ * Existence is checked globally (no org_id filter), unlike `exists()` above — a prior
+ * introduction from either direction should not spawn a duplicate.
+ */
+async function crossOrgExists({ userAId, userBId }) {
+  const [[row]] = await pool.query(
+    `SELECT id FROM introductions
+      WHERE (party_a_id = ? AND party_b_id = ?) OR (party_a_id = ? AND party_b_id = ?)
+      LIMIT 1`,
+    [userAId, userBId, userBId, userAId]
+  );
+  return row ? row.id : null;
+}
+
+async function crossOrgEngage({ actorOrgId, actorUserId, targetUserId }) {
+  if (String(actorUserId) === String(targetUserId)) {
+    throw new ServiceError('VALIDATION_ERROR', 'Cannot engage yourself', 400);
+  }
+  const [[other]] = await pool.query(
+    'SELECT id, full_name, role FROM users WHERE id = ? AND is_deleted = 0 LIMIT 1',
+    [targetUserId]
+  );
+  if (!other) throw new ServiceError('NOT_FOUND', 'User not found', 404);
+
+  const contact = { user_id: other.id, full_name: other.full_name, role: other.role };
+  const already = await crossOrgExists({ userAId: actorUserId, userBId: targetUserId });
+  if (already) return { id: already, alreadyIntroduced: true, contact };
+
+  const id = uuidv4();
+  await pool.query(
+    `INSERT INTO introductions (id, org_id, party_a_id, party_b_id, initiated_by)
+     VALUES (?, ?, ?, ?, 'veritrade_engage')`,
+    [id, actorOrgId, actorUserId, targetUserId]
+  );
+  return { id, alreadyIntroduced: false, contact };
+}
+
+module.exports = { exists, issueCode, scanCode, listContacts, record, crossOrgEngage, crossOrgExists };
