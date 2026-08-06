@@ -19,7 +19,7 @@ const config = require('../config');
  * pairing, otherwise the user's own. The two can differ deliberately: a project
  * manager signing in on a shared site tablet gets the tablet's supervisor scope.
  */
-function signAccess({ userId, orgId, role, deviceUid, securityVersion, jti }) {
+function signAccess({ userId, orgId, role, deviceUid, securityVersion, jti, engagementId, scopeJson }) {
   return jwt.sign(
     {
       sub: userId,
@@ -29,6 +29,10 @@ function signAccess({ userId, orgId, role, deviceUid, securityVersion, jti }) {
       device_id: deviceUid || null,
       version: securityVersion,
       ...(jti ? { jti } : {}),
+      // PM2-02 (§13.2): present only on an activated engagement token — org_id above
+      // is already the ENGAGING org in that case, not the holder's home org. Ordinary
+      // tokens carry neither field.
+      ...(engagementId ? { engagement_id: engagementId, scope_json: scopeJson || null } : {}),
     },
     config.jwt.secret,
     { expiresIn: config.jwt.expiresIn }
@@ -56,6 +60,13 @@ function peek(token) {
  * `grantAuthority` implements the single-writer contract (ftpos XF-27): exactly one
  * session per user may push offline work. A new device logging in while another
  * holds authority gets `handoffPending` and waits — see routes/recovery.js.
+ *
+ * `orgId`/`engagementId`/`scopeJson` (PM2-02, §13.2/decision #29): an activated
+ * engagement session is issued for the ENGAGING org, not the user's home org — pass
+ * `orgId` to override `user.org_id` for this one session. Authority is then scoped
+ * per `(user_id, org_id)`, not `user_id` alone, so a home-org session and an
+ * engagement session never contest the same authoritative slot — a person can hold
+ * write authority in both at once, each independently.
  */
 async function issueSession({
   user,
@@ -64,27 +75,35 @@ async function issueSession({
   userAgent = null,
   role = null,
   grantAuthority = true,
+  orgId = null,
+  engagementId = null,
+  scopeJson = null,
 }) {
   const refreshToken = uuidv4();
   const effectiveRole = role || user.role;
+  const effectiveOrgId = orgId || user.org_id;
 
   const accessToken = signAccess({
     userId: user.id,
-    orgId: user.org_id,
+    orgId: effectiveOrgId,
     role: effectiveRole,
     deviceUid: device.device_uid || null,
     securityVersion: user.security_version,
     jti: refreshToken,
+    engagementId,
+    scopeJson,
   });
 
-  // Clear any stale authoritative rows before granting. Nexus accumulated these
-  // across failed handoff cycles (O-086) until handoff-complete started picking the
-  // wrong session and devices ended up permanently non-authoritative.
+  // Clear any stale authoritative rows before granting — scoped to THIS org context
+  // only (decision #29). Nexus accumulated cross-device stale rows across failed
+  // handoff cycles (O-086) until handoff-complete started picking the wrong session;
+  // scoping by org_id here additionally keeps a home-org handoff from ever touching
+  // an unrelated engagement-org session, and vice versa.
   if (grantAuthority) {
     await pool.query(
       `UPDATE sessions SET is_authoritative = 0
-        WHERE user_id = ? AND is_authoritative = 1`,
-      [user.id]
+        WHERE user_id = ? AND org_id = ? AND is_authoritative = 1`,
+      [user.id, effectiveOrgId]
     );
   }
 
@@ -96,7 +115,7 @@ async function issueSession({
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 30 DAY), ?, ?)`,
     [
       sessionId,
-      user.org_id,
+      effectiveOrgId,
       user.id,
       device.device_uid || 'unknown',
       accessToken,

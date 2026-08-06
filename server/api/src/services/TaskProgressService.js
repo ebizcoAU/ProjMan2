@@ -14,6 +14,7 @@ const pool = require('../db/pool');
 const { ServiceError } = require('./errors');
 const access = require('../lib/access');
 const { isProjectMember } = require('../lib/scope');
+const AttestationService = require('./AttestationService');
 
 /**
  * BEFORE the write. Only fires when `completion` is actually changing — a pure
@@ -75,6 +76,18 @@ async function verify({ orgId, projectId, taskId, actor }) {
       WHERE id = ? AND org_id = ?`,
     [actor.userId, taskId, orgId]
   );
+
+  // PM2-02 evidence emission (§13.3) — the doer's own record, not the verifier's.
+  // Best-effort: an attestation failure must never fail a verification that already
+  // committed (same posture as stageHooks.fire).
+  if (task.assigned_to) {
+    AttestationService.emit({
+      subjectUserId: task.assigned_to, issuingOrgId: orgId,
+      sourceType: 'task_complete', sourceId: taskId,
+      payload: { project_id: projectId, task_name: task.name, verified_by: actor.userId },
+    }).catch((err) => console.warn('[ATTESTATION] task_complete emit failed (non-fatal):', err.message));
+  }
+
   return { id: taskId, verified_by: actor.userId };
 }
 

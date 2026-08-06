@@ -29,6 +29,8 @@ const customersRoutes = require('./routes/customers');
 const stageTemplatesRoutes = require('./routes/stageTemplates');
 const introductionsRoutes = require('./routes/introductions');
 const jobAwardsRoutes = require('./routes/jobAwards');
+const engagementsRoutes = require('./routes/engagements');
+const identityRoutes = require('./routes/identity');
 const suppliersRoutes = require('./routes/suppliers');
 const accountsRoutes = require('./routes/accounts');
 const documentsRoutes = require('./routes/documents');
@@ -138,6 +140,8 @@ app.use('/api/v1/customers',     customersRoutes);
 app.use('/api/v1/stage-templates', stageTemplatesRoutes);
 app.use('/api/v1/introductions', introductionsRoutes);
 app.use('/api/v1/job-awards',    jobAwardsRoutes);
+app.use('/api/v1/engagements',   engagementsRoutes);
+app.use('/api/v1/identity',      identityRoutes);
 app.use('/api/v1/suppliers',     suppliersRoutes);
 app.use('/api/v1/accounts',      accountsRoutes);   // P8b GST/BAS (org-level)
 app.use('/api/v1/documents',     documentsRoutes);  // Documents/Upload (xprojman-21)

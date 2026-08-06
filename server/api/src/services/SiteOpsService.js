@@ -19,6 +19,7 @@
 const pool = require('../db/pool');
 const { ServiceError } = require('./errors');
 const access = require('../lib/access');
+const AttestationService = require('./AttestationService');
 
 // The three tables this service governs. A push for anything else is a no-op here.
 const SITE_OPS_TABLES = new Set(['site_diary', 'site_attendance', 'deliveries']);
@@ -139,6 +140,17 @@ async function afterPush({ wireName, operation, id, safe, actor }) {
           WHERE id = ? AND org_id = ?`,
         [safe.supersedes_id, orgId]
       );
+    }
+    // PM2-02 evidence emission (§13.3) — the signer's own record (diary sign-off
+    // authority is theirs alone, §11.4). guardPush already refuses any further write
+    // to a finalised row, so `safe.status === 'final'` here can only be the one
+    // moment this row is finalising — no separate "did it just transition" check
+    // needed. Best-effort, never fails a push that already committed.
+    if (safe.status === 'final') {
+      AttestationService.emit({
+        subjectUserId: actor.userId, issuingOrgId: orgId,
+        sourceType: 'diary_entry', sourceId: id, payload: { table: 'site_diary' },
+      }).catch((err) => console.warn('[ATTESTATION] diary_entry emit failed (non-fatal):', err.message));
     }
     return;
   }

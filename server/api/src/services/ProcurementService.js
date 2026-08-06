@@ -24,6 +24,7 @@ const { ServiceError } = require('./errors');
 const access = require('../lib/access');
 const ProjectService = require('./ProjectService');
 const JobAwardService = require('./JobAwardService');
+const AttestationService = require('./AttestationService');
 
 const canWrite = (role) => access.hasPermission(role, 'po.write');
 const canRead  = (role) => access.hasPermission(role, 'money.read') || access.hasPermission(role, 'po.write');
@@ -250,6 +251,23 @@ async function createSupplierInvoice({ orgId, projectId, actor, poId, stageId, s
      String(invoiceNumber).trim(), amount, status, owner, actor.userId, resolvedSubId]
   );
   await recomputeStageActual({ orgId, projectId, stageId: resolvedStageId });
+
+  // PM2-02 evidence emission (§13.3) — a 2-way match is the Builder's financial-
+  // diligence record (devroadmap.md §7.1's financial/contractual tier). Only a real
+  // match, not a bare 'received' invoice with nothing to reconcile against.
+  if (status === 'matched') {
+    JobAwardService.acceptedBuilderEngagement({ orgId, projectId })
+      .then((eng) => {
+        if (!eng) return null;
+        return AttestationService.emit({
+          subjectUserId: eng.to_user_id, issuingOrgId: orgId,
+          sourceType: 'invoice_matched', sourceId: id,
+          payload: { project_id: projectId, amount: Number(amount) },
+        });
+      })
+      .catch((err) => console.warn('[ATTESTATION] invoice_matched emit failed (non-fatal):', err.message));
+  }
+
   return { id, status, matched: !!poId };
 }
 

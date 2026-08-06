@@ -55,9 +55,28 @@ async function authenticate(req, res, next) {
 
     if (!user) return deny(res, 401, 'User not found', 'NO_USER');
 
-    // The token's org must still be the user's org. A token minted before a user was
-    // moved between orgs must not keep reaching into the old tenant.
-    if (decoded.org_id && decoded.org_id !== user.org_id) {
+    // The token's org must still be the user's org — UNLESS this is a PM2-02
+    // engagement token (§13.2), which is deliberately minted for a DIFFERENT org
+    // than the holder's home org (that's the whole mechanism, §13.0). Any other
+    // mismatch (a token minted before a user was moved between orgs) still hard-fails
+    // as before — this is a narrow, explicit carve-out, not a loosening of the guard.
+    let engagement = null;
+    if (decoded.engagement_id) {
+      const [[eng]] = await pool.query(
+        `SELECT id, org_id, project_id, scope_json, status FROM engagements
+          WHERE id = ? AND identity_user_id = ? AND is_deleted = 0 LIMIT 1`,
+        [decoded.engagement_id, user.id]
+      );
+      // Revocation (projman-02 §10.4, decision #27): scope resolution — and every
+      // request under this token — stops serving the moment status leaves 'active'.
+      // This is the "sessions are invalidated" half; the separate "next pull returns
+      // an engagement_revoked tombstone" half is the person's HOME session's concern
+      // (SyncService flags it there, §13.2), not this now-dead token's.
+      if (!eng || eng.status !== 'active' || String(eng.org_id) !== String(decoded.org_id)) {
+        return deny(res, 401, 'This engagement is no longer active', 'ENGAGEMENT_REVOKED');
+      }
+      engagement = eng;
+    } else if (decoded.org_id && decoded.org_id !== user.org_id) {
       return deny(res, 403, 'Token organisation mismatch', 'ORG_MISMATCH');
     }
     if (user.org_status !== 'active') {
@@ -118,9 +137,15 @@ async function authenticate(req, res, next) {
 
     req.auth = {
       userId: user.id,
-      orgId: user.org_id,
+      // Engagement token (§13.2): orgId is the ENGAGING org from the token, not the
+      // holder's home-org row — every query downstream filters on this, so this one
+      // line is what actually makes an engagement-scoped request reach a different
+      // org's data at all.
+      orgId: engagement ? engagement.org_id : user.org_id,
       role,
       userRole: user.role,
+      engagementId: engagement ? engagement.id : null,
+      scopeJson: engagement ? engagement.scope_json : null,
       // Org-ownership is a property of the identity, not the device's paired role — the
       // founder administers their org whatever hat their current session wears (v018).
       isOrgOwner: !!user.is_org_owner,

@@ -84,6 +84,7 @@ router.get(
         role: req.auth.role,
         // No cursor = fresh install / device-loss recovery: send everything.
         sinceMs: req.query.since !== undefined ? parseInt(req.query.since, 10) : 0,
+        scopeJson: req.auth.scopeJson || null,   // PM2-02 (§13.2) — only set on an activated engagement token
       });
       return res.json({ success: true, last_sync_at, changes, requiresFullSync });
     } catch (err) {

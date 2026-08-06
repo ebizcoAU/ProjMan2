@@ -29,12 +29,29 @@ const MEMBER_PROJECT_IDS =
  * @returns {{sql:string, params:Array}}  sql is '' for portfolio (no narrowing).
  */
 function projectScope(auth, { projectColumn = 'project_id', alias = null, selfColumn = null } = {}) {
+  // PM2-02 (§13.2/§13.5): an activated engagement SESSION overrides the role's own
+  // normal scope resolution entirely, regardless of what scope class the role
+  // itself carries. This is deliberately keyed off `auth.scopeJson` (a session-level
+  // fact — only ever present on a token minted by EngagementService.activate(),
+  // already verified active by the auth middleware before a request reaches here),
+  // NOT off `scopeClassFor(auth.role)` — a `tradie`'s own scope class is `self`
+  // (project_members-based) whether or not they happen to be engaged right now, and
+  // an engaged person holds NO project_members row in the engaging org at all
+  // (that's the whole point of the bridge, §13.0), so the role's normal resolution
+  // would always find nothing here regardless of which class it names.
+  if (auth.scopeJson?.project_id) {
+    const col = alias ? `${alias}.\`${projectColumn}\`` : `\`${projectColumn}\``;
+    return { sql: ` AND ${col} = ?`, params: [auth.scopeJson.project_id] };
+  }
+
   const cls = scopeClassFor(auth.role);
   if (cls === 'portfolio') return { sql: '', params: [] };
 
-  // engagement + portal are not resolvable in v1 (projman-02 / P10). Fail closed:
-  // reach nothing rather than fall through to org-wide.
-  if (cls === 'engagement' || cls === 'portal') {
+  // `portal` is not resolvable in v1 (P10 territory, unrelated to PM2-02). A role
+  // whose OWN scope class is `engagement` but has no active engagement session
+  // right now (no role is actually assigned this class today) falls in here too —
+  // fail closed for both: reach nothing rather than fall through to org-wide.
+  if (cls === 'portal' || cls === 'engagement') {
     return { sql: ' AND 1 = 0', params: [] };
   }
 

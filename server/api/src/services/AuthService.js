@@ -50,16 +50,21 @@ async function startSession({ user, device, ip, userAgent, role = null, authorit
   const effectiveAuthority =
     authority === 'auto' && device?.platform === 'web' ? 'never' : authority;
 
-  // If another session already holds authority for this user, this one is issued
-  // WITHOUT it and must run the handoff. The same device re-logging in (reinstall,
-  // token expiry) is not a handoff — it is the same writer coming back — so we
-  // exclude the current device_uid.
+  // If another session already holds authority for this user IN THIS ORG, this one
+  // is issued WITHOUT it and must run the handoff. The same device re-logging in
+  // (reinstall, token expiry) is not a handoff — it is the same writer coming back —
+  // so we exclude the current device_uid. Scoped by org_id (decision #29, PM2-02
+  // §13.2): a person can independently hold write authority in their home org AND
+  // in an engaged org's context at once — those are different single-writer slots,
+  // not one. Every session predating this fix was already single-org per user, so
+  // this is a no-op for all existing behaviour; it only starts to matter once a
+  // second org's session exists for the same user_id.
   const [[holder]] = await pool.query(
     `SELECT id, device_id FROM sessions
-      WHERE user_id = ? AND is_authoritative = 1 AND revoked_at IS NULL
+      WHERE user_id = ? AND org_id = ? AND is_authoritative = 1 AND revoked_at IS NULL
         AND expires_at > NOW() AND device_id != ?
       LIMIT 1`,
-    [user.id, device.device_uid || 'unknown']
+    [user.id, user.org_id, device.device_uid || 'unknown']
   );
 
   await pool.query('UPDATE users SET last_login_at = NOW() WHERE id = ?', [user.id]);

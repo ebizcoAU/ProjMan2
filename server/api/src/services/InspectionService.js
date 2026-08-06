@@ -21,6 +21,8 @@ const pool = require('../db/pool');
 const { ServiceError } = require('./errors');
 const ProjectService = require('./ProjectService');
 const StageProgressionService = require('./StageProgressionService');
+const JobAwardService = require('./JobAwardService');
+const AttestationService = require('./AttestationService');
 
 /** Non-disclosure scope check shared by every action here (mirrors StageProgressionService). */
 async function assertReachable({ orgId, projectId, actor }) {
@@ -101,6 +103,22 @@ async function complete({ orgId, projectId, actor, inspectionId, result, referen
       orgId, projectId, stageId: inspection.stage_id, actor,
       result: 'pass', reference: inspectionId,
     });
+  }
+
+  // PM2-02 evidence emission (§13.3) — a validated PASS credits the engaged Builder's
+  // Verified Work History (devroadmap.md §7.1's primary tier); best-effort, never
+  // fails a validation that already committed.
+  if (pass) {
+    JobAwardService.acceptedBuilderEngagement({ orgId, projectId })
+      .then((eng) => {
+        if (!eng) return null;
+        return AttestationService.emit({
+          subjectUserId: eng.to_user_id, issuingOrgId: orgId,
+          sourceType: 'inspection', sourceId: inspectionId,
+          payload: { project_id: projectId, type: inspection.type, is_hold_point: !!inspection.is_hold_point },
+        });
+      })
+      .catch((err) => console.warn('[ATTESTATION] inspection emit failed (non-fatal):', err.message));
   }
 
   return { id: inspectionId, result, is_hold_point: !!inspection.is_hold_point, validation };

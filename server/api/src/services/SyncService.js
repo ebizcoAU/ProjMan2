@@ -274,8 +274,16 @@ async function pushRecord({ orgId, userId, deviceUid, role, surface, wireName, o
  * Return all changes for this org since the cursor.
  * @returns {Promise<{last_sync_at:number, changes:Array}>}
  */
-async function pullDeltas({ orgId, userId, deviceUid, jti, sinceMs, role }) {
+async function pullDeltas({ orgId, userId, deviceUid, jti, sinceMs, role, scopeJson = null }) {
   const actor = { orgId, userId, deviceUid };
+  // PM2-02 (§13.2/§13.5): only set on a pull made under an activated engagement
+  // token — `orgId` above is already the ENGAGING org in that case (the auth
+  // middleware resolved it from the token, not the caller's home-org row). This one
+  // object threads the engagement's scope into every `projectScope` call below; the
+  // existing role-based resolution for an ordinary token is untouched — passing
+  // `scopeJson: null` through `lib/scope.js`'s new branch only changes behaviour for
+  // the `engagement` scope class, which had no working resolver before this.
+  const scopeAuth = { role, userId, scopeJson };
   // Financial redaction: money columns never reach a session without `money.read`.
   // This is NOT a per-table pull allowlist (that decision stays locked) — the payload
   // is still the whole row; only registry-declared financial columns are withheld.
@@ -336,7 +344,7 @@ async function pullDeltas({ orgId, userId, deviceUid, jti, sinceMs, role }) {
       const col = (name) => (joined ? `t.\`${name}\`` : `\`${name}\``);
       if (joined) {
         fromSql = `\`${entry.table}\` t JOIN \`${entry.projectViaTable}\` pvt ON pvt.id = t.\`${entry.projectViaColumn}\``;
-        const { sql, params: sp } = projectScope({ role, userId }, { projectColumn: 'project_id', alias: 'pvt' });
+        const { sql, params: sp } = projectScope(scopeAuth, { projectColumn: 'project_id', alias: 'pvt' });
         scopeSql += sql;
         params.push(...sp);
       } else if (entry.projectColumn) {
@@ -345,7 +353,7 @@ async function pullDeltas({ orgId, userId, deviceUid, jti, sinceMs, role }) {
         // The scope source table (project_members) has no projectColumn on purpose —
         // a device must receive its own membership rows to know what it may reach.
         const { sql, params: sp } = projectScope(
-          { role, userId },
+          scopeAuth,
           { projectColumn: entry.projectColumn, selfColumn: entry.selfColumn }
         );
         scopeSql += sql;

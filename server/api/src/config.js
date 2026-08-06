@@ -126,6 +126,20 @@ module.exports = {
   // method. Same abstraction as email: a real provider in prod, console in dev.
   // Provider is left as config — the deployment picks one (an AU-resident sender
   // such as MessageMedia or SNS Sydney is preferred given the data-residency rule).
+  // ── PM2-02 attestation signing (§13.1/§13.4) ────────────────────────────────
+  attestation: {
+    // The KMS master key that wraps each org's Ed25519 attestation-signing private
+    // key at rest (projman-02 §10.1: "envelope encryption, per-org data key wrapped
+    // by a master key from KMS; AU deploy → AWS KMS ap-southeast-2"). No KMS
+    // integration exists yet — this is the local stand-in, same posture as
+    // GeoLite2's graceful no-DB fallback: falls back to deriving one from JWT_SECRET
+    // in dev so nothing new becomes REQUIRED_ENV. Set ATTESTATION_MASTER_KEY to a
+    // real, independently-managed key in production — without it, every org's
+    // signing key is only as strong as JWT_SECRET, which is a different secret with
+    // a different blast radius if it ever leaks.
+    masterKey: process.env.ATTESTATION_MASTER_KEY || null,
+  },
+
   sms: {
     enabled:        process.env.SMS_ENABLED === 'true',
     provider:       process.env.SMS_PROVIDER || 'console', // console | messagemedia | twilio
