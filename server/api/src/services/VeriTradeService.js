@@ -156,10 +156,10 @@ async function updateProfile({ userId, published, tradeClassification, serviceRe
   return row;
 }
 
-/** GET /veritrade/search — demand side (spec §10). Authenticated, teaser-level rows
- * only (V1: no subscription entitlement to confirm before widening, per spec §10's
- * own "teaser layer only until entitlement confirmed" — V1 simply never confirms
- * one, so search never returns more than teaser fields). */
+/** GET /veritrade/search — demand side (spec §10). PUBLIC, teaser-level rows only
+ * (spec §5.1/§11: indexable by design, same as the individual profile pages — V1
+ * never confirms a subscription entitlement, so this simply never returns more than
+ * teaser fields regardless of who's asking). */
 async function search({ trade, licenceState, region, minVerifiedProjects }) {
   const min = Number.isFinite(Number(minVerifiedProjects)) ? Number(minVerifiedProjects) : null;
   const [rows] = await pool.query(

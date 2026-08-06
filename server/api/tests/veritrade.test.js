@@ -162,7 +162,10 @@ const uuid = () => crypto.randomUUID();
   ok('search excludes a non-matching trade',
     !(searchMiss.json.data.results || []).some((r) => String(r.user_id) === String(tradie.userId)), JSON.stringify(searchMiss.json));
   const searchNoAuth = await call('GET', '/veritrade/search?trade=Carpenter');
-  ok('search requires login', searchNoAuth.status === 401, JSON.stringify(searchNoAuth.json));
+  ok('search is public — indexable, same as the profile pages (200, no login)',
+    searchNoAuth.status === 200 &&
+    (searchNoAuth.json.data.results || []).some((r) => String(r.user_id) === String(tradie.userId)),
+    JSON.stringify(searchNoAuth.json));
 
   // ── 6. Engage ──
   const engageUnpublished = await call('POST', `/veritrade/profiles/${pmBUser}/engage`, {}, pmA);

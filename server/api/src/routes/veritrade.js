@@ -7,6 +7,7 @@
 //                                            entitlement deferred).
 // PATCH /veritrade/profile                — self-service publish toggle + profile fields.
 // GET   /veritrade/search                 — demand side (§10), teaser-level rows only.
+//                                            NO auth — indexable, same as the profile pages.
 // POST  /veritrade/profiles/:userId/engage — the discovery-to-relationship loop (§7).
 //
 // POST  /veritrade/login/initiate         — App-mediated login (§4). Browser, no auth.
@@ -85,10 +86,11 @@ router.patch(
   }
 );
 
-// GET /veritrade/search — B2B login required.
+// GET /veritrade/search — public, no auth (spec §5.1/§11: teaser rows are indexable
+// by design; this endpoint already never returns anything beyond teaser fields, so
+// there's nothing gated to leak by dropping the login requirement).
 router.get(
   '/search',
-  authenticate,
   [
     query('trade').optional().trim(),
     query('licence_state').optional().trim(),
