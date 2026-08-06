@@ -8,14 +8,23 @@
 // PATCH /veritrade/profile                — self-service publish toggle + profile fields.
 // GET   /veritrade/search                 — demand side (§10), teaser-level rows only.
 // POST  /veritrade/profiles/:userId/engage — the discovery-to-relationship loop (§7).
+//
+// POST  /veritrade/login/initiate         — App-mediated login (§4). Browser, no auth.
+// GET   /veritrade/login/:id/context      — the App, after scanning, before deciding.
+// POST  /veritrade/login/:id/approve      — the App user, authenticated, taps Approve.
+// POST  /veritrade/login/:id/deny         — the App user, authenticated, taps Deny.
+// GET   /veritrade/login/:id/status       — the browser, polling; hands over a session
+//                                            token pair once, on the first poll after approval.
 
 const router = require('express').Router();
 const { body, query, validationResult } = require('express-validator');
 
+const pool = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 const { sendError } = require('../services/errors');
 const { audit } = require('../lib/audit');
 const VeriTradeService = require('../services/VeriTradeService');
+const VeriTradeLoginService = require('../services/VeriTradeLoginService');
 
 function validation(req, res) {
   const errors = validationResult(req);
@@ -114,5 +123,88 @@ router.post('/profiles/:userId/engage', authenticate, async (req, res) => {
     return sendError(res, err);
   }
 });
+
+// ── App-mediated login (§4) ────────────────────────────────────────────────
+
+// POST /veritrade/login/initiate — the browser, unauthenticated.
+router.post('/login/initiate', async (req, res) => {
+  try {
+    const data = await VeriTradeLoginService.initiate({ ip: req.ip, userAgent: req.get('user-agent') });
+    return res.status(201).json({ success: true, data });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+// GET /veritrade/login/:id/context — the App, authenticated, after scanning.
+router.get(
+  '/login/:id/context',
+  authenticate,
+  [query('code').trim().notEmpty().withMessage('code is required')],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const data = await VeriTradeLoginService.context({ sessionId: req.params.id, code: req.query.code });
+      return res.json({ success: true, data });
+    } catch (err) {
+      return sendError(res, err);
+    }
+  }
+);
+
+// POST /veritrade/login/:id/approve — the App user, authenticated, taps Approve.
+router.post(
+  '/login/:id/approve',
+  authenticate,
+  [body('code').trim().notEmpty().withMessage('code is required')],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const [[user]] = await pool.query(
+        `SELECT id, org_id, role, security_version FROM users WHERE id = ? LIMIT 1`,
+        [req.auth.userId]
+      );
+      const data = await VeriTradeLoginService.approve({
+        sessionId: req.params.id, code: req.body.code, user,
+        ip: req.ip, userAgent: req.get('user-agent'),
+      });
+      await audit(req, 'veritrade.login.approve', { entity: 'veritrade_login_sessions', entityId: req.params.id });
+      return res.json({ success: true, data });
+    } catch (err) {
+      return sendError(res, err);
+    }
+  }
+);
+
+// POST /veritrade/login/:id/deny — the App user, authenticated, taps Deny.
+router.post(
+  '/login/:id/deny',
+  authenticate,
+  [body('code').trim().notEmpty().withMessage('code is required')],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const data = await VeriTradeLoginService.deny({ sessionId: req.params.id, code: req.body.code });
+      return res.json({ success: true, data });
+    } catch (err) {
+      return sendError(res, err);
+    }
+  }
+);
+
+// GET /veritrade/login/:id/status — the browser, polling. No auth (the code is the proof).
+router.get(
+  '/login/:id/status',
+  [query('code').trim().notEmpty().withMessage('code is required')],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const data = await VeriTradeLoginService.status({ sessionId: req.params.id, code: req.query.code });
+      return res.json({ success: true, data });
+    } catch (err) {
+      return sendError(res, err);
+    }
+  }
+);
 
 module.exports = router;
