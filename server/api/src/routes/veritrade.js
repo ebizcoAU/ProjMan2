@@ -5,6 +5,7 @@
 // GET   /veritrade/profiles/:userId/full  — gated full profile (§5.2). Any logged-in
 //                                            App identity (V1: login-gated, subscription
 //                                            entitlement deferred).
+// GET   /veritrade/profile                — the caller's own settings (published or not).
 // PATCH /veritrade/profile                — self-service publish toggle + profile fields.
 // GET   /veritrade/search                 — demand side (§10), teaser-level rows only.
 //                                            NO auth — indexable, same as the profile pages.
@@ -49,6 +50,16 @@ router.get('/profiles/:userId', async (req, res) => {
 router.get('/profiles/:userId/full', authenticate, async (req, res) => {
   try {
     const data = await VeriTradeService.fullProfile(req.params.userId);
+    return res.json({ success: true, data });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+// GET /veritrade/profile — the caller's own settings, published or not.
+router.get('/profile', authenticate, async (req, res) => {
+  try {
+    const data = await VeriTradeService.myProfile(req.auth.userId);
     return res.json({ success: true, data });
   } catch (err) {
     return sendError(res, err);

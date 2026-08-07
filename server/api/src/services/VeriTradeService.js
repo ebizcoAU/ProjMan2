@@ -113,6 +113,23 @@ async function fullProfile(userId) {
   };
 }
 
+/** GET /veritrade/profile — the caller's OWN settings, regardless of publish status.
+ * Deliberately separate from `loadPublished`/`fullProfile`, which return null/404
+ * for anyone unpublished — a person needs to see their own draft fields (and how
+ * many verified projects they already have towards the NO_EVIDENCE bar) BEFORE
+ * they've published anything, which those two can never serve. */
+async function myProfile(userId) {
+  await pool.query(`INSERT INTO identities (user_id) VALUES (?) ON DUPLICATE KEY UPDATE user_id = user_id`, [userId]);
+  const [[row]] = await pool.query(
+    `SELECT veritrade_published, veritrade_published_at, trade_classification, service_region,
+            licence_number, licence_state, licence_status, veritrade_disclose_financials
+       FROM identities WHERE user_id = ? LIMIT 1`,
+    [userId]
+  );
+  const [[{ n }]] = await pool.query(`SELECT COUNT(*) AS n FROM attestations WHERE subject_user_id = ?`, [userId]);
+  return { ...row, verified_projects: Number(n) || 0 };
+}
+
 /** PATCH /veritrade/profile — self-service publish toggle + profile fields. */
 async function updateProfile({ userId, published, tradeClassification, serviceRegion, licenceNumber, licenceState, discloseFinancials }) {
   await pool.query(`INSERT INTO identities (user_id) VALUES (?) ON DUPLICATE KEY UPDATE user_id = user_id`, [userId]);
@@ -212,4 +229,4 @@ async function engage({ actorOrgId, actorUserId, targetUserId }) {
   return IntroductionService.crossOrgEngage({ actorOrgId, actorUserId, targetUserId });
 }
 
-module.exports = { publicTeaser, fullProfile, updateProfile, search, engage };
+module.exports = { publicTeaser, fullProfile, updateProfile, search, engage, myProfile };

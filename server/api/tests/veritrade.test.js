@@ -87,6 +87,14 @@ const uuid = () => crypto.randomUUID();
   ok('publish with zero verified projects is refused (NO_EVIDENCE)',
     noEvidence.status === 422 && noEvidence.json.code === 'NO_EVIDENCE', JSON.stringify(noEvidence.json));
 
+  // ── GET /veritrade/profile — own settings, readable even before publishing ──
+  const myBefore = await call('GET', '/veritrade/profile', undefined, pmB);
+  ok('own settings are readable pre-publish (Settings page needs this before first save)',
+    myBefore.status === 200 && myBefore.json.data.veritrade_published === 0 && myBefore.json.data.verified_projects === 0,
+    JSON.stringify(myBefore.json));
+  const myNoAuth = await call('GET', '/veritrade/profile');
+  ok('own settings require login', myNoAuth.status === 401, JSON.stringify(myNoAuth.json));
+
   // ── give the tradie one verified project: tick + verify a task assigned to them ──
   const detail = await call('GET', `/projects/${projId}`, undefined, pmA);
   const stage1 = (detail.json.data.stages || []).find((st) => st.seq === 1)?.id;
