@@ -109,6 +109,8 @@ function LoginFlow() {
       <VtHeader />
       <div style={{ maxWidth: 420, margin: '48px auto', padding: '0 20px' }}>
         <div className="card" style={{ textAlign: 'center' }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="ProjMan" style={{ width: 90, height: 90, objectFit: 'contain', margin: '0 auto 12px' }} />
           <h1 style={{ fontFamily: 'var(--fh)', fontWeight: 700, fontSize: 22, marginBottom: 6 }}>Log in with ProjMan</h1>
           <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 20 }}>
             Open the ProjMan App → Profile → &ldquo;Scan to sign in&rdquo;, then approve this request.

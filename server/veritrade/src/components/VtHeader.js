@@ -22,11 +22,8 @@ export default function VtHeader() {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
       }}>
         <a href="/" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{
-            width: 34, height: 34, borderRadius: 8, background: 'var(--brand)',
-            color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontFamily: 'var(--fh)', fontWeight: 800, fontSize: 15,
-          }}>VT</div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="ProjMan" style={{ width: 42, height: 42, objectFit: 'contain' }} />
           <span style={{ fontFamily: 'var(--fh)', fontWeight: 800, fontSize: 19, color: 'var(--text)' }}>
             VeriTrade
           </span>
