@@ -591,6 +591,33 @@ class NexusService {
   static Future<ApiResult> introductionContacts() =>
       authedGet('/introductions');
 
+  // ── VeriTrade "Scan to sign in" (appdesignspecification.md §8, xprojman-25) ──
+  // The App is VeriTrade's sole identity root — there is no VeriTrade password.
+  // A browser shows a session QR; this app scans it, reviews who's asking, and
+  // approves/denies using the App's OWN existing session — no new auth model,
+  // no new token type, same shape as the Introduction QR swap above. `code` is
+  // an opaque short-lived (5 min) signed JWT, passed through verbatim, never
+  // decoded client-side (same convention as `introductionScan`).
+
+  /// GET /veritrade/login/:session_id/context?code= (Bearer) — what to render
+  /// before Approve/Deny: `{status, requested_ip, requested_user_agent,
+  /// requested_at, expires_at}`. `400 INVALID_CODE` = stale/malformed QR;
+  /// `409 ALREADY_RESOLVED` = someone already acted on it (e.g. a double-scan)
+  /// — show that as an outcome, not an error.
+  static Future<ApiResult> veritradeLoginContext(String sessionId, String code) =>
+      authedGet(
+          '/veritrade/login/$sessionId/context?code=${Uri.encodeQueryComponent(code)}');
+
+  /// POST /veritrade/login/:session_id/approve (Bearer, body `{code}`) — mints
+  /// a normal ProjMan session for the browser to pick up on its next poll. No
+  /// payload the app needs beyond a 200 (xprojman-25).
+  static Future<ApiResult> veritradeLoginApprove(String sessionId, String code) =>
+      authedPost('/veritrade/login/$sessionId/approve', {'code': code});
+
+  /// POST /veritrade/login/:session_id/deny (Bearer, body `{code}`).
+  static Future<ApiResult> veritradeLoginDeny(String sessionId, String code) =>
+      authedPost('/veritrade/login/$sessionId/deny', {'code': code});
+
   // ── Job Award — the S9.7 accept/decline tap (appdesignspecification.md §4.2) ─
   // The invitation itself (S9.6) is sent from the PM's desk (Portal, `panel.manage`);
   // the app's slice is the invited person receiving it and tapping accept/decline.

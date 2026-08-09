@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../config/router.dart';
 import '../services/nexus_service.dart';
@@ -32,6 +33,35 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     super.dispose();
   }
 
+  // Reached via context.go() (OAuth sign-in already replaced the stack), so
+  // there is no previous step to pop back to — the back arrow instead signs
+  // out, giving a real way off this screen instead of a dead button (was
+  // `showBack: false`, a hard trap if OAuth was the wrong account / a mistake).
+  Future<void> _signOutInstead() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Sign out?'),
+        content: const Text(
+            'You signed in but haven\'t finished setting up your business yet. '
+            'Signing out now means starting over next time.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Sign out')),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    HapticFeedback.mediumImpact();
+    await NexusService.logout();
+    if (!mounted) return;
+    context.go(AppRoutes.login);
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _busy = true);
@@ -56,7 +86,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     return AuthScaffold(
       title: 'About your business',
       subtitle: 'A few Australian basics. ABN is optional for now.',
-      showBack: false,
+      onBack: _signOutInstead,
       child: Form(
         key: _formKey,
         child: Column(

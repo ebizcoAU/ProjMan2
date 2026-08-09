@@ -11,6 +11,7 @@ import '../screens/pairing/pair_device_screen.dart';
 import '../screens/pairing/join_device_screen.dart';
 import '../screens/introduction/introduction_screen.dart';
 import '../screens/job_awards/job_invitations_screen.dart';
+import '../screens/veritrade/veritrade_login_screen.dart';
 import '../screens/projects/create_project_screen.dart';
 import '../screens/projects/project_detail_screen.dart';
 import '../screens/projects/programme_screen.dart';
@@ -26,6 +27,7 @@ class AppRoutes {
   static const String joinDevice = '/join-device'; // new device scans
   static const String introduction = '/introduction'; // digital business card
   static const String jobInvitations = '/job-invitations'; // S9.7 accept/decline
+  static const String veritradeLogin = '/veritrade-login'; // §8 scan-to-sign-in
   static const String home = '/home';
   static const String projectCreate = '/project/create'; // Stage 1
   static const String projectDetail = '/project/detail'; // 18-stage tracker
@@ -106,6 +108,11 @@ final goRouterProvider = FutureProvider<GoRouter>((ref) async {
         path: AppRoutes.jobInvitations,
         name: 'jobInvitations',
         builder: (context, state) => const JobInvitationsScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.veritradeLogin,
+        name: 'veritradeLogin',
+        builder: (context, state) => const VeritradeLoginScreen(),
       ),
       GoRoute(
         path: AppRoutes.home,

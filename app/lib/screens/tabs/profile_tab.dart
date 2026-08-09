@@ -177,6 +177,17 @@ class _ProfileTabState extends State<ProfileTab> {
           // S9.7 accept/decline — projects a PM has invited you onto (appdesignspec §4.2).
           onPressed: () => context.push(AppRoutes.jobInvitations),
         ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Theme.of(context).colorScheme.primary,
+            minimumSize: const Size.fromHeight(48),
+          ),
+          icon: const Icon(Icons.qr_code_scanner),
+          label: const Text('Scan to sign in'),
+          // VeriTrade login — this app is its sole identity root (appdesignspec §8).
+          onPressed: () => context.push(AppRoutes.veritradeLogin),
+        ),
         const SizedBox(height: 24),
         OutlinedButton.icon(
           style: OutlinedButton.styleFrom(
