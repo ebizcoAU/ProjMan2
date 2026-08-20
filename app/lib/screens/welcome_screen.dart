@@ -23,7 +23,11 @@ class WelcomeScreen extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           // Hero photo — its top ~15% holds the baked-in wordmark + tagline.
-          Image.asset('assets/bgimage2.jpeg', fit: BoxFit.cover),
+          // Nudged down 20px so the baked-in logo/wordmark sits lower.
+          Transform.translate(
+            offset: const Offset(0, 20),
+            child: Image.asset('assets/bgimage2.jpeg', fit: BoxFit.cover),
+          ),
           // Scrim: clear at the top (don't wash out the baked text), fading to
           // solid navy over the lower half so the controls read on any photo.
           const DecoratedBox(

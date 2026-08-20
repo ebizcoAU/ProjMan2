@@ -45,7 +45,11 @@ class AuthScaffold extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           // Same hero photo as welcome — its top ~15% carries the baked-in logo.
-          Image.asset('assets/bgimage2.jpeg', fit: BoxFit.cover),
+          // Nudged down 20px so the baked-in logo/wordmark sits lower.
+          Transform.translate(
+            offset: const Offset(0, 20),
+            child: Image.asset('assets/bgimage2.jpeg', fit: BoxFit.cover),
+          ),
           const DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(

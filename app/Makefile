@@ -18,7 +18,7 @@ DEVICE     ?= $(IPHONE_XS)
 # LAN_IP: this Mac on the wifi/ethernet the phone shares. API_BASE_URL is derived
 # from it but can be overridden wholesale.
 LAN_IP       ?= $(shell ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null)
-API_PORT     ?= 4100
+API_PORT     ?= 5100
 API_BASE_URL ?= http://$(LAN_IP):$(API_PORT)/api/v1
 
 DART_DEFINES = --dart-define=API_BASE_URL=$(API_BASE_URL)
