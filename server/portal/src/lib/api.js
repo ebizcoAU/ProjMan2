@@ -1,7 +1,7 @@
 // dashboard/src/lib/api.js
 // Ported from Nexus dashboard `lib/api.js`: the same fetch wrapper with the
 // axios-shaped `{ data }` response and session-expiry redirect. Changed for
-// ProjMan2: base URL (Next rewrite → :4100), token keys, /login redirect, and the
+// ProjMan2: base URL (Next rewrite → :5100), token keys, /login redirect, and the
 // endpoint namespaces are the ProjMan2 surface, not FTPOS admin.
 
 // Empty BASE = same-origin; next.config.js rewrites /api/* to the API service.
@@ -116,6 +116,14 @@ export const authApi = {
   }),
 };
 
+// Forgot-password (xprojman-26): request a 6-digit email code, verify it for a
+// short-lived recoveryToken, then reset. Same 3-endpoint shape the app uses.
+export const recoveryApi = {
+  request: (email)                => request('POST', '/auth/recovery/request', { email, purpose: 'password_reset' }),
+  verify:  (email, code)          => request('POST', '/auth/recovery/verify',  { email, code, purpose: 'password_reset' }),
+  reset:   (recoveryToken, newPassword) => request('POST', '/auth/recovery/reset', { recoveryToken, newPassword }),
+};
+
 // Job Awards — the Builder's identity-level invitation inbox (xprojman-12). Not
 // project-scoped: an invitee can't reach the project until they accept, so the list is
 // GET /job-awards/pending; accept/decline is the project-scoped respond endpoint.
@@ -219,7 +227,7 @@ export const customersApi = {
 };
 
 // NOTE: the platform-admin API surface (`adminApi`, `/admin/*`) deliberately does NOT
-// live here. Platform management is a SEPARATE application (`server/dashboard`, port 4110)
+// live here. Platform management is a SEPARATE application (`server/dashboard`, port 5110)
 // with no access to app-user content. This Portal is app-users-only. See §0 of
 // portaldesignspecification.md.
 
@@ -227,6 +235,7 @@ export const customersApi = {
 const api = {
   ...http,
   auth:           authApi,
+  recovery:       recoveryApi,
   devices:        devicesApi,
   sync:           syncApi,
   organisation:   organisationApi,

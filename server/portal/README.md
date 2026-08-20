@@ -11,7 +11,7 @@ Nexus portal UI kit per `docs/servdesignspecification.md` §5:
   dropped; nav items are the ProjMan2 surface. The Nexus accessible **light theme**
   (previously opt-in via `.portal-root`) is the default theme here.
 - **Adapted:** `src/lib/api.js` — the fetch wrapper with axios-shaped responses and
-  session-expiry redirect; base URL `/api/v1` via Next rewrite to `:4100`.
+  session-expiry redirect; base URL `/api/v1` via Next rewrite to `:5100`.
 - **Rewritten:** `/login` — email/password (Nexus used CCCD + PIN + QR).
 - **Dropped:** MQTT (`MqttContext`, `useMqtt`) — ProjMan2 polls.
 
@@ -29,7 +29,7 @@ Nexus portal UI kit per `docs/servdesignspecification.md` §5:
 ```bash
 cd server/dashboard
 npm install
-npm run dev            # http://localhost:4110 — API assumed at :4100 (API_URL to override)
+npm run dev            # http://localhost:5220 — API assumed at :5100 (API_URL to override)
 ```
 
 Auth: tokens in `localStorage` (`pm2Token` / `pm2Refresh` / `pm2User`); the console

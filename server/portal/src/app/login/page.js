@@ -12,6 +12,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { authApi, setSession } from '@/lib/api';
+import RecoveryModal from '@/components/portal/RecoveryModal';
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
 
@@ -21,6 +22,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError]       = useState(null);
   const [busy, setBusy]         = useState(false);
+  const [showRecovery, setShowRecovery] = useState(false);
 
   const enter = (d) => {
     setSession({ accessToken: d.accessToken, refreshToken: d.refreshToken, user: d.user });
@@ -113,7 +115,14 @@ export default function LoginPage() {
 
         <label style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'var(--dim)', marginBottom: 6 }}>Password</label>
         <input className="input" type="password" autoComplete="current-password" value={password}
-          onChange={(e) => setPassword(e.target.value)} required style={{ marginBottom: 18 }} />
+          onChange={(e) => setPassword(e.target.value)} required style={{ marginBottom: 8 }} />
+
+        <div style={{ textAlign: 'right', marginBottom: 18 }}>
+          <button type="button" onClick={() => setShowRecovery(true)}
+            style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, color: 'var(--brand)', fontWeight: 600, cursor: 'pointer' }}>
+            Forgot password?
+          </button>
+        </div>
 
         {error && (
           <div style={{
@@ -151,6 +160,18 @@ export default function LoginPage() {
           New here? <a href="/signup" style={{ color: 'var(--brand)' }}>Create an account</a>
         </div>
       </form>
+
+      {showRecovery && (
+        <RecoveryModal
+          initialEmail={email}
+          onClose={() => setShowRecovery(false)}
+          onResetComplete={(resetEmail) => {
+            setShowRecovery(false);
+            setEmail(resetEmail);
+            setPassword('');
+          }}
+        />
+      )}
     </div>
   );
 }
