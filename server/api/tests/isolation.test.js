@@ -8,10 +8,10 @@
 // Requires a running server and a migrated c1projman2. It creates two throwaway orgs,
 // so run it against a dev database only.
 //
-//   node tests/isolation.test.js            (expects the API on :4100)
-//   BASE=http://10.1.1.20:4100 node tests/isolation.test.js
+//   node tests/isolation.test.js            (expects the API on :5100)
+//   BASE=http://10.1.1.20:5100 node tests/isolation.test.js
 
-const BASE = (process.env.BASE || 'http://localhost:4100') + '/api/v1';
+const BASE = (process.env.BASE || 'http://localhost:5100') + '/api/v1';
 
 let passed = 0, failed = 0;
 function check(name, condition) {

@@ -5,7 +5,7 @@
 // the billing and auto-overdue crons, the velo storefront, and the ~20 POS route
 // modules. What remains is identity, devices, pairing, sync and the org surface.
 //
-// Base URL: /api/v1  ·  dev http://localhost:4100/api/v1
+// Base URL: /api/v1  ·  dev http://localhost:5100/api/v1
 
 require('dotenv').config();
 
@@ -179,6 +179,7 @@ async function start() {
     console.log(`   ENV: ${config.server.env}  ·  ${config.server.timezone}  ·  ${config.server.currency}`);
     console.log(`   Access: matrix v${access.matrixVersion()} loaded (${access.allRoles().length} roles)`);
     console.log(`   Email: ${config.email.enabled ? 'enabled' : 'DISABLED (codes log to console in dev)'}`);
+    console.log(`   SMS:   ${config.sms.enabled ? `enabled (${config.sms.provider})` : 'DISABLED (codes log to console in dev)'}`);
     console.log(`   ABN:   ${config.abn.abrGuid ? 'checksum + ABR lookup' : 'checksum only (no ABR_GUID)'}\n`);
   });
 }

@@ -14,7 +14,7 @@ if (missing.length) {
 
 module.exports = {
   server: {
-    port:  parseInt(process.env.PORT, 10) || 4100,
+    port:  parseInt(process.env.PORT, 10) || 5100,
     env:   process.env.NODE_ENV || 'development',
     isDev: process.env.NODE_ENV !== 'production',
     // Region is not configurable per-deployment — ProjMan2 is an Australian product.
@@ -149,5 +149,8 @@ module.exports = {
     // Provider creds (only the chosen provider's are read).
     messagemedia: { apiKey: process.env.MESSAGEMEDIA_API_KEY, apiSecret: process.env.MESSAGEMEDIA_API_SECRET },
     twilio:       { sid: process.env.TWILIO_SID, token: process.env.TWILIO_TOKEN, from: process.env.TWILIO_FROM },
+    // ClickSend: HTTP Basic auth is username + API key (not a password), per
+    // https://developers.clicksend.com/docs#authentication.
+    clicksend:    { username: process.env.CLICKSEND_USERNAME, apiKey: process.env.CLICKSEND_API_KEY },
   },
 };

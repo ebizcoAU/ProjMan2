@@ -66,7 +66,7 @@ cd server/api
 npm install
 cp .env.example .env          # fill JWT secrets: openssl rand -hex 48
 npm run db:migrate            # creates c1projman2 + schema v001
-npm run dev                   # http://localhost:4100/api/v1
+npm run dev                   # http://localhost:5100/api/v1
 ```
 
 Confirm the acceptance boundary — a token from org A cannot touch org B:
@@ -84,7 +84,7 @@ ProjMan2 is a different product with a different customer base, so it does not s
 the FTPOS schema.
 
 - **Database:** `c1projman2` (new; legacy `c1projman` is not migrated)
-- **Dev base URL:** `http://localhost:4100/api/v1` (LAN: `http://10.1.1.20:4100`)
+- **Dev base URL:** `http://localhost:5100/api/v1` (LAN: `http://10.1.1.20:5100`)
 - **Prod base URL:** `https://ebizco.com.au/projman/api/v1`
 
 It reuses Nexus's *shape* — Express + mysql2 pool + JWT — but not its process. The

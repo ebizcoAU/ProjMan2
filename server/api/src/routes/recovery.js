@@ -68,7 +68,7 @@ router.post(
 
     try {
       const [[user]] = await pool.query(
-        `SELECT u.id, u.org_id, u.email, u.status
+        `SELECT u.id, u.org_id, u.email, u.status, u.full_name
            FROM users u JOIN organisations o ON o.id = u.org_id
           WHERE u.email = ? AND u.is_deleted = 0 AND u.status != 'disabled'
             AND o.status = 'active'
@@ -95,7 +95,7 @@ router.post(
         [uuidv4(), user.id, await bcrypt.hash(code, 10), purpose, config.recovery.codeTtlSeconds]
       );
 
-      await sendRecoveryCode(user.email, code, purpose);
+      await sendRecoveryCode(user.email, code, purpose, user.full_name);
       await audit(req, 'recovery.requested', {
         orgId: user.org_id, userId: user.id, entity: 'users', entityId: user.id,
         detail: { purpose },

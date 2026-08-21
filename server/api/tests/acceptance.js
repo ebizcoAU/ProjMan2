@@ -4,13 +4,13 @@
 // per endpoint" the brief asked for, as a script, so the client can be built against
 // something concrete. It prints what each step returned.
 //
-//   node tests/acceptance.js            (expects the API on :4100, email disabled)
+//   node tests/acceptance.js            (expects the API on :5100, email disabled)
 //
 // It reads recovery codes out of the server log, so point LOG at wherever the server
 // is writing (default /tmp/pm2api.log).
 
 const fs = require('fs');
-const BASE = (process.env.BASE || 'http://localhost:4100') + '/api/v1';
+const BASE = (process.env.BASE || 'http://localhost:5100') + '/api/v1';
 const LOG  = process.env.LOG || '/tmp/pm2api.log';
 const stamp = Date.now();
 

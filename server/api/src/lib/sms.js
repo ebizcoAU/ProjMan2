@@ -60,6 +60,26 @@ async function sendViaTwilio(to, text) {
   return { delivered: true };
 }
 
+async function sendViaClickSend(to, text) {
+  const { username, apiKey } = config.sms.clicksend;
+  if (!username || !apiKey) throw new Error('ClickSend credentials are not configured');
+  const auth = Buffer.from(`${username}:${apiKey}`).toString('base64');
+  const resp = await fetch('https://rest.clicksend.com/v3/sms/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Basic ${auth}` },
+    body: JSON.stringify({ messages: [{ source: 'projman2', body: text, to, from: config.sms.from }] }),
+    signal: AbortSignal.timeout(8000),
+  });
+  const json = await resp.json().catch(() => null);
+  // ClickSend returns 200 with a per-message status even on partial failure —
+  // check the queued status, not just the HTTP status.
+  const status = json?.data?.messages?.[0]?.status;
+  if (!resp.ok || (status && status !== 'SUCCESS' && status !== 'QUEUED')) {
+    throw new Error(`ClickSend send failed (${resp.status}${status ? `, ${status}` : ''})`);
+  }
+  return { delivered: true };
+}
+
 async function sendSms(to, text) {
   // Disabled or console provider → log in dev, hard-fail in prod (a silently
   // undelivered verification code looks identical to a working one from the client).
@@ -69,6 +89,7 @@ async function sendSms(to, text) {
   }
   if (config.sms.provider === 'messagemedia') return sendViaMessageMedia(to, text);
   if (config.sms.provider === 'twilio')       return sendViaTwilio(to, text);
+  if (config.sms.provider === 'clicksend')    return sendViaClickSend(to, text);
   throw new Error(`Unknown SMS provider: ${config.sms.provider}`);
 }
 
