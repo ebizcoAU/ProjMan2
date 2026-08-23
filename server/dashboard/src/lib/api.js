@@ -1,7 +1,7 @@
 // dashboard/src/lib/api.js
 // Ported from Nexus dashboard `lib/api.js`: the same fetch wrapper with the
 // axios-shaped `{ data }` response and session-expiry redirect. Changed for
-// ProjMan2: base URL (Next rewrite → :4100), token keys, /login redirect, and the
+// ProjMan2: base URL (Next rewrite → :5100), token keys, /login redirect, and the
 // endpoint namespaces are the ProjMan2 surface, not FTPOS admin.
 
 // Empty BASE = same-origin; next.config.js rewrites /api/* to the API service.
