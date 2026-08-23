@@ -1,24 +1,28 @@
-// (console)/layout.js — wraps all console pages with the PortalNav sidebar + topbar.
-// Adapted from Nexus portal/layout.js: auth guard on the ProjMan2 JWT, breadcrumb
-// topbar, date + clock. Dropped: the Observe/Audit mode pill and the mode-aware
-// export CTA (no mode split in ProjMan2).
+// builder/layout.js — the Builder console shell (portaldesignspec §2: `(builder)/*`
+// = Builder, scope `assigned` on his own engagement). A real `builder/` path
+// segment rather than a Next.js parenthesised route group — group syntax hides
+// the segment from the URL, which would collide with the PM console's own
+// `/dashboard` route; this way the two shells live at genuinely different URLs.
+//
+// Same shell pattern as `(console)/layout.js` (auth guard, topbar, sidebar) but
+// with the Builder nav and a role gate the other direction: a non-Builder
+// landing here is bounced to the PM console instead of rendering pages built
+// against Builder's own, narrower permission set (§4.3).
 'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { PortalNav, getNavLabel } from '@/components/portal/PortalNav';
+import { PortalNav, BUILDER_NAV, getNavLabel } from '@/components/portal/PortalNav';
 import { PortalPeriodProvider } from '@/components/portal/PeriodContext';
 import { parseJwt, useScreenTier, fs, useClockString, useTodayString } from '@/components/portal/chrome';
 import { getToken, getSavedUser, clearSession, authApi } from '@/lib/api';
 
-// Page titles keyed by first path segment
 const PAGE_TITLES = {
-  devices:      'Devices',
-  projects:     'Projects',
-  organisation: 'Organisation',
+  dashboard:   'Dashboard',
+  'job-awards': 'Job Invitations',
 };
 
-export default function ConsoleLayout({ children }) {
+export default function BuilderLayout({ children }) {
   const router   = useRouter();
   const pathname = usePathname();
   const clock    = useClockString();
@@ -34,33 +38,27 @@ export default function ConsoleLayout({ children }) {
     const jwt = parseJwt(token);
     if (!jwt) { router.replace('/login'); return; }
 
-    // Pre-flight expiry check — JWT exp is Unix seconds
     if (jwt.exp && jwt.exp < Math.floor(Date.now() / 1000)) {
       clearSession();
       router.replace('/login');
       return;
     }
 
-    // API fields win for display
     const merged = { ...jwt, ...(getSavedUser() || {}) };
 
-    // This console is the Project Manager's (portaldesignspec §2). A Builder
-    // identity has its own route group with its own permission scope — bounce
-    // them there rather than rendering PM-shaped pages (Cost Plan edit, Users,
-    // Settings) against a role that was never granted those permissions.
-    if (merged.role === 'builder') { router.replace('/builder/dashboard'); return; }
+    // Single-fixed-role identity model (xprojman-08/09) — only a `builder` may
+    // be in this route group. Anyone else (PM, developer, site supervisor…)
+    // belongs in the PM console.
+    if (merged.role !== 'builder') { router.replace('/dashboard'); return; }
 
     setUser(merged);
   }, [router]);
 
   const name = user?.fullName ?? user?.full_name ?? '—';
-  const role = user?.role ?? 'org_admin';
 
-  // Derive topbar title from pathname
-  const seg       = pathname.split('/').filter(Boolean)[0];
-  const pageTitle = PAGE_TITLES[seg] ?? 'Console';
-  // Sub-menu (breadcrumb) label from the nav; hidden when it would repeat the title.
-  const navLabel  = getNavLabel(pathname);
+  const seg       = pathname.split('/').filter(Boolean)[1]; // ['builder', 'dashboard', ...]
+  const pageTitle = PAGE_TITLES[seg] ?? 'Builder Console';
+  const navLabel  = getNavLabel(pathname, BUILDER_NAV);
   const subTitle  = navLabel && navLabel !== pageTitle ? navLabel : null;
 
   const handleLogout = async () => {
@@ -79,13 +77,10 @@ export default function ConsoleLayout({ children }) {
       fontFamily: 'var(--fb)',
     }}>
 
-      {/* ── Sidebar ──────────────────────────────────────────────────────── */}
-      <PortalNav userName={name} role={role} onLogout={handleLogout} />
+      <PortalNav userName={name} role="builder" onLogout={handleLogout} sections={BUILDER_NAV} />
 
-      {/* ── Main column ──────────────────────────────────────────────────── */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-        {/* ── Topbar ─────────────────────────────────────────────────────── */}
         <header style={{
           height: 60, minHeight: 60,
           background: 'var(--s1)',
@@ -96,7 +91,6 @@ export default function ConsoleLayout({ children }) {
           flexShrink: 0,
           position: 'relative', zIndex: 30,
         }}>
-          {/* Title + breadcrumb (Section › Page) */}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
               <span style={{
@@ -120,11 +114,10 @@ export default function ConsoleLayout({ children }) {
               )}
             </div>
             <div style={{ fontSize: fs(13, screenTier), color: 'var(--dim)', marginTop: 3 }}>
-              ProjMan · Office Console
+              ProjMan · Builder Console
             </div>
           </div>
 
-          {/* Today's date (info only) */}
           <span style={{
             fontFamily: 'var(--fm)', fontSize: fs(13, screenTier), fontWeight: 600,
             color: 'var(--dim)', whiteSpace: 'nowrap', flexShrink: 0,
@@ -132,7 +125,6 @@ export default function ConsoleLayout({ children }) {
             {today}
           </span>
 
-          {/* Clock */}
           <span style={{
             fontFamily: 'var(--fm)', fontSize: fs(14, screenTier), fontWeight: 600,
             color: 'var(--dim)', flexShrink: 0,
@@ -141,7 +133,6 @@ export default function ConsoleLayout({ children }) {
           </span>
         </header>
 
-        {/* ── Page content ───────────────────────────────────────────────── */}
         <main style={{ flex: 1, overflowX: 'hidden', overflowY: 'auto' }}>
           {children}
         </main>

@@ -43,10 +43,16 @@ function fs(base, tier) {
   return Math.max(14, base + 1);
 }
 
-// ── Nav — ProjMan2 console ────────────────────────────────────────────────────
+// ── Nav — ProjMan2 PM console (portaldesignspec §2: `(console)/*` = Project
+// Manager) ───────────────────────────────────────────────────────────────────
 // mock:true = no backing page yet; points to the nearest real route so there are
 // no dead 404s, renders at 55% opacity with a "soon" badge.
-const NAV = [
+// Job Award response moved to the Builder console (`/builder/job-awards`,
+// portaldesignspec §4.3) — a PM sends awards, never receives them, so it never
+// belonged in this nav. The dashboard's own "pending invitation" link still
+// points at `/job-awards`, which now redirects a PM through unaffected (no PM
+// should ever have a pending award to click through to).
+export const CONSOLE_NAV = [
   {
     group: null,
     items: [
@@ -57,7 +63,6 @@ const NAV = [
     group: 'PROJECTS',
     items: [
       { k: 'projects',  href: '/projects', label: 'Projects' },
-      { k: 'job-awards', href: '/job-awards', label: 'Job Invitations' },
       { k: 'customers', href: '/projects', label: 'Customers', mock: true,
         tooltip: 'Coming: customer list and contacts (API is live at /customers)' },
       { k: 'programme', href: '/projects', label: 'Programme', mock: true,
@@ -95,6 +100,41 @@ const NAV = [
   },
 ];
 
+// ── Nav — Builder console (portaldesignspec §2: `(builder)/*` = Builder,
+// scope `assigned` on his own engagement; §4.3 for the module list) ───────────
+// Only Job Award response has a real page today; the rest of §4.3 (Programme/
+// Line-of-Balance editing, Progress Claims submit, Panel management,
+// Documents) are separate, not-yet-built line items in group-01.md §5 — listed
+// here as "soon" so the shell is navigable and truthful about what's live.
+export const BUILDER_NAV = [
+  {
+    group: null,
+    items: [
+      { k: 'dashboard', href: '/builder/dashboard', label: 'Dashboard' },
+    ],
+  },
+  {
+    group: 'WORK',
+    items: [
+      { k: 'job-awards', href: '/builder/job-awards', label: 'Job Invitations' },
+      { k: 'programme',  href: '/builder/dashboard', label: 'Programme', mock: true,
+        tooltip: 'Coming: your Line-of-Balance schedule (Builder-authored, portaldesignspec §3.2)' },
+      { k: 'claims',     href: '/builder/dashboard', label: 'Progress Claims', mock: true,
+        tooltip: 'Coming: submit progress claims against the head contract' },
+    ],
+  },
+  {
+    group: 'CREW',
+    items: [
+      { k: 'users',      href: '/builder/dashboard', label: 'Panel', mock: true,
+        tooltip: "Coming: manage your own Tradie/Foreperson panel" },
+      { k: 'site-diary', href: '/builder/dashboard', label: 'Documents', mock: true,
+        tooltip: 'Coming: documents your crew produces' },
+    ],
+  },
+];
+
+
 // ── SVG icons (15×15 viewBox, stroke currentColor) ────────────────────────────
 const ICONS = {
   dashboard:  <path d="M1.5 8.5L7.5 2l6 6.5M3 7.5V13h3.5V9.5h2V13H12V7.5" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" fill="none"/>,
@@ -128,10 +168,11 @@ function isMatch(href, exact, pathname) {
 
 // Resolve a pathname to its nav label for the topbar breadcrumb. Real (non-mock)
 // items only; longest href match wins so nested routes beat their parent.
-export function getNavLabel(pathname) {
+// `sections` defaults to the PM console nav; pass BUILDER_NAV from the Builder layout.
+export function getNavLabel(pathname, sections = CONSOLE_NAV) {
   if (!pathname) return null;
   let best = null;
-  for (const item of NAV.flatMap((s) => s.items)) {
+  for (const item of sections.flatMap((s) => s.items)) {
     if (item.mock) continue;
     const hit = item.exact ? pathname === item.href : pathname.startsWith(item.href);
     if (hit && (!best || item.href.length > best.href.length)) best = item;
@@ -158,7 +199,9 @@ const ACCENT = {
 };
 
 // ── PortalNav component ───────────────────────────────────────────────────────
-export function PortalNav({ userName, role, onLogout }) {
+// `sections` picks the nav content; defaults to the PM console, pass BUILDER_NAV
+// from the Builder layout.
+export function PortalNav({ userName, role, onLogout, sections = CONSOLE_NAV }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed]         = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
@@ -241,7 +284,7 @@ export function PortalNav({ userName, role, onLogout }) {
 
         {/* ── Nav scroll ──────────────────────────────────────────────── */}
         <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '4px 0' }}>
-          {NAV.map(section => (
+          {sections.map(section => (
             <div key={section.group || 'root'} style={{ marginBottom: 2 }}>
               {section.group && (
                 <div style={{

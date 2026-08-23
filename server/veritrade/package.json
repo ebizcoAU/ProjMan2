@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "description": "VeriTrade — Australia's B2B trade-vetting network, the public face of ProjMan's Verified Work History engine",
   "scripts": {
-    "dev": "next dev -p 4330",
+    "dev": "next dev -p 5330",
     "build": "next build",
-    "start": "next start -p 4330"
+    "start": "next start -p 5330"
   },
   "dependencies": {
     "next": "^14.2.5",

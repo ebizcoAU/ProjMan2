@@ -26,7 +26,10 @@ export default function LoginPage() {
 
   const enter = (d) => {
     setSession({ accessToken: d.accessToken, refreshToken: d.refreshToken, user: d.user });
-    router.replace('/projects');
+    // Single-fixed-role identity (xprojman-08/09): a Builder gets his own
+    // console (portaldesignspec §2 route-group table); everyone else lands in
+    // the PM console as before.
+    router.replace(d.user?.role === 'builder' ? '/builder/dashboard' : '/projects');
   };
 
   const submit = async (e) => {
