@@ -1,0 +1,30 @@
+{
+  "name": "projman-website",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ProjMan public SaaS marketing website — 18-Stage Construction Lifecycle platform.",
+  "scripts": {
+    "dev": "next dev -p 5010",
+    "build": "next build",
+    "start": "next start -p 5010",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "^14.2.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "framer-motion": "^11.3.19",
+    "react-hook-form": "^7.52.2",
+    "zod": "^3.23.8",
+    "@hookform/resolvers": "^3.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.11",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.39",
+    "tailwindcss": "^3.4.6",
+    "typescript": "^5.5.4"
+  }
+}
