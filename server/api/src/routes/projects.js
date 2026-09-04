@@ -5,6 +5,9 @@
 //   POST   /projects                       create           (org_admin | project_developer)
 //   GET    /projects/:id                   detail + stages + tasks
 //   PATCH  /projects/:id                   update           (org_admin | project_developer)
+//   DELETE /projects/:id                   daisy-chain delete — draft/no-claims/no-awards/
+//                                           no-engagements only (xprojman-35); Cancel is the
+//                                           PATCH above with status:'cancelled'
 //   POST   /projects/:id/stages            add a stage      (programme.write)
 //   PATCH  /projects/:id/stages/:stageId   edit a stage     (programme.write)
 //   POST   /projects/:id/programme         instantiate from a template (programme.write)
@@ -47,6 +50,7 @@ const ClaimService = require('../services/ClaimService');
 const ProcurementService = require('../services/ProcurementService');
 const ContractService = require('../services/ContractService');
 const DepreciationService = require('../services/DepreciationService');
+const ProjectDeletionService = require('../services/ProjectDeletionService');
 
 router.use(authenticate);
 
@@ -81,7 +85,7 @@ router.get(
   '/',
   canReadProjects,
   [
-    query('status').optional().isIn(['draft', 'active', 'on_hold', 'completed', 'archived']),
+    query('status').optional().isIn(['draft', 'active', 'on_hold', 'completed', 'inactive', 'cancelled']),
     query('page').optional().isInt({ min: 1 }),
     query('limit').optional().isInt({ min: 1, max: 100 }),
   ],
@@ -111,7 +115,7 @@ router.post(
     body('code').trim().notEmpty().isLength({ max: 30 }).withMessage('A project code is required (max 30 chars)'),
     body('name').trim().notEmpty().withMessage('A project name is required'),
     body('contract_type').optional({ nullable: true, checkFalsy: true }).isIn(['fixed_price', 'cost_plus']),
-    body('status').optional().isIn(['draft', 'active', 'on_hold', 'completed', 'archived']),
+    body('status').optional().isIn(['draft', 'active', 'on_hold', 'completed', 'inactive', 'cancelled']),
     body('start_date').optional({ nullable: true, checkFalsy: true }).isISO8601(),
     body('due_date').optional({ nullable: true, checkFalsy: true }).isISO8601(),
     // S1.3 (18-Stage spec v3.4) — building type/unit count, declared at creation.
@@ -171,7 +175,7 @@ router.patch(
     body('code').optional().trim().notEmpty().isLength({ max: 30 }),
     body('name').optional().trim().notEmpty(),
     body('contract_type').optional({ nullable: true, checkFalsy: true }).isIn(['fixed_price', 'cost_plus']),
-    body('status').optional().isIn(['draft', 'active', 'on_hold', 'completed', 'archived']),
+    body('status').optional().isIn(['draft', 'active', 'on_hold', 'completed', 'inactive', 'cancelled']),
     body('geofence_lat').optional({ nullable: true }).isFloat({ min: -90, max: 90 }),
     body('geofence_lng').optional({ nullable: true }).isFloat({ min: -180, max: 180 }),
     body('geofence_radius_m').optional({ nullable: true }).isInt({ min: 10, max: 5000 }),
@@ -191,6 +195,22 @@ router.patch(
     }
   }
 );
+
+// ── DELETE /projects/:id ──────────────────────────────────────
+// xprojman-35 (Portal Agent, 2026-09-04) — "a project that should never have
+// existed" purge, gated to draft/no-progress-claims/no-job-awards/no-engagements
+// (re-checked inside the transaction, not just here). Cancel — a project that DID do
+// real work but was called off — is the existing PATCH { status: 'cancelled' }
+// above; it keeps every row on purpose and needs no new code.
+router.delete('/:id', canWriteProjects, async (req, res) => {
+  try {
+    await ProjectDeletionService.deleteProject({ orgId: req.auth.orgId, projectId: req.params.id });
+    await audit(req, 'project.delete', { entity: 'projects', entityId: req.params.id });
+    return res.json({ success: true, data: { id: req.params.id } });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
 
 // ── POST /projects/:id/stages ─────────────────────────────────
 router.post(

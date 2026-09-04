@@ -361,9 +361,10 @@ async function dashboardSummary({ orgId, role, userId, isOrgOwner }) {
        SUM(p.status = 'active')                                            AS active,
        SUM(p.status = 'on_hold')                                           AS on_hold,
        SUM(p.status = 'completed')                                         AS completed,
-       SUM(p.status = 'archived')                                          AS archived,
+       SUM(p.status = 'inactive')                                          AS inactive,
+       SUM(p.status = 'cancelled')                                         AS cancelled,
        SUM(p.due_date IS NOT NULL AND p.due_date < CURDATE()
-           AND p.status NOT IN ('completed','archived'))                   AS overdue
+           AND p.status NOT IN ('completed','inactive','cancelled'))       AS overdue
      FROM projects p
      WHERE p.org_id = ? AND p.is_deleted = 0${ps.sql}`,
     [orgId, ...ps.params]
@@ -417,7 +418,7 @@ async function dashboardSummary({ orgId, role, userId, isOrgOwner }) {
       `SELECT COALESCE(SUM(p.contract_value), 0) AS contract_value_total
          FROM projects p
         WHERE p.org_id = ? AND p.is_deleted = 0
-          AND p.status NOT IN ('archived')${ms.sql}`,
+          AND p.status NOT IN ('inactive','cancelled')${ms.sql}`,
       [orgId, ...ms.params]
     );
     money = { contract_value_total: Number(m.contract_value_total) };
@@ -429,7 +430,7 @@ async function dashboardSummary({ orgId, role, userId, isOrgOwner }) {
       total: n(projects.total),
       by_status: {
         draft: n(projects.draft), active: n(projects.active), on_hold: n(projects.on_hold),
-        completed: n(projects.completed), archived: n(projects.archived),
+        completed: n(projects.completed), inactive: n(projects.inactive), cancelled: n(projects.cancelled),
       },
       overdue: n(projects.overdue),
     },
