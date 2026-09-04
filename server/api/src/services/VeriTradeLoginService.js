@@ -8,6 +8,13 @@
 // 'approved', at which point it collects a normal ProjMan session token pair — same
 // shape as any other web login (`AuthService.startSession`, non-authoritative, same
 // as Portal) — exactly matching §4's "one auth model, no exception."
+//
+// GENERALIZED (xprojman-31, migration v033): this was never actually VeriTrade-
+// specific — approve() already mints an ordinary ProjMan session, not a VeriTrade
+// one. `product` ('veritrade'|'portal') is a column on the same table, not a new
+// table/service — routes/veritrade.js keeps calling this with product='veritrade'
+// (zero behaviour change for anything already live); routes/appLogin.js is the new
+// caller, for Portal and any future product.
 
 const { v4: uuidv4 } = require('uuid');
 const jwt = require('jsonwebtoken');
@@ -44,19 +51,19 @@ async function loadPendingOrThrow(sessionId) {
   return row;
 }
 
-/** POST /veritrade/login/initiate — the browser, unauthenticated. */
-async function initiate({ ip, userAgent }) {
+/** POST /veritrade/login/initiate (or /auth/app-login/initiate) — the browser, unauthenticated. */
+async function initiate({ ip, userAgent, product = 'veritrade' }) {
   const id = uuidv4();
   const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1000);
   await pool.query(
-    `INSERT INTO veritrade_login_sessions (id, requested_ip, requested_user_agent, expires_at)
-     VALUES (?, ?, ?, ?)`,
-    [id, ip || null, userAgent || null, expiresAt]
+    `INSERT INTO veritrade_login_sessions (id, product, requested_ip, requested_user_agent, expires_at)
+     VALUES (?, ?, ?, ?, ?)`,
+    [id, product, ip || null, userAgent || null, expiresAt]
   );
   return { session_id: id, code: signCode(id), expires_at: expiresAt };
 }
 
-/** GET /veritrade/login/:id/context — the App, after scanning, before deciding. */
+/** GET .../login/:id/context — the App, after scanning, before deciding. */
 async function context({ sessionId, code }) {
   verifyCode(code, sessionId);
   const row = await loadPendingOrThrow(sessionId);
@@ -65,6 +72,7 @@ async function context({ sessionId, code }) {
   }
   return {
     status: row.status,
+    product: row.product,
     requested_ip: row.requested_ip,
     requested_user_agent: row.requested_user_agent,
     requested_at: row.created_at,
@@ -72,7 +80,7 @@ async function context({ sessionId, code }) {
   };
 }
 
-/** POST /veritrade/login/:id/approve — the App user, authenticated, taps Approve. */
+/** POST .../login/:id/approve — the App user, authenticated, taps Approve. */
 async function approve({ sessionId, code, user, ip, userAgent }) {
   verifyCode(code, sessionId);
   const row = await loadPendingOrThrow(sessionId);
@@ -82,7 +90,7 @@ async function approve({ sessionId, code, user, ip, userAgent }) {
 
   // Same posture as any other web surface (Portal): never the offline single writer.
   const { session } = await AuthService.startSession({
-    user, device: { device_uid: `veritrade-web-${sessionId}`, platform: 'web' }, ip, userAgent,
+    user, device: { device_uid: `${row.product}-web-${sessionId}`, platform: 'web' }, ip, userAgent,
   });
 
   await pool.query(

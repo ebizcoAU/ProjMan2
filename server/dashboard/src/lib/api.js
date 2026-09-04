@@ -210,17 +210,32 @@ export const customersApi = {
 export const adminApi = {
   me:      ()           => request('GET', '/admin/me'),
   stats:   ()           => request('GET', '/admin/stats'),
+  activity: (params={}) => request('GET', `/admin/stats/activity${qs(params)}`),
   health:  ()           => request('GET', '/admin/system/health'),
   users:   (params={})  => request('GET', `/admin/users${qs(params)}`),
   userAction: (id, act) => request('POST', `/admin/users/${id}/${act}`),
   devices: (params={})  => request('GET', `/admin/devices${qs(params)}`),
   orgs:    (params={})  => request('GET', `/admin/orgs${qs(params)}`),
+  org:     (id)         => request('GET', `/admin/orgs/${id}`),
+  orgPayments: (id, params={}) => request('GET', `/admin/orgs/${id}/payments${qs(params)}`),
   loginLog:(params={})  => request('GET', `/admin/logs/login${qs(params)}`),
   billing: {
     subscriptions: (params={}) => request('GET', `/admin/billing/subscriptions${qs(params)}`),
     revenue:       ()          => request('GET', '/admin/billing/revenue'),
     recordPayment: (body)      => request('POST', '/admin/billing/payments', body),
     changePlan:    (orgId, body) => request('PATCH', `/admin/orgs/${orgId}/plan`, body),
+  },
+  finance: {
+    accounts:     ()          => request('GET', '/admin/finance/accounts'),
+    expenses:     (params={}) => request('GET', `/admin/finance/expenses${qs(params)}`),
+    addExpense:   (body)      => request('POST', '/admin/finance/expenses', body),
+    staff:        (params={}) => request('GET', `/admin/finance/staff${qs(params)}`),
+    addStaff:     (body)      => request('POST', '/admin/finance/staff', body),
+    payroll:      (params={}) => request('GET', `/admin/finance/payroll${qs(params)}`),
+    addPayrollRun:(body)      => request('POST', '/admin/finance/payroll', body),
+    payPayroll:   (id)        => request('POST', `/admin/finance/payroll/${id}/pay`),
+    pnl:          (params={}) => request('GET', `/admin/finance/reports/pnl${qs(params)}`),
+    balanceSheet: (params={}) => request('GET', `/admin/finance/reports/balance-sheet${qs(params)}`),
   },
 };
 function qs(params) {

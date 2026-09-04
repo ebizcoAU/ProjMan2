@@ -169,9 +169,13 @@ const TABLES = {
     columns: new Set([
       'project_id', 'stage_id', 'parent_id', 'name', 'completion',
       'start_date', 'end_date', 'assigned_to', 'predecessor_id',
+      'actual_hours', 'output_note',
       'is_deleted', 'updated_at',
     ]),
-    financialColumns: new Set(['budget_hours', 'budget_amount']),
+    // actual_hours is app-writable (xprojman-29 — on-site ground truth, unlike the office-set
+    // budget figures) but stays financial-adjacent for pull redaction, same posture as
+    // budget_hours: a role without money.read shouldn't see it on the wire either.
+    financialColumns: new Set(['budget_hours', 'budget_amount', 'actual_hours']),
   },
 
   // ── Site operations (migration_v008) ── servdesignspec §11 ─────────────────

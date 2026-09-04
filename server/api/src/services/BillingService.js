@@ -9,6 +9,7 @@
 const { v4: uuidv4 } = require('uuid');
 const pool = require('../db/pool');
 const { ServiceError } = require('./errors');
+const FinanceService = require('./FinanceService');
 
 // Every org, with its subscription row if present, else synthesised from the org's
 // plan/trial baseline. `effective_status` is what the dashboard shows.
@@ -76,6 +77,30 @@ async function revenue() {
   };
 }
 
+// One org's payment transactions — the org drill-down's billing tab. `listSubscriptions`
+// above is cross-org (one row per org); this is the reverse view, all transactions for
+// the one org an admin clicked into.
+async function listPayments({ orgId, page = 1, limit = 25 }) {
+  const [[org]] = await pool.query('SELECT id, name FROM organisations WHERE id = ? AND is_deleted = 0 LIMIT 1', [orgId]);
+  if (!org) throw new ServiceError('NOT_FOUND', 'Organisation not found', 404);
+
+  const [[{ total }]] = await pool.query('SELECT COUNT(*) AS total FROM payments WHERE org_id = ?', [orgId]);
+  const [rows] = await pool.query(
+    `SELECT p.id, p.amount, p.currency, p.status, p.method, p.period, p.paid_at, p.note,
+            p.created_at, u.full_name AS recorded_by_name
+       FROM payments p LEFT JOIN users u ON u.id = p.recorded_by
+      WHERE p.org_id = ?
+      ORDER BY COALESCE(p.paid_at, p.created_at) DESC
+      LIMIT ? OFFSET ?`,
+    [orgId, Number(limit), (Number(page) - 1) * Number(limit)]
+  );
+  return {
+    org: { id: org.id, name: org.name },
+    payments: rows,
+    pagination: { page: Number(page), limit: Number(limit), total, pages: Math.ceil(total / limit) || 1 },
+  };
+}
+
 // Record a payment (manual reconciliation). Ensures a subscription exists.
 async function recordPayment({ orgId, amount, method, period, status = 'paid', note, recordedBy }) {
   const [[org]] = await pool.query('SELECT id, plan FROM organisations WHERE id = ? AND is_deleted = 0 LIMIT 1', [orgId]);
@@ -92,12 +117,21 @@ async function recordPayment({ orgId, amount, method, period, status = 'paid', n
     );
   }
   const id = uuidv4();
+  const paidAt = status === 'paid' ? new Date() : null;
   await pool.query(
     `INSERT INTO payments (id, org_id, subscription_id, amount, status, method, period, paid_at, note, recorded_by)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, orgId, subId, amount, status, method || 'manual', period || null,
-     status === 'paid' ? new Date() : null, note || null, recordedBy || null]
+    [id, orgId, subId, amount, status, method || 'manual', period || null, paidAt, note || null, recordedBy || null]
   );
+  // Posts to eBizco's own Finance ledger (fin_journal, migration v031) — `payments`
+  // stays the primary record of what a tenant paid; this is the derived bookkeeping
+  // mirror the P&L/Balance Sheet reports read. Non-fatal: the payment itself is
+  // already committed, same posture as AttestationService's other cross-cutting
+  // side-effect emissions elsewhere in this codebase.
+  if (status === 'paid') {
+    FinanceService.postSubscriptionRevenue({ paymentId: id, amount, paidAt })
+      .catch((err) => console.warn('[FINANCE] postSubscriptionRevenue failed (non-fatal):', err.message));
+  }
   return { id, orgId, amount, status };
 }
 
@@ -126,4 +160,4 @@ async function changePlan({ orgId, plan, status, amount }) {
   return { orgId, plan, status };
 }
 
-module.exports = { listSubscriptions, revenue, recordPayment, changePlan };
+module.exports = { listSubscriptions, revenue, listPayments, recordPayment, changePlan };

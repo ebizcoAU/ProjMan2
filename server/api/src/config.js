@@ -1,6 +1,16 @@
 // ProjMan2 API — single source of truth for constants.
 // Every secret comes from the environment. Nothing sensitive is hardcoded here.
-require('dotenv').config();
+//
+// Loads `.env.development` or `.env.production` (by NODE_ENV) FIRST, then falls
+// back to a plain `.env` for anything not covered — dotenv.config() never
+// overrides an already-set var, so the env-specific file always wins when both
+// exist. Mirrors Nexus's own dev/production env-file split.
+const path = require('path');
+const envFile = process.env.NODE_ENV === 'production' ? '.env.production' : '.env.development';
+require('dotenv').config({ path: path.resolve(__dirname, '..', envFile) });
+require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') }); // legacy/override fallback
+
+const SHARED = require('../../shared/constants');
 
 // Fail loudly on boot rather than running with an undefined JWT secret, which
 // would silently sign tokens that verify against `undefined`.
@@ -23,11 +33,24 @@ module.exports = {
   },
 
   db: {
-    host:     process.env.DB_HOST || 'localhost',
-    port:     parseInt(process.env.DB_PORT, 10) || 3306,
+    host:     process.env.DB_HOST || SHARED.DB_HOST,
+    port:     parseInt(process.env.DB_PORT, 10) || SHARED.DB_PORT,
     user:     process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
     name:     process.env.DB_NAME,
+  },
+
+  // ── MQTT signalling (2026-09-03) — real-time "something changed, go pull"
+  // nudges over the top of the existing poll-based sync, same pattern as Nexus's
+  // own src/mqtt/client.js. NEVER a data-transport channel — every payload is a
+  // thin {table, action, id} pointer; the receiving client always still calls the
+  // normal REST/sync API for the actual data. See server/mqtt/client.js.
+  mqtt: {
+    enabled:  process.env.MQTT_ENABLED !== 'false', // on by default; set false to run without a broker
+    url:      process.env.MQTT_BROKER_URL || SHARED.MQTT_BROKER_URL,
+    username: process.env.MQTT_USERNAME || 'projman2-server',
+    password: process.env.MQTT_PASSWORD || '',
+    topicPrefix: process.env.MQTT_TOPIC_PREFIX || 'projman2',
   },
 
   jwt: {

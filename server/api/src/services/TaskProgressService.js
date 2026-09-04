@@ -91,4 +91,33 @@ async function verify({ orgId, projectId, taskId, actor }) {
   return { id: taskId, verified_by: actor.userId };
 }
 
-module.exports = { guardPush, verify };
+/**
+ * PATCH /projects/:id/tasks/:taskId — office-side edit of `output_note` (xprojman-32
+ * §2/§4 named this gap: Portal's task drill-down was read-only). `projects.write`,
+ * not `progress.tick`/`progress.verify` — this is plain task metadata (what the task
+ * produced, in the assignee's or PM's own words), not the tick-then-verify chain,
+ * same posture as editing any other project field from the desk.
+ */
+async function updateOfficeFields({ orgId, projectId, taskId, actor, outputNote }) {
+  if (!access.hasPermission(actor.role, 'projects.write')) {
+    throw new ServiceError('FORBIDDEN', 'Requires permission: projects.write', 403);
+  }
+  const [[task]] = await pool.query(
+    'SELECT id FROM tasks WHERE id = ? AND project_id = ? AND org_id = ? AND is_deleted = 0 LIMIT 1',
+    [taskId, projectId, orgId]
+  );
+  if (!task) throw new ServiceError('NOT_FOUND', 'Task not found', 404);
+
+  if (access.scopeClassFor(actor.role) !== 'portfolio') {
+    const member = await isProjectMember(pool, { orgId, userId: actor.userId, projectId });
+    if (!member) throw new ServiceError('NOT_FOUND', 'Task not found', 404);
+  }
+
+  await pool.query(
+    `UPDATE tasks SET output_note = ?, server_updated_at = NOW(3) WHERE id = ? AND org_id = ?`,
+    [outputNote, taskId, orgId]
+  );
+  return { id: taskId, output_note: outputNote };
+}
+
+module.exports = { guardPush, verify, updateOfficeFields };

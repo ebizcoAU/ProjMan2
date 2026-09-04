@@ -15,6 +15,7 @@ const { sendError } = require('../services/errors');
 const { audit } = require('../lib/audit');
 const AdminService = require('../services/AdminService');
 const BillingService = require('../services/BillingService');
+const FinanceService = require('../services/FinanceService');
 
 router.use(adminAuthenticate);
 
@@ -41,8 +42,17 @@ router.get('/me', wrap((req) => ({ userId: req.admin.userId, role: req.admin.rol
 
 // ── Stats & directory ─────────────────────────────────────────
 router.get('/stats', anyAdminRole, wrap(() => AdminService.stats()));
-router.get('/orgs', canMoney, [query('page').optional().isInt({ min: 1 })],
-  wrap((req) => AdminService.listOrgs({ page: req.query.page })));
+router.get('/stats/activity', anyAdminRole, [query('hours').optional().isInt({ min: 1, max: 168 })],
+  wrap((req) => AdminService.hourlyTraffic({ hours: req.query.hours })));
+router.get('/orgs', canMoney,
+  [query('page').optional().isInt({ min: 1 }), query('sort_by').optional().isString(),
+   query('sort_dir').optional().isIn(['asc', 'desc']), query('limit').optional().isInt({ min: 1, max: 200 }),
+   query('search').optional().isString()],
+  wrap((req) => AdminService.listOrgs({
+    page: req.query.page, sortBy: req.query.sort_by, sortDir: req.query.sort_dir, limit: req.query.limit || 25,
+    search: req.query.search,
+  })));
+router.get('/orgs/:id', canMoney, wrap((req) => AdminService.getOrg(req.params.id)));
 router.get('/system/health', adminOnly, wrap(() => AdminService.systemHealth()));
 
 // ── User accounts ─────────────────────────────────────────────
@@ -52,12 +62,17 @@ router.get('/system/health', adminOnly, wrap(() => AdminService.systemHealth()))
 // from a support ticket), never a general list/search.
 router.get('/users', adminOnly,
   [query('role').optional().isString(), query('status').optional().isIn(['active', 'suspended', 'disabled']),
-   query('org_id').optional().isString(), query('page').optional().isInt({ min: 1 })],
+   query('org_id').optional().isString(), query('page').optional().isInt({ min: 1 }),
+   query('scope').optional().isIn(['internal', 'tenant']),
+   query('sort_by').optional().isString(), query('sort_dir').optional().isIn(['asc', 'desc']),
+   query('limit').optional().isInt({ min: 1, max: 200 }), query('search').optional().isString()],
   async (req, res) => {
     if (validation(req, res)) return;
     try {
       const data = await AdminService.listUsers({
-        orgId: req.query.org_id, role: req.query.role, status: req.query.status, page: req.query.page || 1,
+        orgId: req.query.org_id, role: req.query.role, status: req.query.status,
+        scope: req.query.scope, sortBy: req.query.sort_by, sortDir: req.query.sort_dir,
+        page: req.query.page || 1, limit: req.query.limit || 25, search: req.query.search,
       });
       return res.json({ success: true, data });
     } catch (err) { return sendError(res, err); }
@@ -78,9 +93,13 @@ router.post('/users/:id/:action(suspend|reactivate|force-logout)', canUserAction
 // ── Devices ───────────────────────────────────────────────────
 router.get('/devices', adminOnly,
   [query('status').optional().isString(), query('role').optional().isString(),
-   query('org_id').optional().isString(), query('page').optional().isInt({ min: 1 })],
+   query('org_id').optional().isString(), query('page').optional().isInt({ min: 1 }),
+   query('sort_by').optional().isString(), query('sort_dir').optional().isIn(['asc', 'desc']),
+   query('limit').optional().isInt({ min: 1, max: 200 }), query('search').optional().isString()],
   wrap((req) => AdminService.listDevices({
-    orgId: req.query.org_id, status: req.query.status, role: req.query.role, page: req.query.page || 1,
+    orgId: req.query.org_id, status: req.query.status, role: req.query.role,
+    sortBy: req.query.sort_by, sortDir: req.query.sort_dir,
+    page: req.query.page || 1, limit: req.query.limit || 25, search: req.query.search,
   })));
 
 // ── Login transaction log ─────────────────────────────────────
@@ -131,6 +150,21 @@ router.get('/billing/subscriptions', canMoney,
 
 router.get('/billing/revenue', canMoney, wrap(() => BillingService.revenue()));
 
+// One org's payment transactions — the Organisation drill-down page's billing tab.
+router.get('/orgs/:id/payments', canMoney,
+  [query('page').optional().isInt({ min: 1 }), query('limit').optional().isInt({ min: 1, max: 200 })],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const data = await BillingService.listPayments({
+        orgId: req.params.id, page: req.query.page || 1, limit: req.query.limit || 25,
+      });
+      await audit(req, 'admin.billing.view_payments', { orgId: req.params.id, detail: { by_platform_admin: req.admin.userId } });
+      return res.json({ success: true, data });
+    } catch (err) { return sendError(res, err); }
+  }
+);
+
 router.post('/billing/payments', canMoney,
   [
     body('org_id').trim().notEmpty(),
@@ -167,5 +201,99 @@ router.patch('/orgs/:id/plan', canMoney,
     } catch (err) { return sendError(res, err); }
   }
 );
+
+// ── Finance — eBizco's own books (migration v031). Money-tier gating, same as
+// billing above: this is P&L/payroll/expenses, not a route any tenant ever reaches.
+router.get('/finance/accounts', canMoney, wrap(() => FinanceService.listAccounts()));
+
+router.get('/finance/expenses', canMoney,
+  [query('page').optional().isInt({ min: 1 }), query('limit').optional().isInt({ min: 1, max: 200 })],
+  wrap((req) => FinanceService.listExpenses({ page: req.query.page || 1, limit: req.query.limit || 25 })));
+
+router.post('/finance/expenses', canMoney,
+  [
+    body('account_id').trim().notEmpty(),
+    body('description').trim().notEmpty(),
+    body('amount').isFloat({ gt: 0 }),
+    body('tax').optional().isFloat({ min: 0 }),
+    body('incurred_at').optional().isISO8601(),
+  ],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await FinanceService.createExpense({
+        accountId: req.body.account_id, description: req.body.description,
+        amount: req.body.amount, tax: req.body.tax, incurredAt: req.body.incurred_at,
+        createdBy: req.admin.userId,
+      });
+      await audit(req, 'admin.finance.expense', { entity: 'fin_expenses', entityId: result.id, detail: { amount: req.body.amount } });
+      return res.status(201).json({ success: true, data: result });
+    } catch (err) { return sendError(res, err); }
+  }
+);
+
+router.get('/finance/staff', canMoney,
+  [query('status').optional().isIn(['active', 'inactive'])],
+  wrap((req) => FinanceService.listStaff({ status: req.query.status })));
+
+router.post('/finance/staff', canMoney,
+  [
+    body('full_name').trim().notEmpty(),
+    body('pay_type').optional().isIn(['hourly', 'salary']),
+    body('rate').optional().isFloat({ min: 0 }),
+  ],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await FinanceService.createStaff({
+        fullName: req.body.full_name, roleTitle: req.body.role_title,
+        payType: req.body.pay_type, rate: req.body.rate, userId: req.body.user_id,
+      });
+      await audit(req, 'admin.finance.staff_add', { entity: 'fin_staff', entityId: result.id, detail: { full_name: req.body.full_name } });
+      return res.status(201).json({ success: true, data: result });
+    } catch (err) { return sendError(res, err); }
+  }
+);
+
+router.get('/finance/payroll', canMoney,
+  [query('page').optional().isInt({ min: 1 })],
+  wrap((req) => FinanceService.listPayroll({ page: req.query.page || 1 })));
+
+router.post('/finance/payroll', canMoney,
+  [
+    body('staff_id').trim().notEmpty(),
+    body('period_start').isISO8601(), body('period_end').isISO8601(),
+    body('items').optional().isArray(),
+  ],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await FinanceService.createPayrollRun({
+        staffId: req.body.staff_id, periodStart: req.body.period_start, periodEnd: req.body.period_end,
+        items: (req.body.items || []).map((i) => ({ workDate: i.work_date, hours: i.hours, rateFactor: i.rate_factor })),
+        allowance: req.body.allowance, tax: req.body.tax, superAmount: req.body.super_amount,
+        createdBy: req.admin.userId,
+      });
+      await audit(req, 'admin.finance.payroll_create', { entity: 'fin_payroll', entityId: result.id, detail: { staff_id: req.body.staff_id } });
+      return res.status(201).json({ success: true, data: result });
+    } catch (err) { return sendError(res, err); }
+  }
+);
+
+router.post('/finance/payroll/:id/pay', canMoney, async (req, res) => {
+  try {
+    const result = await FinanceService.markPayrollPaid({ payrollId: req.params.id });
+    await audit(req, 'admin.finance.payroll_pay', { entity: 'fin_payroll', entityId: req.params.id });
+    return res.json({ success: true, data: result });
+  } catch (err) { return sendError(res, err); }
+});
+
+router.get('/finance/reports/pnl', canMoney,
+  [query('from').optional().isISO8601(), query('to').optional().isISO8601()],
+  wrap((req) => FinanceService.profitAndLoss({ from: req.query.from, to: req.query.to })));
+
+router.get('/finance/reports/balance-sheet', canMoney,
+  [query('as_of').optional().isISO8601()],
+  wrap((req) => FinanceService.balanceSheet({ asOf: req.query.as_of })));
 
 module.exports = router;

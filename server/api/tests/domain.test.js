@@ -173,6 +173,38 @@ async function call(method, path, body, token) {
   ok('supervisor creates task via push', taskPush.status === 200 && taskPush.json.applied === true,
     JSON.stringify(taskPush.json));
 
+  // ── App push of actual_hours/output_note (v030, xprojman-29) — on-site ground truth,
+  // unlike budget_hours/budget_amount which stay office-set (redacted, not app-writable). ──
+  const hoursPush = await call('POST', '/sync/push', {
+    table_name: 'tasks', operation: 'update',
+    data: { id: taskId, actual_hours: 6.5, output_note: 'Slab poured, cured overnight', updated_at: Date.now() },
+  }, supToken);
+  ok('supervisor pushes actual_hours + output_note', hoursPush.status === 200 && hoursPush.json.applied === true,
+    JSON.stringify(hoursPush.json));
+
+  // Pull from a DIFFERENT device (web login, same supervisor user) — the paired app
+  // device that pushed the update above is echo-skipped on its own next pull (by
+  // design, §"echo skip" in the registry), so re-pulling on supToken would find
+  // nothing to assert against, vacuously passing a redaction check that never ran.
+  const supWebLogin = await call('POST', '/auth/login', {
+    email: `sally${stamp}@example.com`, password: 'hunter2hunter2',
+    device: { device_uid: `sally-web-${stamp}`, platform: 'web', device_name: 'Sally web' },
+  });
+  const supWebToken = supWebLogin.json.data?.accessToken;
+  const supTaskPull = await call('GET', '/sync/pull?since=0', undefined, supWebToken);
+  const taskRows = (supTaskPull.json.changes || []).filter(c => c.table_name === 'tasks' && c.data.id === taskId);
+  ok('a different device for the same non-money role sees the task row',
+    taskRows.length > 0, JSON.stringify(taskRows));
+  ok('supervisor pull REDACTS actual_hours (no money.read)',
+    taskRows.length > 0 && taskRows.every(c => !('actual_hours' in c.data)));
+  ok('supervisor pull KEEPS output_note (not a financial column)',
+    taskRows.some(c => c.data.output_note === 'Slab poured, cured overnight'));
+
+  const adminTaskPull = await call('GET', '/sync/pull?since=0', undefined, admin);
+  const adminTaskRows = (adminTaskPull.json.changes || []).filter(c => c.table_name === 'tasks' && c.data.id === taskId);
+  ok('admin (money.read) pull KEEPS actual_hours',
+    adminTaskRows.some(c => Number(c.data.actual_hours) === 6.5), JSON.stringify(adminTaskRows));
+
   // ── Cross-org isolation for the new tables ──
   const reg2 = await call('POST', '/auth/register', {
     organisation: { name: `Rival Builders ${stamp}` },

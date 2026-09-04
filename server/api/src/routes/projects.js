@@ -646,6 +646,31 @@ router.post('/:id/tasks/:taskId/verify', canVerifyProgress, async (req, res) => 
   }
 });
 
+// ── PATCH /projects/:id/tasks/:taskId  office-side output_note edit (xprojman-32) ─
+// `projects.write`, not progress.tick/verify — plain task metadata, not the
+// tick-then-verify chain. Portal's task drill-down was read-only until this landed.
+router.patch(
+  '/:id/tasks/:taskId',
+  canWriteProjects,
+  [body('output_note').isString().withMessage('output_note is required')],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await TaskProgressService.updateOfficeFields({
+        orgId: req.auth.orgId, projectId: req.params.id, taskId: req.params.taskId,
+        actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+        outputNote: req.body.output_note,
+      });
+      await audit(req, 'task.update', {
+        entity: 'tasks', entityId: req.params.taskId, detail: { project_id: req.params.id, fields: ['output_note'] },
+      });
+      return res.json({ success: true, data: result });
+    } catch (err) {
+      return sendError(res, err);
+    }
+  }
+);
+
 // ── Commercial P7a — Cost Plan / estimate lines (xprojman-10 §4) ────────────────
 // Writes gated by money.write; reads by money.read (enforced in EstimateService).
 //   GET    /:id/cost-plan                 plan header + lines + total
@@ -840,6 +865,7 @@ router.post(
   [
     body('amount').isFloat({ min: 0 }).withMessage('amount must be a non-negative number'),
     body('stage_id').optional({ nullable: true }).isString(),
+    body('task_id').optional({ nullable: true }).isString(),
     body('supplier_id').optional({ nullable: true }).isString(),
     body('supplier_name').optional({ nullable: true }).isString(),
     body('description').optional({ nullable: true }).isString(),
@@ -851,7 +877,8 @@ router.post(
       const result = await ProcurementService.createPurchaseOrder({
         orgId: req.auth.orgId, projectId: req.params.id,
         actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
-        stageId: req.body.stage_id, supplierId: req.body.supplier_id, supplierName: req.body.supplier_name,
+        stageId: req.body.stage_id, taskId: req.body.task_id, supplierId: req.body.supplier_id,
+        supplierName: req.body.supplier_name,
         description: req.body.description, amount: req.body.amount,
         subcontractorEngagementId: req.body.subcontractor_engagement_id,
       });
@@ -903,6 +930,7 @@ router.post(
     body('amount').isFloat({ min: 0 }).withMessage('amount must be a non-negative number'),
     body('po_id').optional({ nullable: true }).isString(),
     body('stage_id').optional({ nullable: true }).isString(),
+    body('task_id').optional({ nullable: true }).isString(),
     body('supplier_id').optional({ nullable: true }).isString(),
     body('supplier_name').optional({ nullable: true }).isString(),
     body('subcontractor_engagement_id').optional({ nullable: true }).isString(),
@@ -913,7 +941,8 @@ router.post(
       const result = await ProcurementService.createSupplierInvoice({
         orgId: req.auth.orgId, projectId: req.params.id,
         actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
-        poId: req.body.po_id, stageId: req.body.stage_id, supplierId: req.body.supplier_id,
+        poId: req.body.po_id, stageId: req.body.stage_id, taskId: req.body.task_id,
+        supplierId: req.body.supplier_id,
         supplierName: req.body.supplier_name, invoiceNumber: req.body.invoice_number,
         amount: req.body.amount, subcontractorEngagementId: req.body.subcontractor_engagement_id,
       });

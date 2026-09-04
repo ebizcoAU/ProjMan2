@@ -27,10 +27,11 @@ const access = require('../lib/access');
 const storage = require('../lib/storage');
 const { projectScope } = require('../lib/scope');
 
-// The canonical sets from xprojman-21 §P2.
-const ENTITY_TYPES = ['inspection_item', 'defect', 'certificate', 'site_diary', 'delivery'];
+// The canonical sets from xprojman-21 §P2. `task` added v030 (xprojman-29) — task-level
+// drawings/reports reuse this exact mechanism rather than a new store.
+const ENTITY_TYPES = ['inspection_item', 'defect', 'certificate', 'site_diary', 'delivery', 'task'];
 const KINDS = ['inspection_photo', 'defect_photo', 'certificate', 'site_diary_photo',
-               'delivery_docket', 'general'];
+               'delivery_docket', 'task_document', 'general'];
 // Convenience only: when the client names an entity_type but no kind, this is the kind it meant.
 // The pairing is NOT enforced beyond this — a surface may legitimately attach a `general` file.
 const DEFAULT_KIND = {
@@ -39,6 +40,7 @@ const DEFAULT_KIND = {
   certificate: 'certificate',
   site_diary: 'site_diary_photo',
   delivery: 'delivery_docket',
+  task: 'task_document',
 };
 
 // The document read capability: `projects.read` (every role with a project-detail surface) OR the

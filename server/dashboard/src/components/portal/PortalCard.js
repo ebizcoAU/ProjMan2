@@ -1,5 +1,5 @@
 // PortalCard.js — card wrapper. Ported from Nexus portal/_components/PortalCard.js.
-export function PortalCard({ children, title, className = '' }) {
+export function PortalCard({ children, title, subtitle, className = '' }) {
   return (
     <div
       className={className}
@@ -11,18 +11,16 @@ export function PortalCard({ children, title, className = '' }) {
         marginBottom: 12,
       }}
     >
-      {title && (
+      {(title || subtitle) && (
         <div
           style={{
-            fontSize: 14,
-            fontWeight: 600,
-            color: 'var(--text)',
             marginBottom: 12,
             borderBottom: '1px solid var(--b2)',
             paddingBottom: 8,
           }}
         >
-          {title}
+          {title && <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{title}</div>}
+          {subtitle && <div style={{ fontSize: 12, color: 'var(--dim)', marginTop: 2 }}>{subtitle}</div>}
         </div>
       )}
       {children}

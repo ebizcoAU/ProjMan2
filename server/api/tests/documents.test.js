@@ -218,6 +218,20 @@ const PDF = Buffer.concat([Buffer.from('%PDF-1.7\n', 'ascii'), crypto.randomByte
   const noFile = await postDoc({ client_ref: uuid(), entity_type: 'defect', entity_id: uuid() }, {}, pm);
   ok('a file is required', noFile.status === 400, JSON.stringify(noFile.json));
 
+  // ── 'task' entity_type (v030, xprojman-29) — task drawings/reports reuse this exact
+  // mechanism, no new store. Same soft-ref-before-sync behaviour as inspection_item above.
+  const taskDocId = uuid();
+  const taskDocRef = uuid();
+  const taskDoc = await postDoc({
+    client_ref: taskDocRef, entity_type: 'task', entity_id: taskDocId, project_id: projId,
+  }, { bytes: PNG, filename: 'drawing.png', type: 'image/png' }, pm);
+  ok('POST /documents accepts entity_type=task', taskDoc.status === 201, JSON.stringify(taskDoc.json));
+  ok('kind defaults from entity_type (task → task_document)',
+    taskDoc.json.data.kind === 'task_document', taskDoc.json.data.kind);
+  const taskDocList = await call('GET', `/documents?entity_type=task&entity_id=${taskDocId}`, undefined, pm);
+  ok('GET /documents?entity_type=task lists it back',
+    (taskDocList.json.data.documents || []).some((d) => d.document_id === taskDoc.json.data.document_id));
+
   const reg2 = await call('POST', '/auth/register', {
     organisation: { name: `Other ${s}` },
     user: { full_name: 'Other PM', email: `other${s}@x.com`, password: 'hunter2hunter2' },

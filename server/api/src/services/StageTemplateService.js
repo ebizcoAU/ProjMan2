@@ -38,7 +38,16 @@ async function getTemplate({ orgId, id }) {
        FROM stage_template_items WHERE template_id = ? ORDER BY seq`,
     [id]
   );
-  return { template: tpl, items };
+  // xprojman-32 — the task library, one level under the stage items above. Included
+  // here (not a separate endpoint) so the one template read gives the Portal task
+  // drill-down everything it needs to resolve a tasks.template_item_id back to its
+  // code/actor/hold-point metadata, same shape as `items` resolves project_stages.
+  const [taskItems] = await pool.query(
+    `SELECT id, stage_seq, seq, code, name, actor_role, is_hold_point
+       FROM stage_task_templates WHERE template_id = ? ORDER BY stage_seq, seq`,
+    [id]
+  );
+  return { template: tpl, items, taskItems };
 }
 
 /**
@@ -92,6 +101,23 @@ async function instantiate({ orgId, projectId, templateId, actorUserId }) {
       await HoldPointService.seedForStage({
         conn, orgId, projectId, stageId, seq: it.seq, orgState: org?.state,
       });
+
+      // xprojman-32 (2026-09-03, owner directive) — the task library, one level
+      // under stage_template_items. Same atomic-at-creation timing as the stages
+      // themselves (§ decision: match current behaviour, don't open the S9.10
+      // seed-timing question here — serverdesignspecification.md §14.3).
+      const [taskTemplates] = await conn.query(
+        `SELECT id, seq, code, name, actor_role FROM stage_task_templates
+          WHERE template_id = ? AND stage_seq = ? ORDER BY seq`,
+        [templateId, it.seq]
+      );
+      for (const t of taskTemplates) {
+        await conn.query(
+          `INSERT INTO tasks (id, org_id, project_id, stage_id, name, template_item_id)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [uuidv4(), orgId, projectId, stageId, `${t.code} ${t.name}`, t.id]
+        );
+      }
     }
     await conn.commit();
   } catch (err) {

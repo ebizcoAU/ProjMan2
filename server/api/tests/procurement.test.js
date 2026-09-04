@@ -126,6 +126,43 @@ async function pairAs(admin, userId, role, uid) {
   ok('a supplier invoice writes NO project_payments row (not a TPAR contractor payment)',
     payCount === 0, `project_payments rows=${payCount}`);
 
+  // ── task_id attribution (v030, xprojman-29) — task-level cost centre ──
+  // No REST create endpoint for tasks (app-owned via sync push, §3 domain core) — insert
+  // directly, same as this file already does for project_payments verification above.
+  const taskAId = crypto.randomUUID();
+  await pool.query(
+    `INSERT INTO tasks (id, org_id, project_id, stage_id, name, completion)
+     VALUES (?, ?, ?, ?, 'Pour slab', 0)`,
+    [taskAId, orgId, A.projId, s1]);
+
+  const badTaskPo = await call('POST', `/projects/${A.projId}/purchase-orders`,
+    { stage_id: s1, task_id: crypto.randomUUID(), supplier_id: supplierId, amount: 1000, description: 'Steel' }, pm);
+  ok('a PO with a task_id from nowhere is refused (VALIDATION_ERROR)',
+    badTaskPo.status === 422, JSON.stringify(badTaskPo.json));
+
+  const taskPo = await call('POST', `/projects/${A.projId}/purchase-orders`,
+    { stage_id: s1, task_id: taskAId, supplier_id: supplierId, amount: 300, description: 'Rebar' }, pm);
+  ok('PM raises a PO against a real task_id', taskPo.status === 201, JSON.stringify(taskPo.json));
+  const taskPoId = taskPo.json.data.id;
+
+  const taskInv = await call('POST', `/projects/${A.projId}/supplier-invoices`,
+    { po_id: taskPoId, invoice_number: 'INV-TASK-1', amount: 280 }, pm);
+  ok('an invoice matched to a task-linked PO inherits the task_id', taskInv.status === 201, JSON.stringify(taskInv.json));
+  const [[taskInvRow]] = await pool.query(
+    'SELECT task_id FROM supplier_invoices WHERE id = ?', [taskInv.json.data.id]);
+  ok('invoice.task_id === the PO\'s task_id (inherited, not caller-supplied)',
+    taskInvRow.task_id === taskAId, JSON.stringify(taskInvRow));
+
+  const directTaskInv = await call('POST', `/projects/${A.projId}/supplier-invoices`,
+    { stage_id: s1, task_id: taskAId, supplier_id: supplierId, invoice_number: 'INV-TASK-2', amount: 150 }, pm);
+  ok('a direct (no po_id) invoice accepts a real task_id', directTaskInv.status === 201, JSON.stringify(directTaskInv.json));
+
+  const [[taskCostRow]] = await pool.query(
+    "SELECT SUM(amount) AS total FROM supplier_invoices WHERE task_id = ? AND status IN ('matched','approved')",
+    [taskAId]);
+  ok('outsourced task cost is a live SUM over task-linked invoices (=280, the direct one is only "received")',
+    Number(taskCostRow.total) === 280, `total=${taskCostRow.total}, expected the matched invoice only — the direct one stays 'received' until approved, same status gate as everywhere else`);
+
   // ── 4. independent_fixed: the §7.2.1 row-level redaction (the correctness fix) ──
   const B = await newProject('B');
   await awardBuilder(B.projId, 'independent_fixed');

@@ -21,6 +21,7 @@ const StageProgressionService = require('./StageProgressionService');
 const SiteOpsService = require('./SiteOpsService');
 const QualityOpsService = require('./QualityOpsService');
 const TaskProgressService = require('./TaskProgressService');
+const mqttClient = require('../mqtt/client');
 
 const SYNC_DEBUG = process.env.SYNC_DEBUG === 'true';
 
@@ -261,6 +262,11 @@ async function pushRecord({ orgId, userId, deviceUid, role, surface, wireName, o
     if (SYNC_DEBUG) {
       console.log(`[SYNC/PUSH] ${wireName}.${operation} id=${incoming.id} org=${orgId} data=`, maskSensitive(safe));
     }
+    // Real-time signalling (2026-09-03) — tell every OTHER device/browser watching
+    // this org that fresh data exists, so they pull now instead of at their next
+    // scheduled poll. Fire-and-forget, never awaited: a broker hiccup must never
+    // slow down or fail the push itself, which has already durably committed above.
+    mqttClient.nudgeSync(orgId, { table: wireName, action: operation, recordId: incoming.id });
     return { serverId: incoming.id, applied: true };
   } catch (err) {
     if (err instanceof ServiceError) throw err;

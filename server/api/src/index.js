@@ -1,13 +1,13 @@
 // ProjMan2 API — entry point.
 //
 // Ported from Nexus `src/index.js`, minus everything that belonged to the sell side:
-// the eInvoice worker, MQTT broker client, Skills Server proxy, CGPA compile proxy,
-// the billing and auto-overdue crons, the velo storefront, and the ~20 POS route
-// modules. What remains is identity, devices, pairing, sync and the org surface.
+// the eInvoice worker, Skills Server proxy, CGPA compile proxy, the billing and
+// auto-overdue crons, the velo storefront, and the ~20 POS route modules. The MQTT
+// client came back 2026-09-03 (owner directive) — same signalling-only role Nexus's
+// own had, wired into `src/mqtt/client.js`, not this file re-implementing it. What
+// remains otherwise is identity, devices, pairing, sync and the org surface.
 //
 // Base URL: /api/v1  ·  dev http://localhost:5100/api/v1
-
-require('dotenv').config();
 
 const express   = require('express');
 const helmet    = require('helmet');
@@ -15,11 +15,15 @@ const cors      = require('cors');
 const morgan    = require('morgan');
 const rateLimit = require('express-rate-limit');
 
+// `config` loads the right .env file (dev/production split) as a side effect of
+// being required — must happen before anything else touches process.env.
 const config = require('./config');
+const mqttClient = require('./mqtt/client');
 
 const authRoutes     = require('./routes/auth');
 const oauthRoutes    = require('./routes/oauth');
 const recoveryRoutes = require('./routes/recovery');
+const appLoginRoutes = require('./routes/appLogin');
 const devicesRoutes  = require('./routes/devices');
 const pairingRoutes  = require('./routes/pairing');
 const syncRoutes     = require('./routes/sync');
@@ -40,6 +44,18 @@ const veritradeRoutes = require('./routes/veritrade');
 const app = express();
 
 app.set('trust proxy', 1); // behind nginx in production — req.ip must be the real client
+
+// xprojman-34 (2026-09-04) — this is a private, per-user, frequently-mutated JSON
+// API, not a document server. Express's default weak ETag + conditional-GET was
+// letting a browser's HTTP cache serve a stale body via 304 on repeat GETs (root-
+// caused: the owner's Project List showing 0 projects for an account with 3 real
+// ones, because /organisation and /projects kept resolving to an old cached
+// response instead of a live one). Disabling both, globally: nothing in this API
+// currently sets its own Cache-Control (checked, including VeriTrade's public
+// teaser/search routes — their "cacheable, indexable" is a design note, not yet
+// an implemented header), so this closes the whole bug class with no regression.
+app.disable('etag');
+app.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 
 app.use(helmet());
 app.use(cors({ origin: config.cors.origins, credentials: true }));
@@ -132,6 +148,7 @@ app.get('/internal/health', async (req, res) => {
 app.use('/api/v1/auth',          authRoutes);
 app.use('/api/v1/auth',          oauthRoutes);
 app.use('/api/v1/auth/recovery', recoveryRoutes);
+app.use('/api/v1/auth/app-login', appLoginRoutes); // xprojman-31 — Portal login via the App's QR scan
 app.use('/api/v1/devices',       devicesRoutes);
 app.use('/api/v1/pairing',       pairingRoutes);
 app.use('/api/v1/sync',          syncRoutes);
@@ -173,6 +190,7 @@ const access = require('./lib/access');
 
 async function start() {
   await access.loadMatrix();
+  mqttClient.connect(); // fire-and-forget — a broker outage must never block boot
   app.listen(config.server.port, '0.0.0.0', () => {
     console.log(`\n🏗  ProjMan2 API → http://localhost:${config.server.port}/api/v1`);
     console.log(`   DB:  ${config.db.name} on ${config.db.host}`);
@@ -180,9 +198,13 @@ async function start() {
     console.log(`   Access: matrix v${access.matrixVersion()} loaded (${access.allRoles().length} roles)`);
     console.log(`   Email: ${config.email.enabled ? 'enabled' : 'DISABLED (codes log to console in dev)'}`);
     console.log(`   SMS:   ${config.sms.enabled ? `enabled (${config.sms.provider})` : 'DISABLED (codes log to console in dev)'}`);
-    console.log(`   ABN:   ${config.abn.abrGuid ? 'checksum + ABR lookup' : 'checksum only (no ABR_GUID)'}\n`);
+    console.log(`   ABN:   ${config.abn.abrGuid ? 'checksum + ABR lookup' : 'checksum only (no ABR_GUID)'}`);
+    console.log(`   MQTT:  ${config.mqtt.enabled ? config.mqtt.url : 'disabled (MQTT_ENABLED=false)'}\n`);
   });
 }
+
+process.on('SIGTERM', () => { mqttClient.disconnect(); process.exit(0); });
+process.on('SIGINT',  () => { mqttClient.disconnect(); process.exit(0); });
 
 start().catch((err) => {
   console.error('FATAL: failed to start —', err.message);

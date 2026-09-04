@@ -1,4 +1,9 @@
-// /admin/billing — SaaS billing: subscriptions, revenue, record payment, change plan.
+// /admin/finance/sales — Sale Records. For a SaaS company, "sales" is subscription
+// revenue collected from tenant orgs — reuses the existing subscriptions/payments
+// data (BillingService, unchanged) rather than a new sales/salesitem schema; every
+// 'paid' record here also posts to eBizco's own Finance ledger (fin_journal,
+// FinanceService.postSubscriptionRevenue), which is what feeds Profit & Loss.
+// Moved here from the old flat /admin/billing page, content otherwise unchanged.
 'use client';
 
 import { useState } from 'react';
@@ -14,7 +19,7 @@ const money = (v) => v == null ? '—' : Number(v).toLocaleString('en-AU', { sty
 const STATUS_BADGE = { active: 'badge-active', trial: 'badge-pending', past_due: 'badge-revoked', cancelled: 'badge-muted' };
 const PLANS = ['trial', 'starter', 'builder', 'enterprise'];
 
-export default function AdminBilling() {
+export default function AdminFinanceSales() {
   const subs = usePortalData(() => adminApi.billing.subscriptions({ limit: 100 }));
   const rev = usePortalData(() => adminApi.billing.revenue());
   const [pay, setPay] = useState(null);   // org being paid
@@ -40,7 +45,8 @@ export default function AdminBilling() {
 
   return (
     <div style={{ padding: 24, maxWidth: 1100 }}>
-      <h1 style={{ fontFamily: 'var(--fh)', fontSize: 24, fontWeight: 700, marginBottom: 20 }}>Billing</h1>
+      <h1 style={{ fontFamily: 'var(--fh)', fontSize: 24, fontWeight: 700, marginBottom: 4 }}>Sale Records</h1>
+      <div style={{ fontSize: 13, color: 'var(--dim)', marginBottom: 20 }}>Subscription revenue from tenant organisations — recording a payment here also posts to the Finance ledger.</div>
 
       {(subs.error || err) && <div style={{ marginBottom: 12 }}><PortalError message={subs.error || err} /></div>}
 

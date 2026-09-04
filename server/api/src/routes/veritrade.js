@@ -142,7 +142,7 @@ router.post('/profiles/:userId/engage', authenticate, async (req, res) => {
 // POST /veritrade/login/initiate — the browser, unauthenticated.
 router.post('/login/initiate', async (req, res) => {
   try {
-    const data = await VeriTradeLoginService.initiate({ ip: req.ip, userAgent: req.get('user-agent') });
+    const data = await VeriTradeLoginService.initiate({ ip: req.ip, userAgent: req.get('user-agent'), product: 'veritrade' });
     return res.status(201).json({ success: true, data });
   } catch (err) {
     return sendError(res, err);

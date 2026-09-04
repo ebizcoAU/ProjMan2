@@ -12,12 +12,24 @@ import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { getToken, clearSession, authApi, adminApi } from '@/lib/api';
 
+// `children` = an always-expanded submenu group (Finance) rather than a single link —
+// eBizco's own books (payroll/expenses/P&L/balance sheet), separate from a tenant
+// org's own accounting, which lives entirely in that org's own Portal, not here.
 const NAV = [
   { href: '/admin',          label: 'Overview',       exact: true, roles: ['admin', 'account', 'staff'] },
   { href: '/admin/users',    label: 'Accounts',        roles: ['admin', 'account', 'staff'] },
   { href: '/admin/devices',  label: 'Devices',         roles: ['admin'] },
   { href: '/admin/orgs',     label: 'Organisations',   roles: ['admin', 'account'] },
-  { href: '/admin/billing',  label: 'Billing',         roles: ['admin', 'account'] },
+  {
+    label: 'Finance', roles: ['admin', 'account'],
+    children: [
+      { href: '/admin/finance/pnl',            label: 'Profit & Loss' },
+      { href: '/admin/finance/balance-sheet',  label: 'Balance Sheet' },
+      { href: '/admin/finance/payroll',        label: 'Payroll' },
+      { href: '/admin/finance/expenses',       label: 'Expenses' },
+      { href: '/admin/finance/sales',          label: 'Sale Records' },
+    ],
+  },
   { href: '/admin/logs',     label: 'Login Log',       roles: ['admin', 'staff'] },
 ];
 
@@ -62,7 +74,30 @@ export default function AdminLayout({ children }) {
           </div>
         </div>
         <nav style={{ flex: 1, padding: '8px 0' }}>
-          {nav.map(n => {
+          {nav.map((n) => {
+            if (n.children) {
+              const groupActive = n.children.some((c) => path.startsWith(c.href));
+              return (
+                <div key={n.label}>
+                  <div style={{
+                    padding: '9px 16px 4px', fontSize: 11, letterSpacing: '.06em', textTransform: 'uppercase',
+                    fontWeight: 700, color: groupActive ? 'var(--blue)' : 'var(--muted)',
+                  }}>{n.label}</div>
+                  {n.children.map((c) => {
+                    const active = path.startsWith(c.href);
+                    return (
+                      <Link key={c.href} href={c.href} style={{
+                        display: 'block', padding: '7px 16px 7px 26px', textDecoration: 'none', fontSize: 13,
+                        fontWeight: active ? 700 : 500,
+                        color: active ? 'var(--blue)' : 'var(--dim)',
+                        background: active ? 'var(--bluedim)' : 'transparent',
+                        borderRight: `3px solid ${active ? 'var(--blue)' : 'transparent'}`,
+                      }}>{c.label}</Link>
+                    );
+                  })}
+                </div>
+              );
+            }
             const active = n.exact ? path === n.href : path.startsWith(n.href);
             return (
               <Link key={n.href} href={n.href} style={{

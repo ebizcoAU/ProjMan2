@@ -4,14 +4,13 @@
 
 import { PortalCard }    from '@/components/portal/PortalCard';
 import { PortalKpi }     from '@/components/portal/PortalKpi';
-import { PortalTable }   from '@/components/portal/PortalTable';
 import { PortalEmpty }   from '@/components/portal/PortalEmpty';
 import { PortalError }   from '@/components/portal/PortalError';
+import { PortalHourlyChart } from '@/components/portal/PortalHourlyChart';
 import { usePortalData } from '@/components/portal/usePortalData';
 import { adminApi }      from '@/lib/api';
 
 const money = (v) => Number(v || 0).toLocaleString('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 });
-const fmtWhen = (v) => v ? new Date(v).toLocaleString('en-AU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
 
 function Bars({ data, keyField = 'role', color = 'var(--blue)' }) {
   const max = Math.max(1, ...data.map(d => d.count));
@@ -38,13 +37,12 @@ export default function AdminOverview() {
 
   const role = me.data?.data?.role;
   const seesMoney = role === 'admin' || role === 'account';
-  const seesLoginLog = role === 'admin' || role === 'staff';
 
   // Only fetched once we know the role, and only for a role that can reach it — an
   // 'account'/'staff' session must never even attempt the other's 403'd endpoint
   // (matches routes/admin.js's requireAdminRole lists, §2/§3 addendum).
   const rev = usePortalData(() => (seesMoney ? adminApi.billing.revenue() : Promise.resolve(null)), [seesMoney]);
-  const log = usePortalData(() => (seesLoginLog ? adminApi.loginLog({ limit: 12 }) : Promise.resolve(null)), [seesLoginLog]);
+  const activity = usePortalData(() => adminApi.activity({ hours: 24 }));
 
   const s = data?.data;
 
@@ -77,24 +75,18 @@ export default function AdminOverview() {
             </PortalCard>
           </div>
 
-          {seesLoginLog && (
-            <PortalCard title="Recent authentication events">
-              {log.data?.data?.entries?.length ? (
-                <PortalTable
-                  headers={['When', 'User', 'Org', 'Method', 'Outcome', 'IP', 'Location']}
-                  rows={log.data.data.entries.map(e => [
-                    <span key="w" style={{ fontFamily: 'var(--fm)', fontSize: 12, whiteSpace: 'nowrap' }}>{fmtWhen(e.at)}</span>,
-                    e.email || '—',
-                    e.organisation || '—',
-                    e.method,
-                    <span key="o" className={`badge ${e.outcome === 'failed' ? 'badge-revoked' : 'badge-active'}`}>{e.outcome}</span>,
-                    <span key="i" style={{ fontFamily: 'var(--fm)', fontSize: 12 }}>{e.ip || '—'}</span>,
-                    e.location?.city ? `${e.location.city}, ${e.location.country}` : (e.location?.country || '—'),
-                  ])}
-                />
-              ) : <PortalEmpty message="No recent events" />}
-            </PortalCard>
-          )}
+          <PortalCard title="Traffic — sessions started per hour (last 24h)">
+            <div style={{ fontSize: 12, color: 'var(--dim)', marginBottom: 10 }}>
+              ProjMan2 has no MQTT broker or other push layer — dropped from Nexus on
+              purpose. App, Portal, Dashboard and VeriTrade all stay current by polling;
+              this chart is the honest &ldquo;how busy is the platform&rdquo; signal in
+              that world, not a broker connection count.
+            </div>
+            {activity.error ? <PortalError message={activity.error} />
+              : activity.data?.data?.series?.length
+                ? <PortalHourlyChart series={activity.data.data.series} color="var(--brand)" />
+                : <PortalEmpty message="Loading…" />}
+          </PortalCard>
         </>
       )}
     </div>

@@ -74,22 +74,54 @@ async function stats() {
   };
 }
 
+// Sortable-column allowlists — never interpolate a caller-given column name directly,
+// map through one of these or fall back to the table's natural order.
+function orderClause(sortBy, sortDir, allowed, fallback) {
+  // `fallback` already carries its own direction (e.g. 'o.created_at DESC', or a
+  // multi-column tiebreak like 'd.last_seen_at DESC, d.paired_at DESC') — only a
+  // caller-requested column additionally takes the asc/desc toggle.
+  if (!sortBy || !allowed[sortBy]) return `ORDER BY ${fallback}`;
+  const dir = String(sortDir).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+  return `ORDER BY ${allowed[sortBy]} ${dir}`;
+}
+
+const USER_SORT = {
+  name: 'u.full_name', email: 'u.email', org: 'o.name', role: 'u.role',
+  status: 'u.status', last_login: 'u.last_login_at', created: 'u.created_at',
+};
+
 // ── User accounts (all orgs) ──────────────────────────────────────────────────
-async function listUsers({ orgId, role, status, page = 1, limit = 25 }) {
+// `scope`: 'internal' (platform-ops accounts, @projman.internal — see
+// scripts/seed-admin-team.js) | 'tenant' (everyone else) | omitted = both, unfiltered.
+// The dashboard calls this twice (once per scope) to render two grouped, independently
+// paginated tables — internal accounts are a handful of platform-ops rows and would
+// otherwise be lost inside hundreds of tenant rows with no way to tell them apart.
+async function listUsers({ orgId, role, status, scope, search, sortBy, sortDir, page = 1, limit = 25 }) {
   const where = ['u.is_deleted = 0'];
   const params = [];
   if (orgId)  { where.push('u.org_id = ?'); params.push(orgId); }
   if (role)   { where.push('u.role = ?');   params.push(role); }
   if (status) { where.push('u.status = ?'); params.push(status); }
+  if (scope === 'internal') where.push(`u.email LIKE '%@projman.internal'`);
+  if (scope === 'tenant')   where.push(`u.email NOT LIKE '%@projman.internal'`);
+  // Free-text: email, phone, role or organisation — one box, matched across all four
+  // rather than making the caller pick which field they meant.
+  if (search && search.trim()) {
+    where.push('(u.email LIKE ? OR u.mobile LIKE ? OR u.role LIKE ? OR o.name LIKE ? OR u.full_name LIKE ?)');
+    const like = `%${search.trim()}%`;
+    params.push(like, like, like, like, like);
+  }
   const whereSql = where.join(' AND ');
+  const order = orderClause(sortBy, sortDir, USER_SORT, 'u.created_at DESC');
 
-  const [[{ total }]] = await pool.query(`SELECT COUNT(*) AS total FROM users u WHERE ${whereSql}`, params);
+  const [[{ total }]] = await pool.query(
+    `SELECT COUNT(*) AS total FROM users u JOIN organisations o ON o.id = u.org_id WHERE ${whereSql}`, params);
   const [rows] = await pool.query(
-    `SELECT u.id, u.email, u.full_name, u.role, u.status, u.mobile_verified,
+    `SELECT u.id, u.email, u.mobile, u.full_name, u.role, u.status, u.mobile_verified,
             u.last_login_at, u.created_at, o.id AS org_id, o.name AS org_name
        FROM users u JOIN organisations o ON o.id = u.org_id
       WHERE ${whereSql}
-      ORDER BY u.created_at DESC
+      ${order}
       LIMIT ? OFFSET ?`,
     [...params, Number(limit), (Number(page) - 1) * Number(limit)]
   );
@@ -115,23 +147,35 @@ async function userAction({ userId, action }) {
   return { userId, action };
 }
 
+const DEVICE_SORT = {
+  name: 'd.device_name', org: 'o.name', user: 'u.full_name', platform: 'd.platform',
+  role: 'd.role', status: 'd.status', last_seen: 'd.last_seen_at', paired: 'd.paired_at',
+};
+
 // ── Devices (all orgs) ────────────────────────────────────────────────────────
-async function listDevices({ orgId, status, role, page = 1, limit = 25 }) {
+async function listDevices({ orgId, status, role, search, sortBy, sortDir, page = 1, limit = 25 }) {
   const where = ['d.is_deleted = 0'];
   const params = [];
   if (orgId)  { where.push('d.org_id = ?'); params.push(orgId); }
   if (status) { where.push('d.status = ?'); params.push(status); }
   if (role)   { where.push('d.role = ?');   params.push(role); }
+  // Free-text: device name, paired user, organisation, role or platform.
+  if (search && search.trim()) {
+    where.push('(d.device_name LIKE ? OR u.full_name LIKE ? OR o.name LIKE ? OR d.role LIKE ? OR d.platform LIKE ?)');
+    const like = `%${search.trim()}%`;
+    params.push(like, like, like, like, like);
+  }
   const whereSql = where.join(' AND ');
+  const order = orderClause(sortBy, sortDir, DEVICE_SORT, 'd.last_seen_at DESC, d.paired_at DESC');
+  const fromSql = `devices d JOIN organisations o ON o.id = d.org_id LEFT JOIN users u ON u.id = d.user_id`;
 
-  const [[{ total }]] = await pool.query(`SELECT COUNT(*) AS total FROM devices d WHERE ${whereSql}`, params);
+  const [[{ total }]] = await pool.query(`SELECT COUNT(*) AS total FROM ${fromSql} WHERE ${whereSql}`, params);
   const [rows] = await pool.query(
     `SELECT d.id, d.device_name, d.platform, d.model, d.os_version, d.role, d.status,
             d.last_seen_at, d.paired_at, o.name AS org_name, u.full_name AS user_name
-       FROM devices d JOIN organisations o ON o.id = d.org_id
-       LEFT JOIN users u ON u.id = d.user_id
+       FROM ${fromSql}
       WHERE ${whereSql}
-      ORDER BY d.last_seen_at DESC, d.paired_at DESC
+      ${order}
       LIMIT ? OFFSET ?`,
     [...params, Number(limit), (Number(page) - 1) * Number(limit)]
   );
@@ -202,19 +246,80 @@ async function loginLog({ orgId, email, from, to, outcome, method, page = 1, lim
   return { entries, pagination: { page: Number(page), limit: Number(limit), total, pages: Math.ceil(total / limit) || 1 } };
 }
 
+const ORG_SORT = {
+  name: 'o.name', abn: 'o.abn', state: 'o.state', plan: 'o.plan', status: 'o.status',
+  users: 'users', devices: 'devices', created: 'o.created_at',
+};
+
 // ── Org directory (all orgs) ──────────────────────────────────────────────────
-async function listOrgs({ page = 1, limit = 25 }) {
-  const [[{ total }]] = await pool.query('SELECT COUNT(*) AS total FROM organisations WHERE is_deleted = 0');
+async function listOrgs({ search, sortBy, sortDir, page = 1, limit = 25 }) {
+  const where = ['o.is_deleted = 0'];
+  const params = [];
+  // Free-text: organisation name, ABN, state or plan.
+  if (search && search.trim()) {
+    where.push('(o.name LIKE ? OR o.abn LIKE ? OR o.state LIKE ? OR o.plan LIKE ?)');
+    const like = `%${search.trim()}%`;
+    params.push(like, like, like, like);
+  }
+  const whereSql = where.join(' AND ');
+  const order = orderClause(sortBy, sortDir, ORG_SORT, 'o.created_at DESC');
+  const [[{ total }]] = await pool.query(`SELECT COUNT(*) AS total FROM organisations o WHERE ${whereSql}`, params);
   const [rows] = await pool.query(
     `SELECT o.id, o.name, o.abn, o.state, o.plan, o.status, o.trial_ends_at, o.created_at,
             (SELECT COUNT(*) FROM users u WHERE u.org_id = o.id AND u.is_deleted = 0) AS users,
             (SELECT COUNT(*) FROM devices d WHERE d.org_id = o.id AND d.is_deleted = 0 AND d.status = 'active') AS devices
-       FROM organisations o WHERE o.is_deleted = 0
-      ORDER BY o.created_at DESC
+       FROM organisations o
+      WHERE ${whereSql}
+      ${order}
       LIMIT ? OFFSET ?`,
-    [Number(limit), (Number(page) - 1) * Number(limit)]
+    [...params, Number(limit), (Number(page) - 1) * Number(limit)]
   );
   return { organisations: rows, pagination: { page: Number(page), limit: Number(limit), total, pages: Math.ceil(total / limit) || 1 } };
+}
+
+// ── One org's detail (header for the drill-down page) ────────────────────────
+async function getOrg(orgId) {
+  const [[org]] = await pool.query(
+    `SELECT o.id, o.name, o.abn, o.state, o.address, o.suburb, o.postcode, o.plan,
+            o.status, o.trial_ends_at, o.created_at,
+            (SELECT COUNT(*) FROM users u WHERE u.org_id = o.id AND u.is_deleted = 0) AS users,
+            (SELECT COUNT(*) FROM devices d WHERE d.org_id = o.id AND d.is_deleted = 0 AND d.status = 'active') AS devices
+       FROM organisations o WHERE o.id = ? AND o.is_deleted = 0 LIMIT 1`,
+    [orgId]
+  );
+  if (!org) throw new ServiceError('NOT_FOUND', 'Organisation not found', 404);
+  return org;
+}
+
+// ── Hourly traffic (Overview chart) ───────────────────────────────────────────
+// ProjMan2 has no MQTT broker or any other push/signalling layer — dropped from Nexus
+// on purpose (see api/README.md "No MQTT broker"). App/Portal/Dashboard/VeriTrade all
+// stay current via periodic polling (/sync/pull, and each surface's own data fetches).
+// "Traffic" here is therefore new SESSION STARTS per hour (sessions.issued_at) — the
+// honest signal for how busy the platform actually is, given there's no broker to show
+// a connection count for. Zero-filled so a quiet hour renders as 0, not a gap.
+async function hourlyTraffic({ hours = 24 }) {
+  const h = Math.min(168, Math.max(1, Number(hours) || 24));
+  // Zero-filled entirely in SQL via a recursive CTE, deliberately — building the hour
+  // series in JS (Date/UTC math) and matching it against MySQL's own NOW()/DATETIME
+  // values is exactly the class of timezone bug pool.js's own header comment warns
+  // about (O-036, Nexus lost days to it). Keeping both the series and the count in one
+  // query, one timezone frame, sidesteps it rather than being careful about it.
+  const [rows] = await pool.query(
+    `WITH RECURSIVE hours AS (
+       SELECT CAST(DATE_FORMAT(NOW() - INTERVAL ? HOUR, '%Y-%m-%d %H:00:00') AS DATETIME) AS hour_start, 0 AS n
+       UNION ALL
+       SELECT hour_start + INTERVAL 1 HOUR, n + 1 FROM hours WHERE n < ?
+     )
+     SELECT DATE_FORMAT(h.hour_start, '%Y-%m-%dT%H:00:00') AS hour, COUNT(s.id) AS n
+       FROM hours h
+       LEFT JOIN sessions s
+         ON s.issued_at >= h.hour_start AND s.issued_at < h.hour_start + INTERVAL 1 HOUR
+      GROUP BY h.hour_start
+      ORDER BY h.hour_start`,
+    [h, h]
+  );
+  return { series: rows.map((r) => ({ hour: r.hour, count: Number(r.n) })), hours: h };
 }
 
 // ── System health ─────────────────────────────────────────────────────────────
@@ -238,4 +343,7 @@ async function systemHealth() {
   };
 }
 
-module.exports = { stats, listUsers, userAction, listDevices, loginLog, listOrgs, systemHealth, LOGIN_ACTIONS };
+module.exports = {
+  stats, listUsers, userAction, listDevices, loginLog, listOrgs, getOrg, hourlyTraffic,
+  systemHealth, LOGIN_ACTIONS,
+};

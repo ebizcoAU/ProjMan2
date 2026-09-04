@@ -145,16 +145,24 @@ async function assertStageInProject(orgId, projectId, stageId) {
     [stageId, projectId, orgId]);
   if (!s) throw new ServiceError('VALIDATION_ERROR', 'stage_id not found on this project', 422);
 }
+async function assertTaskInProject(orgId, projectId, taskId) {
+  if (!taskId) return;
+  const [[t]] = await pool.query(
+    'SELECT id FROM tasks WHERE id = ? AND project_id = ? AND org_id = ? LIMIT 1',
+    [taskId, projectId, orgId]);
+  if (!t) throw new ServiceError('VALIDATION_ERROR', 'task_id not found on this project', 422);
+}
 
 // ── Purchase orders (→ committed_amount) ─────────────────────────────────────
 /** POST /projects/:id/purchase-orders (po.write). Raised = 'issued' (a commitment). */
-async function createPurchaseOrder({ orgId, projectId, actor, stageId, supplierId, supplierName,
+async function createPurchaseOrder({ orgId, projectId, actor, stageId, taskId, supplierId, supplierName,
                                      description, amount, subcontractorEngagementId }) {
   if (!canWrite(actor.role)) throw new ServiceError('FORBIDDEN', 'Requires permission: po.write', 403);
   await ProjectService.assertProjectReachable(orgId, projectId, { role: actor.role, userId: actor.userId });
   if (!(Number(amount) >= 0)) throw new ServiceError('VALIDATION_ERROR', 'amount must be a non-negative number', 400);
   await assertSupplierInOrg(orgId, supplierId);
   await assertStageInProject(orgId, projectId, stageId);
+  await assertTaskInProject(orgId, projectId, taskId);
 
   const [[{ next }]] = await pool.query(
     'SELECT COALESCE(MAX(po_number), 0) + 1 AS next FROM purchase_orders WHERE project_id = ? AND org_id = ?',
@@ -163,10 +171,10 @@ async function createPurchaseOrder({ orgId, projectId, actor, stageId, supplierI
   const owner = partyForRole(actor.role);
   await pool.query(
     `INSERT INTO purchase_orders
-       (id, org_id, project_id, stage_id, supplier_id, supplier_name, po_number, description,
+       (id, org_id, project_id, stage_id, task_id, supplier_id, supplier_name, po_number, description,
         amount, status, owner_party, raised_by_user_id, subcontractor_engagement_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?, ?)`,
-    [id, orgId, projectId, stageId || null, supplierId || null, supplierName || null, next,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?, ?)`,
+    [id, orgId, projectId, stageId || null, taskId || null, supplierId || null, supplierName || null, next,
      description || null, amount, owner, actor.userId, subcontractorEngagementId || null]
   );
   await recomputeStageCommitted({ orgId, projectId, stageId });
@@ -213,7 +221,7 @@ async function listPurchaseOrders({ orgId, projectId, actor }) {
 
 // ── Supplier invoices (→ actual_amount; 2-way PO match) ──────────────────────
 /** POST /projects/:id/supplier-invoices (po.write). With a po_id it 2-way-matches. */
-async function createSupplierInvoice({ orgId, projectId, actor, poId, stageId, supplierId,
+async function createSupplierInvoice({ orgId, projectId, actor, poId, stageId, taskId, supplierId,
                                        supplierName, invoiceNumber, amount, subcontractorEngagementId }) {
   if (!canWrite(actor.role)) throw new ServiceError('FORBIDDEN', 'Requires permission: po.write', 403);
   await ProjectService.assertProjectReachable(orgId, projectId, { role: actor.role, userId: actor.userId });
@@ -224,6 +232,7 @@ async function createSupplierInvoice({ orgId, projectId, actor, poId, stageId, s
 
   let status = 'received';
   let resolvedStageId = stageId || null;
+  let resolvedTaskId = taskId || null;
   let owner = partyForRole(actor.role);
   let resolvedSupplierId = supplierId || null;
   let resolvedSubId = subcontractorEngagementId || null;
@@ -233,21 +242,23 @@ async function createSupplierInvoice({ orgId, projectId, actor, poId, stageId, s
     assertOwnParty(actor, po);                                  // can't invoice against the other party's PO
     status = 'matched';
     resolvedStageId = po.stage_id;                              // inherit the PO's stage for the roll-up
+    resolvedTaskId = po.task_id;                                // inherit the PO's task the same way, when set
     owner = po.owner_party;
     resolvedSupplierId = resolvedSupplierId || po.supplier_id;
     resolvedSubId = resolvedSubId || po.subcontractor_engagement_id;
   } else {
     await assertStageInProject(orgId, projectId, resolvedStageId);
+    await assertTaskInProject(orgId, projectId, resolvedTaskId);
     await assertSupplierInOrg(orgId, resolvedSupplierId);
   }
 
   const id = uuidv4();
   await pool.query(
     `INSERT INTO supplier_invoices
-       (id, org_id, project_id, stage_id, po_id, supplier_id, supplier_name, invoice_number,
+       (id, org_id, project_id, stage_id, task_id, po_id, supplier_id, supplier_name, invoice_number,
         amount, status, owner_party, raised_by_user_id, subcontractor_engagement_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, orgId, projectId, resolvedStageId, poId || null, resolvedSupplierId, supplierName || null,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, orgId, projectId, resolvedStageId, resolvedTaskId, poId || null, resolvedSupplierId, supplierName || null,
      String(invoiceNumber).trim(), amount, status, owner, actor.userId, resolvedSubId]
   );
   await recomputeStageActual({ orgId, projectId, stageId: resolvedStageId });
