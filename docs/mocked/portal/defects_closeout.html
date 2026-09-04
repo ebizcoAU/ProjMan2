@@ -1,0 +1,276 @@
+<title>Defects Close-Out</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+  /* Tokens lifted verbatim from server/portal/src/app/globals.css — this mockup
+     is a design proposal for that exact app, not a new visual identity, so it
+     commits to the product's real (light-only, fixed-palette) theme rather than
+     inventing one. Background/colors are still all explicit tokens so the page
+     holds correctly on any host ground per the artifact fundamentals. */
+  :root {
+    --bg:  #eaeef4; --s1: #ffffff; --s2: #f6f8fb; --s3: #eef2f7; --s4: #e3e9f1; --s5: #d6deea;
+    --b1:  #c4cedd; --b2: #a7b4c8; --b3: #8593a9;
+    --text:#16202e; --dim: #44516a; --muted: #5b6880;
+    --brand:#c2410c; --bdim: rgba(249,115,22,.12); --bbright: rgba(194,65,12,.40);
+    --green:#15803d; --gdim: rgba(21,128,61,.12);
+    --red:  #b91c1c; --rdim: rgba(185,28,28,.10);
+    --yellow:#b45309; --ydim: rgba(180,83,9,.12);
+    --cyan: #0e7490; --cyandim: rgba(14,116,144,.12);
+    --fh: 'Syne', sans-serif; --fb: 'DM Sans', sans-serif; --fm: 'JetBrains Mono', monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--fb);
+    font-size: 16px; line-height: 1.55; padding: 28px 20px 60px;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; }
+
+  /* ── Mockup ribbon — this is a design proposal, not the live app ────────── */
+  .ribbon {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--s1); border: 2px dashed var(--b2); border-radius: 10px;
+    padding: 10px 16px; margin-bottom: 22px; font-size: 13px; color: var(--dim);
+  }
+  .ribbon b { color: var(--brand); font-family: var(--fh); font-weight: 800; letter-spacing: .01em; }
+  .ribbon code { font-family: var(--fm); background: var(--s3); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+
+  header.page { margin-bottom: 20px; }
+  .eyebrow {
+    font-family: var(--fm); font-size: 12px; font-weight: 600; color: var(--muted);
+    letter-spacing: .06em; text-transform: uppercase; margin-bottom: 4px;
+  }
+  h1 {
+    font-family: var(--fh); font-weight: 800; font-size: 26px; color: var(--text);
+    letter-spacing: -.01em; text-wrap: balance; margin-bottom: 4px;
+  }
+  .sub { font-size: 14px; color: var(--dim); max-width: 62ch; }
+
+  /* ── KPI strip ────────────────────────────────────────────────────────── */
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 12px; margin-bottom: 18px; }
+  .kpi {
+    background: var(--s1); border: 2px solid var(--b1); border-radius: 12px; padding: 14px 16px;
+  }
+  .kpi .n { font-family: var(--fm); font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1; }
+  .kpi .l { font-size: 12px; color: var(--muted); margin-top: 6px; letter-spacing: .02em; }
+
+  /* ── Card ─────────────────────────────────────────────────────────────── */
+  .card { background: var(--s1); border: 2px solid var(--b1); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  .card-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    border-bottom: 1px solid var(--b2); padding-bottom: 10px; margin-bottom: 4px;
+  }
+  .card-title { font-size: 14px; font-weight: 700; color: var(--text); }
+  .card-note { font-size: 12px; color: var(--muted); }
+
+  /* ── Filter chips ─────────────────────────────────────────────────────── */
+  .chips { display: flex; gap: 8px; padding: 10px 0 12px; flex-wrap: wrap; }
+  .chip {
+    font-size: 13px; font-weight: 600; padding: 5px 13px; border-radius: 20px;
+    border: 1px solid var(--b2); background: var(--s2); color: var(--dim); cursor: default;
+  }
+  .chip.on { border-color: var(--brand); background: var(--bdim); color: var(--brand); }
+
+  /* ── Punch-list rows ──────────────────────────────────────────────────── */
+  .row {
+    display: flex; align-items: center; gap: 12px; padding: 12px 8px;
+    border-bottom: 1px solid var(--s4);
+  }
+  .row:last-child { border-bottom: none; }
+  .row.expanded { background: var(--s2); border-radius: 8px; }
+  .sev { width: 4px; align-self: stretch; border-radius: 3px; flex-shrink: 0; }
+  .sev.high   { background: var(--red); }
+  .sev.medium { background: var(--yellow); }
+  .sev.low    { background: var(--b2); }
+  .row-main { flex: 1; min-width: 0; }
+  .row-title { font-size: 14.5px; font-weight: 600; color: var(--text); }
+  .row-meta { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+  .row-meta span + span::before { content: '·'; margin: 0 6px; color: var(--b2); }
+  .row-due { font-family: var(--fm); font-size: 12.5px; color: var(--dim); width: 96px; text-align: right; flex-shrink: 0; }
+  .row-due.overdue { color: var(--red); font-weight: 600; }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 20px;
+    font-size: 12px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; flex-shrink: 0;
+  }
+  .badge-open    { background: var(--ydim); color: var(--yellow); border: 1px solid rgba(180,83,9,.4); }
+  .badge-prog    { background: var(--cyandim); color: var(--cyan); border: 1px solid rgba(14,116,144,.4); }
+  .badge-closed  { background: var(--gdim); color: var(--green); border: 1px solid rgba(21,128,61,.4); }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px;
+    font-size: 13px; font-weight: 600; font-family: var(--fb); cursor: default; border: none;
+  }
+  .btn-ghost { background: transparent; color: var(--dim); border: 1px solid var(--b2); }
+  .btn-primary { background: var(--brand); color: #fff; }
+
+  /* ── Expanded close-out panel (the NEW surface) ──────────────────────── */
+  .panel {
+    padding: 4px 8px 14px 20px; display: flex; flex-direction: column; gap: 12px;
+  }
+  .panel-tag {
+    display: inline-flex; align-self: flex-start; font-size: 11px; font-weight: 700;
+    color: var(--brand); background: var(--bdim); border: 1px solid var(--bbright);
+    border-radius: 4px; padding: 2px 7px; letter-spacing: .04em; text-transform: uppercase;
+  }
+  .panel-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .field label {
+    display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 5px;
+  }
+  .field select, .field input {
+    width: 100%; background: var(--s3); border: 2px solid var(--b1); border-radius: 8px;
+    padding: 8px 11px; color: var(--text); font-size: 14px; font-family: var(--fb);
+  }
+  .panel-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .photo-strip { display: flex; gap: 8px; }
+  .photo {
+    width: 56px; height: 56px; border-radius: 8px; border: 1px solid var(--b2);
+    background: var(--s3) center/cover; display: flex; align-items: center; justify-content: center;
+    font-size: 20px; color: var(--b3);
+  }
+  .desc { font-size: 13.5px; color: var(--dim); line-height: 1.5; max-width: 60ch; }
+
+  footer.legend {
+    display: flex; gap: 18px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 6px;
+  }
+  footer.legend .k { display: inline-flex; align-items: center; gap: 6px; }
+  footer.legend .dot { width: 8px; height: 8px; border-radius: 2px; }
+</style>
+
+<div class="wrap">
+
+  <div class="ribbon">
+    <b>MOCKUP</b> — static data, no live wiring. Read side (table, KPIs) mirrors
+    <code>(console)/projects/[id]/quality/page.js</code> exactly, already shipped.
+    The expanded panel is the proposed <b style="color:var(--dim); font-family:var(--fb); font-weight:600;">new</b>
+    surface, pending <code>PATCH /projects/:id/defects/:defectId</code> (xprojman-28 §4).
+  </div>
+
+  <header class="page">
+    <div class="eyebrow">Lakeview Estate · Lot 14 — LV-014</div>
+    <h1>Defects — punch-list</h1>
+    <div class="sub">Triage, assign and close out what the site crew has raised. Click a row to open it.</div>
+  </header>
+
+  <div class="kpis">
+    <div class="kpi"><div class="n" style="color:var(--yellow)">7</div><div class="l">Open</div></div>
+    <div class="kpi"><div class="n" style="color:var(--cyan)">3</div><div class="l">In progress</div></div>
+    <div class="kpi"><div class="n" style="color:var(--red)">2</div><div class="l">High severity</div></div>
+    <div class="kpi"><div class="n" style="color:var(--red)">1</div><div class="l">Overdue</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div class="card-title">Punch-list</div>
+      <div class="card-note">12 defects</div>
+    </div>
+
+    <div class="chips">
+      <span class="chip on">All</span>
+      <span class="chip">Open</span>
+      <span class="chip">In progress</span>
+      <span class="chip">Closed</span>
+      <span class="chip">High severity</span>
+    </div>
+
+    <!-- Row 1 — expanded, showing the proposed close-out panel -->
+    <div class="row expanded" style="flex-direction:column; align-items:stretch;">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <div class="sev high"></div>
+        <div class="row-main">
+          <div class="row-title">Cracked slab edge — garage return wall</div>
+          <div class="row-meta"><span>Concrete</span><span>Raised 28 Aug by S. Whitlock</span></div>
+        </div>
+        <span class="badge badge-prog">In progress</span>
+        <div class="row-due overdue">Due 2 Sep</div>
+      </div>
+
+      <div class="panel">
+        <span class="panel-tag">Close-out — proposed</span>
+        <div class="desc">
+          12mm hairline crack along the garage return wall slab edge, roughly 1.4m run.
+          Site super flagged during Stage-12 walk. Needs engineer sign-off before
+          patching — do not close until report attached.
+        </div>
+        <div class="photo-strip">
+          <div class="photo">📷</div>
+          <div class="photo">📷</div>
+        </div>
+        <div class="panel-grid">
+          <div class="field">
+            <label>Status</label>
+            <select><option>In progress</option><option>Open</option><option>Closed</option></select>
+          </div>
+          <div class="field">
+            <label>Assigned to</label>
+            <select><option>M. Reyes — Concrete sub</option><option>Unassigned</option></select>
+          </div>
+          <div class="field">
+            <label>Due date</label>
+            <input type="text" value="02 Sep 2026" />
+          </div>
+        </div>
+        <div class="panel-actions">
+          <button class="btn btn-ghost">Cancel</button>
+          <button class="btn btn-primary">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Collapsed rows -->
+    <div class="row">
+      <div class="sev high"></div>
+      <div class="row-main">
+        <div class="row-title">Rendering blowout — north elevation, unit corner</div>
+        <div class="row-meta"><span>Render</span><span>Raised 30 Aug by S. Whitlock</span></div>
+      </div>
+      <span class="badge badge-open">Open</span>
+      <div class="row-due">Due 6 Sep</div>
+    </div>
+
+    <div class="row">
+      <div class="sev medium"></div>
+      <div class="row-main">
+        <div class="row-title">Door frame out of square — bedroom 2</div>
+        <div class="row-meta"><span>Carpentry</span><span>Raised 29 Aug by S. Whitlock</span><span>D. Kowalski</span></div>
+      </div>
+      <span class="badge badge-prog">In progress</span>
+      <div class="row-due">Due 9 Sep</div>
+    </div>
+
+    <div class="row">
+      <div class="sev medium"></div>
+      <div class="row-main">
+        <div class="row-title">Paint touch-up — hallway skirting</div>
+        <div class="row-meta"><span>Paint</span><span>Raised 25 Aug by S. Whitlock</span></div>
+      </div>
+      <span class="badge badge-open">Open</span>
+      <div class="row-due">Due 12 Sep</div>
+    </div>
+
+    <div class="row">
+      <div class="sev low"></div>
+      <div class="row-main">
+        <div class="row-title">Minor scuff — kitchen bench return, left of sink</div>
+        <div class="row-meta"><span>Joinery</span><span>Raised 24 Aug by S. Whitlock</span><span>Site crew</span></div>
+      </div>
+      <span class="badge badge-closed">Closed</span>
+      <div class="row-due">—</div>
+    </div>
+
+    <div class="row">
+      <div class="sev low"></div>
+      <div class="row-main">
+        <div class="row-title">Tap ware alignment — ensuite vanity</div>
+        <div class="row-meta"><span>Plumbing</span><span>Raised 22 Aug by S. Whitlock</span><span>Site crew</span></div>
+      </div>
+      <span class="badge badge-closed">Closed</span>
+      <div class="row-due">—</div>
+    </div>
+
+    <footer class="legend">
+      <span class="k"><span class="dot" style="background:var(--red)"></span> High severity</span>
+      <span class="k"><span class="dot" style="background:var(--yellow)"></span> Medium</span>
+      <span class="k"><span class="dot" style="background:var(--b2)"></span> Low</span>
+    </footer>
+  </div>
+
+</div>

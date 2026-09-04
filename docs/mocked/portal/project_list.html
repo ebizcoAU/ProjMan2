@@ -1,0 +1,589 @@
+<title>Project Journey</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --bg:  #eaeef4; --s1: #ffffff; --s2: #f6f8fb; --s3: #eef2f7; --s4: #e3e9f1;
+    --b1:  #c4cedd; --b2: #a7b4c8; --b3: #8593a9;
+    --text:#16202e; --dim: #44516a; --muted: #5b6880;
+    --brand:#c2410c; --bdim: rgba(249,115,22,.12); --bbright: rgba(194,65,12,.40);
+    --green:#15803d; --gdim: rgba(21,128,61,.12);
+    --red:  #b91c1c; --rdim: rgba(185,28,28,.10);
+    --yellow:#b45309; --ydim: rgba(180,83,9,.12);
+    --cyan: #0e7490; --cyandim: rgba(14,116,144,.12);
+    --fh: 'Syne', sans-serif; --fb: 'DM Sans', sans-serif; --fm: 'JetBrains Mono', monospace;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: var(--fb); font-size: 16px; line-height: 1.55; padding: 24px 20px 70px; }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  button { font-family: var(--fb); cursor: pointer; }
+
+  .ribbon {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: var(--s1); border: 2px dashed var(--b2); border-radius: 10px;
+    padding: 10px 16px; margin-bottom: 18px; font-size: 13px; color: var(--dim);
+  }
+  .ribbon b { color: var(--brand); font-family: var(--fh); font-weight: 800; }
+  .ribbon code { font-family: var(--fm); background: var(--s3); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+
+  /* ── Organisation identity strip — the tenant company, not a customer ──── */
+  .orgbar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .orgbar .oico { width: 38px; height: 38px; border-radius: 9px; background: var(--bdim); border: 1px solid var(--bbright); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+  .orgbar .oname { font-family: var(--fh); font-weight: 800; font-size: 15.5px; color: var(--text); }
+  .orgbar .obread { font-size: 11.5px; color: var(--muted); font-family: var(--fm); }
+  .orgbar .obread b { color: var(--dim); font-weight: 600; }
+
+  /* ── Journey stepper (the actual story, in order) ────────────────────── */
+  .journey { display: flex; align-items: center; gap: 0; margin-bottom: 24px; background: var(--s1); border: 2px solid var(--b1); border-radius: 12px; padding: 6px; }
+  .jstep {
+    flex: 1; display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: 8px;
+    border: none; background: transparent; text-align: left;
+  }
+  .jstep .jn { width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-family: var(--fm); font-size: 12px; font-weight: 700; background: var(--s3); color: var(--muted); border: 1px solid var(--b2); }
+  .jstep .jt1 { font-size: 10.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .jstep .jt2 { font-size: 13.5px; font-weight: 700; color: var(--dim); }
+  .jstep.on { background: var(--bdim); }
+  .jstep.on .jn { background: var(--brand); color: #fff; border-color: var(--brand); }
+  .jstep.on .jt2 { color: var(--text); }
+  .jarrow { color: var(--b2); font-size: 16px; padding: 0 2px; flex-shrink: 0; }
+
+  .screen { display: none; }
+  .screen.on { display: block; }
+
+  /* shared */
+  .card { background: var(--s1); border: 2px solid var(--b1); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--b2); padding-bottom: 10px; margin-bottom: 4px; }
+  .card-title { font-size: 14px; font-weight: 700; color: var(--text); }
+  .eyebrow { font-family: var(--fm); font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; margin-bottom: 4px; }
+  h1 { font-family: var(--fh); font-weight: 800; font-size: 25px; color: var(--text); letter-spacing: -.01em; text-wrap: balance; }
+  .sub { font-size: 13.5px; color: var(--dim); max-width: 62ch; margin-top: 3px; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 9px; font-size: 13.5px; font-weight: 700; border: none; flex-shrink: 0; }
+  .btn-primary { background: var(--brand); color: #fff; }
+  .btn-ghost { background: transparent; color: var(--dim); border: 1px solid var(--b2); }
+  .btn:disabled { opacity: .45; }
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 20px; font-size: 11.5px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; }
+  .badge-active { background: var(--gdim); color: var(--green); border: 1px solid rgba(21,128,61,.4); }
+  .badge-draft  { background: var(--s4); color: var(--dim); border: 1px solid var(--b2); }
+  .badge-hold   { background: var(--ydim); color: var(--yellow); border: 1px solid rgba(180,83,9,.4); }
+
+  /* ══════════════════════ SCREEN 1 — Project List ══════════════════════ */
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap: 12px; margin-bottom: 14px; }
+  .kpi { background: var(--s1); border: 2px solid var(--b1); border-radius: 12px; padding: 13px 15px; }
+  .kpi .n { font-family: var(--fm); font-size: 24px; font-weight: 600; }
+  .kpi .l { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+
+  .plist-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .prow {
+    display: flex; align-items: center; gap: 16px; padding: 13px 10px; border-bottom: 1px solid var(--s4);
+  }
+  .prow:last-child { border-bottom: none; }
+  .prow .pid { width: 190px; flex-shrink: 0; }
+  .prow .pcode { font-family: var(--fm); font-size: 12px; color: var(--brand); font-weight: 700; }
+  .prow .pname { font-size: 14.5px; font-weight: 700; color: var(--text); }
+  .prow .pclient { font-size: 12px; color: var(--muted); }
+  .prow .pprog { flex: 1; min-width: 190px; }
+  .prow .pprog .pstage { font-size: 11.5px; color: var(--muted); margin-bottom: 6px; }
+  .prow .pprog .pstage b { color: var(--dim); font-weight: 700; }
+  .dbrow { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .dbrow:last-child { margin-bottom: 0; }
+  .dblabel { width: 46px; flex-shrink: 0; font-size: 10.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+  .dbval { width: 34px; flex-shrink: 0; text-align: right; font-family: var(--fm); font-size: 11px; color: var(--dim); font-weight: 600; }
+  .bar { flex: 1; height: 6px; border-radius: 4px; background: var(--s4); overflow: hidden; }
+  .bar > i { display: block; height: 100%; border-radius: 4px; background: var(--cyan); }
+  .bar.cost > i { background: var(--brand); }
+  .bar.cost.over > i { background: var(--red); }
+  .prow .psite { width: 120px; flex-shrink: 0; font-size: 12.5px; color: var(--dim); }
+  .prow .palert { width: 118px; flex-shrink: 0; text-align: right; }
+  .alert-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; padding: 4px 10px; border-radius: 20px; }
+  .alert-chip .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .alert-green  { background: var(--gdim); color: var(--green); }
+  .alert-green  .dot { background: var(--green); }
+  .alert-amber  { background: var(--ydim); color: var(--yellow); }
+  .alert-amber  .dot { background: var(--yellow); }
+  .alert-red    { background: var(--rdim); color: var(--red); }
+  .alert-red    .dot { background: var(--red); }
+  .alert-none   { color: var(--muted); font-size: 11.5px; }
+  .pstatus-sm { font-size: 10.5px; color: var(--muted); margin-top: 3px; text-transform: uppercase; letter-spacing: .03em; }
+
+  /* ══════════════════════ SCREEN 2 — New Project wizard ══════════════════════ */
+  .wiz-steps { display: flex; align-items: center; margin-bottom: 20px; }
+  .wstep { display: flex; align-items: center; gap: 9px; }
+  .wstep .wn { width: 28px; height: 28px; border-radius: 50%; background: var(--s3); border: 1.5px solid var(--b2); color: var(--muted); display: flex; align-items: center; justify-content: center; font-family: var(--fm); font-size: 12px; font-weight: 700; }
+  .wstep .wl { font-size: 13px; font-weight: 700; color: var(--muted); }
+  .wstep.done .wn { background: var(--gdim); border-color: var(--green); color: var(--green); }
+  .wstep.done .wl { color: var(--dim); }
+  .wstep.active .wn { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .wstep.active .wl { color: var(--text); }
+  .wline { flex: 1; height: 2px; background: var(--b1); margin: 0 10px; min-width: 24px; }
+  .wline.done { background: var(--green); }
+
+  .wpanel { display: none; }
+  .wpanel.on { display: block; }
+  .field-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  .field { margin-bottom: 4px; }
+  .field.full { grid-column: 1 / -1; }
+  .field label { display: block; font-size: 12.5px; font-weight: 700; color: var(--muted); margin-bottom: 6px; }
+  .field .hint { font-size: 11.5px; color: var(--muted); font-weight: 400; margin-top: 4px; }
+  .field input, .field select, .field textarea {
+    width: 100%; background: var(--s3); border: 2px solid var(--b1); border-radius: 8px;
+    padding: 9px 12px; color: var(--text); font-size: 14px; font-family: var(--fb);
+  }
+  .field textarea { resize: vertical; min-height: 64px; }
+  .upload-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 6px; }
+  .upload-card {
+    border: 2px dashed var(--b2); border-radius: 10px; padding: 16px 10px; text-align: center;
+    color: var(--muted); font-size: 12.5px; background: var(--s2);
+  }
+  .upload-card .uico { font-size: 22px; display: block; margin-bottom: 6px; }
+  .wiz-actions { display: flex; justify-content: space-between; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--b2); }
+
+  /* ══════════════════════ SCREEN 3 — Project Overview (reused) ══════════════════════ */
+  .idhead { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
+  .idmeta { font-size: 13.5px; color: var(--dim); margin-top: 4px; }
+  .idmeta span + span::before { content: '·'; margin: 0 8px; color: var(--b2); }
+  .stage-pill { display: inline-flex; align-items: center; gap: 8px; background: var(--s1); border: 2px solid var(--b1); border-radius: 30px; padding: 8px 16px 8px 8px; flex-shrink: 0; }
+  .stage-pill .ring { width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0; background: conic-gradient(var(--brand) 0deg 60deg, var(--s4) 60deg 360deg); display: flex; align-items: center; justify-content: center; }
+  .stage-pill .ring b { width: 27px; height: 27px; border-radius: 50%; background: var(--s1); display: flex; align-items: center; justify-content: center; font-family: var(--fm); font-size: 12px; color: var(--brand); }
+  .stage-pill .t1 { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; }
+  .stage-pill .t2 { font-size: 13.5px; color: var(--text); font-weight: 700; }
+
+  .info-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+  .info-card { background: var(--s1); border: 2px solid var(--b1); border-radius: 12px; padding: 14px 15px; }
+  .info-card .ic-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--b2); }
+  .info-card .lbl { font-size: 12px; font-weight: 700; color: var(--dim); text-transform: uppercase; letter-spacing: .04em; }
+  .kv { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; font-size: 13px; }
+  .kv .k { color: var(--muted); flex-shrink: 0; }
+  .kv .v { color: var(--text); font-weight: 600; text-align: right; }
+  .kv .v.mono { font-family: var(--fm); font-weight: 500; }
+  .kv .v.unset { color: var(--muted); font-weight: 500; font-style: italic; }
+
+  .callout { background: linear-gradient(135deg, var(--bdim), var(--s1) 55%); border: 2px solid var(--bbright); border-radius: 14px; padding: 18px 20px; margin-bottom: 18px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .callout .num { font-family: var(--fh); font-weight: 800; font-size: 30px; color: var(--brand); width: 52px; height: 52px; border-radius: 14px; background: var(--s1); border: 2px solid var(--bbright); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .callout .body { flex: 1; min-width: 220px; }
+  .callout .tag { font-size: 11px; font-weight: 700; color: var(--brand); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 3px; }
+  .callout h2 { font-family: var(--fh); font-size: 18px; font-weight: 800; color: var(--text); margin-bottom: 4px; }
+  .callout p { font-size: 13px; color: var(--dim); max-width: 58ch; }
+
+  .part-head { display: flex; align-items: baseline; gap: 8px; margin: 14px 0 6px; padding-left: 2px; }
+  .part-head .letter { font-family: var(--fh); font-weight: 800; font-size: 12px; color: var(--muted); background: var(--s3); border-radius: 5px; padding: 1px 6px; }
+  .part-head .name { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .stage { display: flex; align-items: center; gap: 12px; padding: 8px 8px; border-radius: 8px; }
+  .stage.current { background: var(--bdim); border: 1.5px solid var(--bbright); padding: 11px 12px; margin: 2px 0; }
+  .stage .marker { width: 25px; height: 25px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-family: var(--fm); font-size: 11px; font-weight: 700; }
+  .stage.done .marker { background: var(--gdim); color: var(--green); }
+  .stage.current .marker { background: var(--brand); color: #fff; }
+  .stage.upcoming .marker { background: var(--s3); color: var(--muted); border: 1px solid var(--b2); }
+  .stage .name { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; }
+  .stage.done .name { color: var(--dim); }
+  .stage.current .name { color: var(--text); font-weight: 700; }
+  .stage.upcoming .name { color: var(--muted); }
+  .stage .hp { font-size: 10px; font-weight: 700; color: var(--yellow); background: var(--ydim); border: 1px solid rgba(180,83,9,.35); border-radius: 4px; padding: 1px 5px; flex-shrink: 0; }
+  .stage .status { font-size: 11px; font-weight: 600; flex-shrink: 0; width: 72px; text-align: right; text-transform: uppercase; }
+  .stage.done .status { color: var(--green); }
+  .stage.current .status { color: var(--brand); }
+  .stage.upcoming .status { color: var(--b3); }
+  .stage.clickable { cursor: pointer; }
+  .stage.clickable:hover { background: var(--s2); }
+  .stage.current.clickable:hover { background: var(--bdim); }
+
+  /* ══════════════════════ SCREEN 4 — Stage task drill-down ══════════════════════ */
+  .backlink { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--muted); background: none; border: none; margin-bottom: 10px; padding: 0; }
+  .backlink:hover { color: var(--brand); }
+  .task-card { background: var(--s1); border: 2px solid var(--b1); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; }
+  .task-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+  .task-name { font-size: 14.5px; font-weight: 700; color: var(--text); }
+  .task-desc { font-size: 13px; color: var(--dim); line-height: 1.5; margin-bottom: 12px; max-width: 70ch; }
+  .task-fields { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 18px; padding-top: 10px; border-top: 1px solid var(--s4); }
+  .tf { display: flex; flex-direction: column; gap: 2px; }
+  .tfl { font-size: 10.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+  .tfv { font-size: 13px; color: var(--text); font-weight: 500; }
+  .tfv.pending { color: var(--muted); font-style: italic; font-size: 12px; }
+  .task-empty { padding: 30px 10px; text-align: center; color: var(--muted); font-size: 13.5px; }
+</style>
+
+<div class="wrap">
+
+  <div class="ribbon">
+    <b>MOCKUP</b> — static data, no live wiring. The actual story: land on your
+    <b style="color:var(--dim); font-family:var(--fb); font-weight:700;">project list</b> first, not one project's
+    detail — create a job through a guided intake (<b style="color:var(--dim); font-family:var(--fb); font-weight:700;">customer → brief → land info</b>,
+    the Definition phase in <code>processmap.md</code>), then arrive at that project's <b style="color:var(--dim); font-family:var(--fb); font-weight:700;">overview</b>.
+  </div>
+
+  <div class="orgbar">
+    <div class="oico">🏗️</div>
+    <div>
+      <div class="oname">Ridgeline Construction Group</div>
+      <div class="obread">Organisation <b>→</b> Projects <span id="obcrumb-extra"></span></div>
+    </div>
+  </div>
+
+  <div class="journey">
+    <button class="jstep on" id="jtab-1" onclick="showScreen(1)">
+      <span class="jn">1</span><span><div class="jt1">Land here</div><div class="jt2">Project List</div></span>
+    </button>
+    <span class="jarrow">→</span>
+    <button class="jstep" id="jtab-2" onclick="showScreen(2)">
+      <span class="jn">2</span><span><div class="jt1">Add project</div><div class="jt2">Customer · Brief · Land</div></span>
+    </button>
+    <span class="jarrow">→</span>
+    <button class="jstep" id="jtab-3" onclick="showScreen(3)">
+      <span class="jn">3</span><span><div class="jt1">Arrive at</div><div class="jt2">Project Overview</div></span>
+    </button>
+    <span class="jarrow">→</span>
+    <button class="jstep" id="jtab-4" onclick="showScreen(4)">
+      <span class="jn">4</span><span><div class="jt1">Drill into</div><div class="jt2">Stage Tasks</div></span>
+    </button>
+  </div>
+
+  <!-- ══════════════════════ SCREEN 1 ══════════════════════ -->
+  <div class="screen on" id="screen-1">
+    <div class="plist-head">
+      <div>
+        <div class="eyebrow">Office console</div>
+        <h1>Your Projects</h1>
+        <div class="sub">Every job you're running, with where each one stands in the 18-stage lifecycle.</div>
+      </div>
+      <button class="btn btn-primary" onclick="showScreen(2)">+ New Project</button>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi"><div class="n">8</div><div class="l">Total projects</div></div>
+      <div class="kpi"><div class="n" style="color:var(--green)">6</div><div class="l">Active</div></div>
+      <div class="kpi"><div class="n" style="color:var(--red)">1</div><div class="l">At risk</div></div>
+      <div class="kpi"><div class="n" style="color:var(--yellow)">2</div><div class="l">Watch</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head" style="border:none; padding:0 8px; margin:0 0 2px;">
+        <div class="card-title" style="border:none; padding:0;">Projects</div>
+        <div style="display:flex; gap:16px; font-size:11px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.03em;">
+          <span style="width:120px;"></span><span style="width:190px;">Schedule vs Budget</span><span style="width:120px;"></span><span style="width:118px; text-align:right;">Alert</span>
+        </div>
+      </div>
+
+      <div class="prow">
+        <div class="pid"><div class="pcode">LV-014</div><div class="pname">Lakeview Estate — Lot 14</div><div class="pclient">David &amp; Louise Turner</div></div>
+        <div class="pprog">
+          <div class="pstage">Stage <b>3</b>/18 — Concept Design</div>
+          <div class="dbrow"><span class="dblabel">Sched</span><div class="bar"><i style="width:17%"></i></div><span class="dbval">17%</span></div>
+          <div class="dbrow"><span class="dblabel">Budget</span><div class="bar cost"><i style="width:12%"></i></div><span class="dbval">12%</span></div>
+        </div>
+        <div class="psite">Baldivis WA</div>
+        <div class="palert"><span class="alert-chip alert-green"><span class="dot"></span>On track</span></div>
+      </div>
+
+      <div class="prow">
+        <div class="pid"><div class="pcode">HR-009</div><div class="pname">Harrow Rd Duplex</div><div class="pclient">Ngoc Tran</div></div>
+        <div class="pprog">
+          <div class="pstage">Stage <b>13</b>/18 — Frame &amp; Roof</div>
+          <div class="dbrow"><span class="dblabel">Sched</span><div class="bar"><i style="width:72%"></i></div><span class="dbval">72%</span></div>
+          <div class="dbrow"><span class="dblabel">Budget</span><div class="bar cost over"><i style="width:91%"></i></div><span class="dbval">91%</span></div>
+        </div>
+        <div class="psite">Success WA</div>
+        <div class="palert"><span class="alert-chip alert-red"><span class="dot"></span>At risk</span></div>
+      </div>
+
+      <div class="prow">
+        <div class="pid"><div class="pcode">CV-003</div><div class="pname">Claremont View</div><div class="pclient">Robert Ashby</div></div>
+        <div class="pprog">
+          <div class="pstage">Stage <b>16</b>/18 — Fit-out</div>
+          <div class="dbrow"><span class="dblabel">Sched</span><div class="bar"><i style="width:88%"></i></div><span class="dbval">88%</span></div>
+          <div class="dbrow"><span class="dblabel">Budget</span><div class="bar cost"><i style="width:84%"></i></div><span class="dbval">84%</span></div>
+        </div>
+        <div class="psite">Claremont WA</div>
+        <div class="palert"><span class="alert-chip alert-green"><span class="dot"></span>On track</span></div>
+      </div>
+
+      <div class="prow">
+        <div class="pid"><div class="pcode">BW-021</div><div class="pname">Bayswater Reno</div><div class="pclient">M. &amp; P. Iacobelli</div></div>
+        <div class="pprog">
+          <div class="pstage">Stage <b>14</b>/18 — Lock-up <span style="color:var(--yellow); font-weight:700;">(on hold)</span></div>
+          <div class="dbrow"><span class="dblabel">Sched</span><div class="bar"><i style="width:78%"></i></div><span class="dbval">78%</span></div>
+          <div class="dbrow"><span class="dblabel">Budget</span><div class="bar cost"><i style="width:80%"></i></div><span class="dbval">80%</span></div>
+        </div>
+        <div class="psite">Bayswater WA</div>
+        <div class="palert"><span class="alert-chip alert-amber"><span class="dot"></span>Watch</span></div>
+      </div>
+
+      <div class="prow">
+        <div class="pid"><div class="pcode">OR-017</div><div class="pname">Orchid Rise</div><div class="pclient">Grace Whelan</div></div>
+        <div class="pprog">
+          <div class="pstage">Stage <b>7</b>/18 — DA Submission</div>
+          <div class="dbrow"><span class="dblabel">Sched</span><div class="bar"><i style="width:39%"></i></div><span class="dbval">39%</span></div>
+          <div class="dbrow"><span class="dblabel">Budget</span><div class="bar cost over"><i style="width:55%"></i></div><span class="dbval">55%</span></div>
+        </div>
+        <div class="psite">Baldivis WA</div>
+        <div class="palert"><span class="alert-chip alert-amber"><span class="dot"></span>Watch</span></div>
+      </div>
+
+      <div class="prow">
+        <div class="pid"><div class="pcode">—</div><div class="pname">Fennimore St (enquiry)</div><div class="pclient">J. Okafor</div></div>
+        <div class="pprog">
+          <div class="pstage" style="font-style:italic;">Not yet a project — brief captured</div>
+          <div class="dbrow"><span class="dblabel">Sched</span><div class="bar"><i style="width:0%"></i></div><span class="dbval">—</span></div>
+          <div class="dbrow"><span class="dblabel">Budget</span><div class="bar cost"><i style="width:0%"></i></div><span class="dbval">—</span></div>
+        </div>
+        <div class="psite">Rockingham WA</div>
+        <div class="palert"><span class="alert-none">— Draft</span></div>
+      </div>
+    </div>
+
+    <div class="card" style="padding:12px 16px; margin-top:2px;">
+      <div style="font-size:11.5px; color:var(--muted);">
+        <b style="color:var(--dim);">Alert</b> compares Budget% against Schedule% — Budget running well ahead of
+        Schedule (like <b style="color:var(--red);">HR-009</b>, 91% spent at 72% complete) is the classic overrun
+        signal; a stalled schedule while spend keeps ticking (<b style="color:var(--yellow);">BW-021</b>, on hold)
+        earns Watch even without a budget gap. This threshold/formula isn't decided yet — flagging for review, not
+        proposing as final.
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════ SCREEN 2 ══════════════════════ -->
+  <div class="screen" id="screen-2">
+    <div class="eyebrow">New project intake</div>
+    <h1>Add a Project</h1>
+    <div class="sub" style="margin-bottom:18px;">Three short steps — customer, brief, land — before this becomes a live Stage-1 project.</div>
+
+    <div class="wiz-steps">
+      <div class="wstep active" id="ws-1"><span class="wn">1</span><span class="wl">Customer</span></div>
+      <div class="wline" id="wl-1"></div>
+      <div class="wstep" id="ws-2"><span class="wn">2</span><span class="wl">Project Brief</span></div>
+      <div class="wline" id="wl-2"></div>
+      <div class="wstep" id="ws-3"><span class="wn">3</span><span class="wl">Land &amp; Site Info</span></div>
+    </div>
+
+    <div class="card">
+      <!-- Step 1 — Customer -->
+      <div class="wpanel on" id="wp-1">
+        <div class="card-title">Customer info</div>
+        <div class="field-grid" style="margin-top:12px;">
+          <div class="field"><label>Full name</label><input placeholder="e.g. David &amp; Louise Turner"></div>
+          <div class="field"><label>Client tier</label><select><option>Individual client</option><option>Development / portfolio</option></select></div>
+          <div class="field"><label>Phone</label><input placeholder="04xx xxx xxx"></div>
+          <div class="field"><label>Email</label><input placeholder="name@email.com"></div>
+          <div class="field full"><label>How did they find us?</label>
+            <select><option>Referral</option><option>Website enquiry</option><option>Display home</option><option>Repeat client</option></select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2 — Project Brief -->
+      <div class="wpanel" id="wp-2">
+        <div class="card-title">Project brief</div>
+        <div class="field-grid" style="margin-top:12px;">
+          <div class="field"><label>Project name</label><input placeholder="e.g. Lakeview Estate — Lot 14"></div>
+          <div class="field"><label>Dwelling type</label><select><option>Single storey</option><option>Double storey</option><option>Duplex</option><option>Multi-unit</option></select></div>
+          <div class="field"><label>Indicative budget — from</label><input placeholder="$450,000"></div>
+          <div class="field"><label>Indicative budget — to</label><input placeholder="$520,000"></div>
+          <div class="field full"><label>Requirements / brief notes</label>
+            <textarea placeholder="4 bed, 2 bath, north-facing living, single garage + workshop…"></textarea>
+            <div class="hint">Captured as-is — this becomes the working brief for concept design (Stage 3).</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3 — Land & Site -->
+      <div class="wpanel" id="wp-3">
+        <div class="card-title">Land &amp; site info</div>
+        <div class="field-grid" style="margin-top:12px;">
+          <div class="field full"><label>Site address</label><input placeholder="14 Kestrel Rise, Baldivis WA 6171"></div>
+          <div class="field"><label>Lot / Plan</label><input placeholder="Lot 14 / DP411287"></div>
+          <div class="field"><label>Site area (m²)</label><input placeholder="612"></div>
+          <div class="field"><label>Zoning code</label><input placeholder="R20"></div>
+          <div class="field"><label>Estimated start</label><input placeholder="Q1 2027"></div>
+          <div class="field full">
+            <label>Land documents</label>
+            <div class="upload-row">
+              <div class="upload-card"><span class="uico">📄</span>Land title</div>
+              <div class="upload-card"><span class="uico">🗺️</span>Contour / survey</div>
+              <div class="upload-card"><span class="uico">📋</span>Site plan</div>
+            </div>
+            <div class="hint">Same capture surface the field app uses at Stage 1 — OCR extraction runs server-side once uploaded.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="wiz-actions">
+        <button class="btn btn-ghost" id="wback" onclick="wizBack()" disabled>← Back</button>
+        <button class="btn btn-primary" id="wnext" onclick="wizNext()">Continue →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════ SCREEN 3 ══════════════════════ -->
+  <div class="screen" id="screen-3">
+    <div class="idhead">
+      <div>
+        <div class="eyebrow">Project overview</div>
+        <h1><span style="font-family:var(--fm); color:var(--brand); font-weight:700;">LV-014</span>&nbsp; Lakeview Estate — Lot 14</h1>
+        <div class="idmeta"><span>New dwelling, single storey</span><span>Status: Active</span><span>Created 12 Aug 2026</span></div>
+      </div>
+      <div class="stage-pill">
+        <div class="ring"><b>3/18</b></div>
+        <div><div class="t1">Currently at</div><div class="t2">Stage 3 · Concept Design</div></div>
+      </div>
+    </div>
+
+    <div class="info-row">
+      <div class="info-card">
+        <div class="ic-head">👤 <span class="lbl">Client</span></div>
+        <div class="kv"><span class="k">Name</span><span class="v">David &amp; Louise Turner</span></div>
+        <div class="kv"><span class="k">Phone</span><span class="v mono">0412 384 771</span></div>
+        <div class="kv"><span class="k">Email</span><span class="v mono" style="font-size:11.5px;">turner.family@mail.com</span></div>
+        <div class="kv"><span class="k">Tier</span><span class="v">Individual client</span></div>
+      </div>
+      <div class="info-card">
+        <div class="ic-head">📁 <span class="lbl">Project</span></div>
+        <div class="kv"><span class="k">Code</span><span class="v mono">LV-014</span></div>
+        <div class="kv"><span class="k">Template</span><span class="v">WA Residential — 18 stage</span></div>
+        <div class="kv"><span class="k">Contract</span><span class="v unset">Set at Stage 9</span></div>
+        <div class="kv"><span class="k">Target start</span><span class="v">Q1 2027</span></div>
+      </div>
+      <div class="info-card">
+        <div class="ic-head">📍 <span class="lbl">Site</span></div>
+        <div class="kv"><span class="k">Address</span><span class="v" style="text-align:right;">14 Kestrel Rise,<br>Baldivis WA 6171</span></div>
+        <div class="kv"><span class="k">Lot / Plan</span><span class="v mono">Lot 14 / DP411287</span></div>
+        <div class="kv"><span class="k">Site area</span><span class="v mono">612 m²</span></div>
+        <div class="kv"><span class="k">Zoning</span><span class="v mono">R20</span></div>
+      </div>
+    </div>
+
+    <div class="callout">
+      <div class="num">3</div>
+      <div class="body">
+        <div class="tag">You are here — Part A · Design &amp; Approvals</div>
+        <h2>Concept Design Generation</h2>
+        <p>Stages 1–2 confirmed (land data ingested, utility/hazard audit clear). The AI block model is
+          generating footprint, elevation and floor-area summary for client sign-off — open this next.</p>
+      </div>
+      <button class="btn btn-primary">Open Stage 3 →</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">18-stage lifecycle <span style="font-family:var(--fm); font-weight:500; color:var(--muted); font-size:12px;">2 of 18 complete</span></div>
+
+      <div class="part-head"><span class="letter">A</span><span class="name">Design &amp; Approvals — Stages 1–7</span></div>
+      <div class="stage done clickable" onclick="openStage(1)"><div class="marker">✓</div><div class="name">1. Project Creation &amp; Land Ingestion</div><div class="status">Done</div></div>
+      <div class="stage done clickable" onclick="openStage(2)"><div class="marker">✓</div><div class="name">2. Utility &amp; Hazard Audit</div><div class="status">Done</div></div>
+      <div class="stage current clickable" onclick="openStage(3)"><div class="marker">3</div><div class="name">3. Concept Design Generation</div><div class="status">In progress</div></div>
+      <div class="stage upcoming clickable" onclick="openStage(4)"><div class="marker">4</div><div class="name">4. Town Planner / Council Screening</div><div class="status">Upcoming</div></div>
+      <div class="stage upcoming clickable" onclick="openStage(5)"><div class="marker">5</div><div class="name">5. Budget-Based Style Generation</div><div class="status">Upcoming</div></div>
+      <div class="stage upcoming clickable" onclick="openStage(6)"><div class="marker">6</div><div class="name">6. Architectural Drawing Development</div><div class="status">Upcoming</div></div>
+      <div class="stage upcoming clickable" onclick="openStage(7)"><div class="marker">7</div><div class="name">7. DA Submission &amp; Approval</div><div class="status">Upcoming</div></div>
+
+      <div class="part-head"><span class="letter">B</span><span class="name">Approvals &amp; Permits — Stages 8–9</span></div>
+      <div class="stage upcoming clickable" onclick="openStage(8)"><div class="marker">8</div><div class="name">8. DA Approval &amp; Construction Certificate</div><div class="status">Upcoming</div></div>
+      <div class="stage upcoming clickable" onclick="openStage(9)"><div class="marker">9</div><div class="name">9. Construction Tender Preparation</div><div class="status">Upcoming</div></div>
+
+      <div class="part-head"><span class="letter">C</span><span class="name">Construction — Stages 10–15</span></div>
+      <div class="stage upcoming clickable" onclick="openStage(10)"><div class="marker">10</div><div class="name">10. Site Works &amp; Earthworks</div><div class="status">Upcoming</div></div>
+      <div class="stage upcoming clickable" onclick="openStage(11)"><div class="marker">11</div><div class="name">11. Foundation &amp; In-Ground Services</div><span class="hp">HOLD PT</span><div class="status">Upcoming</div></div>
+      <div class="stage upcoming clickable" onclick="openStage(12)"><div class="marker">12</div><div class="name">12. Concrete Slab Pour</div><span class="hp">HOLD PT</span><div class="status">Upcoming</div></div>
+      <div class="stage upcoming clickable" onclick="openStage(13)"><div class="marker">13</div><div class="name">13. Frame &amp; Roof Construction</div><span class="hp">HOLD PT</span><div class="status">Upcoming</div></div>
+      <div class="stage upcoming clickable" onclick="openStage(14)"><div class="marker">14</div><div class="name">14. Lock-up &amp; External Works</div><div class="status">Upcoming</div></div>
+      <div class="stage upcoming clickable" onclick="openStage(15)"><div class="marker">15</div><div class="name">15. Internal Services Rough-in</div><span class="hp">HOLD PT</span><div class="status">Upcoming</div></div>
+
+      <div class="part-head"><span class="letter">D</span><span class="name">Fit-out &amp; Finishes — Stages 16–17</span></div>
+      <div class="stage upcoming clickable" onclick="openStage(16)"><div class="marker">16</div><div class="name">16. Fit-out &amp; Finishes</div><div class="status">Upcoming</div></div>
+      <div class="stage upcoming clickable" onclick="openStage(17)"><div class="marker">17</div><div class="name">17. External Works &amp; Landscaping</div><div class="status">Upcoming</div></div>
+
+      <div class="part-head"><span class="letter">E</span><span class="name">Completion — Stage 18</span></div>
+      <div class="stage upcoming clickable" onclick="openStage(18)"><div class="marker">18</div><div class="name">18. Compliance &amp; Handover</div><span class="hp">HOLD PT</span><div class="status">Upcoming</div></div>
+    </div>
+    <div style="font-size:11.5px; color:var(--muted); padding:10px 4px 2px;">Click any stage to open its tasks →</div>
+  </div>
+
+  <!-- ══════════════════════ SCREEN 4 — Stage task drill-down ══════════════════════ -->
+  <div class="screen" id="screen-4">
+    <button class="backlink" onclick="showScreen(3)">← Back to Project Overview</button>
+    <div class="eyebrow">LV-014 — Lakeview Estate</div>
+    <h1 id="stage-title">3. Concept Design Generation</h1>
+    <div class="sub" style="margin-bottom:16px;">Tasks inside this stage — description, dates, who's on it, and what it produces.</div>
+
+    <div id="task-list-body"></div>
+
+    <div class="card" style="padding:12px 16px; margin-top:4px;">
+      <div style="font-size:11.5px; color:var(--muted);">
+        <b style="color:var(--dim);">Invoice</b> and <b style="color:var(--dim);">HR hours used</b> are placeholders —
+        neither exists at task granularity in the schema yet (only stage-level financial columns and
+        task-level <em>budget</em> hours/amount do). Raised as <code>xprojman-29.md</code>; description,
+        dates and assigned-to above are real <code>tasks</code> table fields already.
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  function showScreen(n) {
+    for (let i = 1; i <= 4; i++) {
+      document.getElementById('screen-' + i).classList.toggle('on', i === n);
+      document.getElementById('jtab-' + i).classList.toggle('on', i === n);
+    }
+  }
+
+  const STAGE_NAMES = {
+    1:'Project Creation & Land Ingestion', 2:'Utility & Hazard Audit', 3:'Concept Design Generation',
+    4:'Town Planner / Council Screening', 5:'Budget-Based Style Generation', 6:'Architectural Drawing Development',
+    7:'DA Submission & Approval', 8:'DA Approval & Construction Certificate', 9:'Construction Tender Preparation',
+    10:'Site Works & Earthworks', 11:'Foundation & In-Ground Services', 12:'Concrete Slab Pour',
+    13:'Frame & Roof Construction', 14:'Lock-up & External Works', 15:'Internal Services Rough-in',
+    16:'Fit-out & Finishes', 17:'External Works & Landscaping', 18:'Compliance & Handover',
+  };
+  // Only Stage 3 (the current stage in this demo) carries mock task data — every other
+  // stage renders the "hasn't started" empty state rather than fabricating 17 more rows.
+  const STAGE_TASKS = {
+    3: [
+      { name: 'Generate structural block model', desc: 'AI engine extracts zoning variables, land boundary titles and lot dimensions to compute the footprint, elevation profile and floor-area summary.', start: '18 Aug', end: '20 Aug', assignee: 'System — AI Engine', output: 'Footprint Plan, Elevation Profile (PDF)', docs: 2, outsourced: false },
+      { name: 'Review concept drawings with client', desc: 'Walk David & Louise through the footprint, elevation and area summary; capture their feedback before council screening.', start: '21 Aug', end: '22 Aug', assignee: 'PM — S. Whitlock', output: 'Client sign-off note', docs: 3, outsourced: false },
+      { name: 'Engage structural pre-check', desc: 'Quick feasibility check with an external structural engineer ahead of Stage 4 council screening — outsourced, not in-house.', start: '22 Aug', end: '24 Aug', assignee: 'External — J. Petrakis, Petrakis Structural', output: 'Feasibility memo', docs: 1, outsourced: true },
+      { name: 'Prepare area summary sheet', desc: 'Finalise the internal floor-area (m²) summary for the Stage 4 council/town-planner handoff.', start: '24 Aug', end: '25 Aug', assignee: 'PM — S. Whitlock', output: '— in progress', docs: 0, outsourced: false },
+    ],
+  };
+  function openStage(n) {
+    document.getElementById('stage-title').textContent = n + '. ' + STAGE_NAMES[n];
+    document.getElementById('obcrumb-extra').textContent = '→ LV-014 → Stage ' + n;
+    const tasks = STAGE_TASKS[n];
+    const body = document.getElementById('task-list-body');
+    if (!tasks) {
+      body.innerHTML = '<div class="task-empty">No tasks yet — this stage hasn\'t started. Tasks appear here once the stage before it is complete.</div>';
+    } else {
+      body.innerHTML = tasks.map(t => `
+        <div class="task-card">
+          <div class="task-top">
+            <div class="task-name">${t.name}</div>
+            ${t.outsourced ? '<span class="badge badge-hold">Outsourced</span>' : '<span class="badge badge-draft">In-house</span>'}
+          </div>
+          <div class="task-desc">${t.desc}</div>
+          <div class="task-fields">
+            <div class="tf"><span class="tfl">Dates</span><span class="tfv">${t.start} → ${t.end}</span></div>
+            <div class="tf"><span class="tfl">Assigned to</span><span class="tfv">${t.assignee}</span></div>
+            <div class="tf"><span class="tfl">Drawings / reports</span><span class="tfv">${t.docs > 0 ? '📎 ' + t.docs + ' attached' : '—'}</span></div>
+            <div class="tf"><span class="tfl">Output</span><span class="tfv">${t.output}</span></div>
+            <div class="tf"><span class="tfl">Invoice ${t.outsourced ? '(outsourced)' : ''}</span><span class="tfv pending">pending XP-29</span></div>
+            <div class="tf"><span class="tfl">HR hours used</span><span class="tfv pending">pending XP-29</span></div>
+          </div>
+        </div>
+      `).join('');
+    }
+    showScreen(4);
+  }
+  let wizStep = 1;
+  function renderWiz() {
+    for (let i = 1; i <= 3; i++) {
+      document.getElementById('wp-' + i).classList.toggle('on', i === wizStep);
+      const ws = document.getElementById('ws-' + i);
+      ws.classList.toggle('active', i === wizStep);
+      ws.classList.toggle('done', i < wizStep);
+      if (i < 3) document.getElementById('wl-' + i).classList.toggle('done', i < wizStep);
+    }
+    document.getElementById('wback').disabled = wizStep === 1;
+    document.getElementById('wnext').textContent = wizStep === 3 ? 'Create Project →' : 'Continue →';
+  }
+  function wizNext() {
+    if (wizStep === 3) { showScreen(3); return; }
+    wizStep = Math.min(3, wizStep + 1); renderWiz();
+  }
+  function wizBack() { wizStep = Math.max(1, wizStep - 1); renderWiz(); }
+</script>

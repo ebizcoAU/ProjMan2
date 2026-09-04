@@ -13,6 +13,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { authApi, setSession } from '@/lib/api';
 import RecoveryModal from '@/components/portal/RecoveryModal';
+import AppLoginModal from '@/components/portal/AppLoginModal';
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
 
@@ -23,6 +24,7 @@ export default function LoginPage() {
   const [error, setError]       = useState(null);
   const [busy, setBusy]         = useState(false);
   const [showRecovery, setShowRecovery] = useState(false);
+  const [showAppLogin, setShowAppLogin] = useState(false);
 
   const enter = (d) => {
     setSession({ accessToken: d.accessToken, refreshToken: d.refreshToken, user: d.user });
@@ -41,6 +43,20 @@ export default function LoginPage() {
     } catch (err) {
       setError(err?.response?.data?.message || err.message || 'Sign-in failed');
       setBusy(false);
+    }
+  };
+
+  // App-mediated login (xprojman-31): the modal hands back a token pair only —
+  // unlike password/Google, there's no `user` payload from the approval itself, so
+  // fetch it before routing (enter() needs `user.role` for the builder/PM split).
+  const onAppLoginApproved = async ({ accessToken, refreshToken }) => {
+    setSession({ accessToken, refreshToken });
+    try {
+      const { data } = await authApi.me();
+      enter({ accessToken, refreshToken, user: data.data || data });
+    } catch (err) {
+      setError(err?.response?.data?.message || err.message || 'Sign-in failed');
+      setShowAppLogin(false);
     }
   };
 
@@ -159,6 +175,12 @@ export default function LoginPage() {
           Signed up on the app with Google? Use the Google button — no password needed.
         </div>
 
+        {/* App-mediated login (xprojman-31) */}
+        <button type="button" className="btn" onClick={() => setShowAppLogin(true)} disabled={busy}
+          style={{ width: '100%', justifyContent: 'center', padding: '11px 16px', marginTop: 10 }}>
+          Sign in with the ProjMan App
+        </button>
+
         <div style={{ marginTop: 16, fontSize: 13, color: 'var(--muted)', textAlign: 'center' }}>
           New here? <a href="/signup" style={{ color: 'var(--brand)' }}>Create an account</a>
         </div>
@@ -173,6 +195,13 @@ export default function LoginPage() {
             setEmail(resetEmail);
             setPassword('');
           }}
+        />
+      )}
+
+      {showAppLogin && (
+        <AppLoginModal
+          onClose={() => setShowAppLogin(false)}
+          onApproved={onAppLoginApproved}
         />
       )}
     </div>

@@ -469,7 +469,7 @@ function NavItem({ href, label, navKey, badge, mock, tooltip, active, collapsed,
 
         {!collapsed && (
           <span style={{
-            fontSize: fs(14, screenTier), flex: 1,
+            fontSize: fs(13, screenTier), flex: 1,
             overflow: 'hidden', textOverflow: 'ellipsis',
             color: active ? ACCENT.color
               : mock ? 'var(--muted)'

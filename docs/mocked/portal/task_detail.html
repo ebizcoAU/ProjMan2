@@ -1,0 +1,721 @@
+<title>Markup Desk</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.12.2/mammoth.browser.min.js"></script>
+<style>
+  :root {
+    --bg:  #eaeef4; --s1: #ffffff; --s2: #f6f8fb; --s3: #eef2f7; --s4: #e3e9f1;
+    --b1:  #c4cedd; --b2: #a7b4c8; --b3: #8593a9;
+    --text:#16202e; --dim: #44516a; --muted: #5b6880;
+    --brand:#c2410c; --bdim: rgba(249,115,22,.12); --bbright: rgba(194,65,12,.40);
+    --green:#15803d; --gdim: rgba(21,128,61,.12);
+    --red:  #b91c1c; --rdim: rgba(185,28,28,.10);
+    --yellow:#b45309; --ydim: rgba(180,83,9,.12);
+    --cyan: #0e7490; --cyandim: rgba(14,116,144,.12);
+    --shadow: 0 20px 48px rgba(22,32,46,.14);
+    --fh: 'Syne', sans-serif; --fb: 'DM Sans', sans-serif; --fm: 'JetBrains Mono', monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#0f1520; --s1:#161f2e; --s2:#1b2536; --s3:#212c3f; --s4:#283449;
+      --b1:#2e3b52; --b2:#3d4c67; --b3:#57688a;
+      --text:#e7ecf5; --dim:#aab6cc; --muted:#8794ac;
+      --brand:#fb923c; --bdim:rgba(251,146,60,.14); --bbright:rgba(251,146,60,.45);
+      --green:#4ade80; --gdim:rgba(74,222,128,.12);
+      --red:#f87171; --rdim:rgba(248,113,113,.12);
+      --yellow:#fbbf24; --ydim:rgba(251,191,36,.12);
+      --cyan:#22d3ee; --cyandim:rgba(34,211,238,.12);
+      --shadow: 0 20px 48px rgba(0,0,0,.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:#0f1520; --s1:#161f2e; --s2:#1b2536; --s3:#212c3f; --s4:#283449;
+    --b1:#2e3b52; --b2:#3d4c67; --b3:#57688a;
+    --text:#e7ecf5; --dim:#aab6cc; --muted:#8794ac;
+    --brand:#fb923c; --bdim:rgba(251,146,60,.14); --bbright:rgba(251,146,60,.45);
+    --green:#4ade80; --gdim:rgba(74,222,128,.12);
+    --red:#f87171; --rdim:rgba(248,113,113,.12);
+    --yellow:#fbbf24; --ydim:rgba(251,191,36,.12);
+    --cyan:#22d3ee; --cyandim:rgba(34,211,238,.12);
+    --shadow: 0 20px 48px rgba(0,0,0,.5);
+  }
+
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: var(--fb); font-size: 15px; line-height: 1.55; padding: 26px 20px 70px; }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  button { font-family: var(--fb); cursor: pointer; }
+  h1, h2, h3 { font-family: var(--fh); text-wrap: balance; }
+
+  .ribbon {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: var(--s1); border: 2px dashed var(--b2); border-radius: 10px;
+    padding: 10px 16px; margin-bottom: 18px; font-size: 12.5px; color: var(--dim);
+  }
+  .ribbon b { color: var(--brand); font-family: var(--fh); font-weight: 800; }
+  .ribbon code { font-family: var(--fm); background: var(--s3); padding: 1px 6px; border-radius: 4px; font-size: 11.5px; }
+
+  /* ── Task header ─────────────────────────────────────────────────────── */
+  .taskhead { background: var(--s1); border: 1px solid var(--b1); border-radius: 14px; padding: 22px 26px; box-shadow: var(--shadow); margin-bottom: 18px; }
+  .breadcrumb { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+  .breadcrumb b { color: var(--dim); }
+  .thtop { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+  .thtitle { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .thcode { font-family: var(--fm); color: var(--brand); font-weight: 700; font-size: 14px; }
+  .thname { font-size: 24px; font-weight: 800; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+  .pill-milestone { background: var(--ydim); color: var(--yellow); }
+  .pill-outsourced { background: var(--cyandim); color: var(--cyan); }
+
+  .metagrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 18px; }
+  .meta-l { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
+  .meta-v { font-size: 14.5px; font-weight: 600; }
+  .meta-v.mono { font-family: var(--fm); font-weight: 500; }
+
+  .progress-row { margin-top: 18px; }
+  .prow-label { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--dim); margin-bottom: 6px; }
+  .pbar { height: 9px; background: var(--s3); border-radius: 5px; overflow: hidden; border: 1px solid var(--b1); }
+  .pbar i { display: block; height: 100%; background: linear-gradient(90deg, var(--brand), #ea9354); border-radius: 5px 0 0 5px; }
+
+  .toggle-row { display: flex; align-items: center; gap: 12px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--s4); }
+  .switch { position: relative; width: 42px; height: 24px; flex-shrink: 0; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; inset: 0; background: var(--b1); border-radius: 999px; transition: .15s; cursor: pointer; }
+  .slider::before { content: ""; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px; background: var(--s1); border-radius: 50%; transition: .15s; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+  .switch input:checked + .slider { background: var(--brand); }
+  .switch input:checked + .slider::before { transform: translateX(18px); }
+  .toggle-label { font-size: 13.5px; font-weight: 600; color: var(--dim); }
+  .toggle-sub { font-size: 12px; color: var(--muted); }
+
+  /* ── Two-column body ─────────────────────────────────────────────────── */
+  .cols { display: grid; grid-template-columns: 1.15fr 1fr; gap: 18px; align-items: start; }
+  @media (max-width: 860px) { .cols { grid-template-columns: 1fr; } }
+  .card { background: var(--s1); border: 1px solid var(--b1); border-radius: 14px; padding: 20px 22px; box-shadow: var(--shadow); }
+  .card + .card { margin-top: 18px; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .card-title { font-family: var(--fh); font-size: 15px; font-weight: 800; }
+  .card-count { font-family: var(--fm); font-size: 12px; color: var(--muted); background: var(--s3); border-radius: 999px; padding: 2px 9px; }
+
+  /* Notes */
+  .note-input { display: flex; gap: 8px; margin-bottom: 16px; }
+  textarea.input { resize: vertical; min-height: 40px; font-family: var(--fb); }
+  .input { width: 100%; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--b1); background: var(--s2); color: var(--text); font-size: 14px; }
+  .input:focus { outline: 2px solid var(--bbright); outline-offset: 1px; border-color: var(--brand); }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 15px; border-radius: 8px; border: 1px solid var(--b1); background: var(--s2); color: var(--text); font-size: 13.5px; font-weight: 600; white-space: nowrap; }
+  .btn:hover { border-color: var(--b3); }
+  .btn:focus-visible { outline: 2px solid var(--bbright); outline-offset: 2px; }
+  .btn-primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .btn-primary:hover { filter: brightness(1.06); }
+  .btn-ghost { background: transparent; border: 1px solid var(--b1); }
+  .btn-sm { padding: 6px 11px; font-size: 12.5px; }
+
+  .note { padding: 12px 0; border-bottom: 1px solid var(--s4); }
+  .note:last-child { border-bottom: none; }
+  .note-meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .note-author { font-weight: 700; color: var(--dim); }
+  .note-body { font-size: 14px; color: var(--text); }
+  .empty { padding: 20px 0; text-align: center; color: var(--muted); font-size: 13.5px; }
+
+  /* Attachments */
+  .att-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 10px; flex-wrap: wrap; }
+  .att-hint { font-size: 12px; color: var(--muted); }
+  .att-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 520px) { .att-grid { grid-template-columns: 1fr; } }
+  .att-card { border: 1px solid var(--b1); background: var(--s2); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .att-top { display: flex; align-items: flex-start; gap: 10px; }
+  .att-icon { width: 34px; height: 34px; border-radius: 8px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--s3); border: 1px solid var(--b1); }
+  .att-icon svg { width: 18px; height: 18px; }
+  .att-name { font-size: 13px; font-weight: 700; word-break: break-word; line-height: 1.3; }
+  .att-sub { font-size: 11px; color: var(--muted); font-family: var(--fm); margin-top: 2px; }
+  .att-example { display: inline-block; margin-top: 4px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); background: var(--s3); border-radius: 4px; padding: 1px 6px; }
+  .att-actions { display: flex; gap: 6px; margin-top: auto; }
+  .att-actions .btn { flex: 1; justify-content: center; }
+  video.att-video { width: 100%; border-radius: 6px; margin-top: 2px; }
+
+  /* Purchase orders */
+  .po-off { padding: 16px 0; color: var(--muted); font-size: 13.5px; text-align: center; }
+  .po-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--s4); }
+  .po-row:last-child { border-bottom: none; }
+  .po-num { font-family: var(--fm); font-size: 12.5px; color: var(--brand); font-weight: 700; }
+  .po-supplier { font-size: 13.5px; font-weight: 600; }
+  .po-amount { font-family: var(--fm); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .po-status { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; background: var(--ydim); color: var(--yellow); padding: 2px 8px; border-radius: 999px; }
+
+  /* Modals */
+  .overlay { position: fixed; inset: 0; background: rgba(15,21,32,.6); backdrop-filter: blur(3px); display: none; align-items: center; justify-content: center; padding: 20px; z-index: 200; }
+  .overlay.on { display: flex; }
+  .modal { background: var(--s1); border-radius: 14px; border: 1px solid var(--b1); box-shadow: var(--shadow); width: 420px; max-width: 100%; padding: 24px; }
+  .modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .modal h2 { font-size: 18px; margin: 0; }
+  .iconbtn { background: none; border: none; font-size: 20px; color: var(--muted); line-height: 1; padding: 2px 4px; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 12.5px; font-weight: 700; color: var(--dim); margin-bottom: 5px; }
+
+  /* Viewer modal */
+  .viewer-overlay { position: fixed; inset: 0; background: rgba(10,14,20,.86); display: none; flex-direction: column; z-index: 300; }
+  .viewer-overlay.on { display: flex; }
+  .viewer-bar { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; background: var(--s1); border-bottom: 1px solid var(--b1); flex-wrap: wrap; gap: 10px; }
+  .viewer-fname { font-weight: 700; font-size: 14px; }
+  .viewer-fname span { display: block; font-size: 11px; color: var(--muted); font-weight: 500; margin-top: 1px; }
+  .viewer-body { flex: 1; overflow: auto; display: flex; align-items: flex-start; justify-content: center; padding: 26px; }
+  .canvas-stack { position: relative; background: #fff; box-shadow: 0 10px 40px rgba(0,0,0,.4); }
+  .canvas-stack canvas { display: block; position: absolute; top: 0; left: 0; }
+  .docx-pane { background: #fff; color: #1a1a1a; max-width: 760px; width: 100%; padding: 48px 56px; box-shadow: 0 10px 40px rgba(0,0,0,.4); font-family: 'DM Sans', sans-serif; line-height: 1.6; }
+  .docx-pane :first-child { margin-top: 0; }
+
+  .toolbar { display: flex; align-items: center; gap: 18px; padding: 10px 20px; background: var(--s1); border-top: 1px solid var(--b1); flex-wrap: wrap; }
+  .tool-group { display: flex; align-items: center; gap: 6px; }
+  .tool-group-label { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-right: 4px; }
+  .tool-btn { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--b1); background: var(--s2); display: flex; align-items: center; justify-content: center; }
+  .tool-btn.active { border-color: var(--brand); background: var(--bdim); }
+  .tool-btn svg { width: 16px; height: 16px; stroke: var(--text); fill: none; }
+  .swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; }
+  .swatch.active { border-color: var(--text); box-shadow: 0 0 0 2px var(--s1), 0 0 0 3px var(--text); }
+  .size-btn { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--b1); background: var(--s2); display: flex; align-items: center; justify-content: center; }
+  .size-btn.active { border-color: var(--brand); background: var(--bdim); }
+  .size-dot { border-radius: 50%; background: var(--text); }
+  .divider { width: 1px; height: 26px; background: var(--b1); }
+  .toast { position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%) translateY(0); background: var(--text); color: var(--bg); padding: 11px 20px; border-radius: 999px; font-size: 13.5px; font-weight: 600; box-shadow: var(--shadow); z-index: 400; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; }
+  .toast.on { opacity: 1; transform: translateX(-50%) translateY(-8px); }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <div class="ribbon">
+    <b>MOCKUP</b> — Portal Stage → Task drill-down, per <code>xprojman-28</code> module 19. Notes, attachments and
+    purchase orders shown here are in-memory only (nothing persists on reload). The markup tool opens real files you
+    add via <b>+ Add file</b> — try a PDF, image or .docx.
+  </div>
+
+  <!-- ══════════════ TASK HEADER ══════════════ -->
+  <div class="taskhead">
+    <div class="breadcrumb">Lakeview Estate — Lot 14 <b>→</b> Stage 16 · Fit-Out &amp; Finishes <b>→</b> Task S16.4</div>
+    <div class="thtop">
+      <div class="thtitle">
+        <span class="thcode">S16.4</span>
+        <span class="thname">Tiling — Bathroom 2</span>
+        <span class="pill pill-milestone">Fixing milestone</span>
+        <span class="pill pill-outsourced" id="outsourced-pill">Outsourced</span>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn" id="add-note-scroll">+ Note</button>
+        <button class="btn" id="add-file-btn-top">+ Add file</button>
+      </div>
+    </div>
+
+    <div class="metagrid">
+      <div><div class="meta-l">Assigned to</div><div class="meta-v">Coastal Tiling Co.</div></div>
+      <div><div class="meta-l">Start date</div><div class="meta-v mono">2026-09-10</div></div>
+      <div><div class="meta-l">End date</div><div class="meta-v mono">2026-09-14</div></div>
+      <div><div class="meta-l">Output</div><div class="meta-v">Bathroom 1 &amp; 2, kitchen splashback tiled</div></div>
+    </div>
+
+    <div class="progress-row">
+      <div class="prow-label"><span>Completion</span><span id="completion-label">40%</span></div>
+      <div class="pbar"><i style="width:40%"></i></div>
+    </div>
+
+    <div class="toggle-row">
+      <label class="switch">
+        <input type="checkbox" id="outsourced-toggle" checked>
+        <span class="slider"></span>
+      </label>
+      <div>
+        <div class="toggle-label">Outsourced to a subcontractor</div>
+        <div class="toggle-sub">Turns on Purchase Order raising for this task.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ TWO COLUMNS ══════════════ -->
+  <div class="cols">
+    <!-- LEFT: Notes + Purchase Orders -->
+    <div>
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">Notes</div>
+          <div class="card-count" id="note-count">2</div>
+        </div>
+        <div class="note-input">
+          <textarea class="input" id="note-text" placeholder="Add a note for this task…" rows="2"></textarea>
+        </div>
+        <div style="text-align:right; margin-bottom:16px;">
+          <button class="btn btn-primary btn-sm" id="add-note-btn">Add note</button>
+        </div>
+        <div id="notes-list"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">Purchase Orders</div>
+          <button class="btn btn-sm" id="raise-po-btn">+ Raise PO</button>
+        </div>
+        <div id="po-list"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Attachments -->
+    <div class="card">
+      <div class="att-toolbar">
+        <div class="card-title">Attachments</div>
+        <button class="btn btn-primary btn-sm" id="add-file-btn">+ Add file</button>
+      </div>
+      <div class="att-hint" style="margin-bottom:12px;">Drawings (DWG), PDF, Word (.docx), images (PNG/JPEG) and video.</div>
+      <input type="file" id="file-input" accept=".pdf,.docx,.dwg,.png,.jpg,.jpeg,.mp4,.mov,.webm" multiple hidden>
+      <div class="att-grid" id="att-grid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ PO MODAL ══════════════ -->
+<div class="overlay" id="po-overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h2>Raise Purchase Order</h2>
+      <button class="iconbtn" id="po-close">&times;</button>
+    </div>
+    <form id="po-form">
+      <div class="field">
+        <label>Supplier / Subcontractor</label>
+        <input class="input" id="po-supplier" value="Coastal Tiling Co." required>
+      </div>
+      <div class="field">
+        <label>Description</label>
+        <input class="input" id="po-desc" value="Supply &amp; install — Bathroom 2 wall/floor tiling" required>
+      </div>
+      <div class="field">
+        <label>Amount (AUD, ex GST)</label>
+        <input class="input" id="po-amount" type="number" step="0.01" value="3450.00" required>
+      </div>
+      <div class="field">
+        <label>Required by</label>
+        <input class="input" id="po-due" type="date" value="2026-09-14" required>
+      </div>
+      <button class="btn btn-primary" type="submit" style="width:100%; justify-content:center; margin-top:6px;">Raise PO</button>
+    </form>
+  </div>
+</div>
+
+<!-- ══════════════ DOCUMENT VIEWER / MARKUP ══════════════ -->
+<div class="viewer-overlay" id="viewer-overlay">
+  <div class="viewer-bar">
+    <div class="viewer-fname"><span id="viewer-name">—</span><span id="viewer-sub"></span></div>
+    <div style="display:flex; align-items:center; gap:10px;">
+      <div id="page-nav" style="display:none; align-items:center; gap:8px; font-family:var(--fm); font-size:12.5px; color:var(--dim);">
+        <button class="btn btn-sm" id="page-prev">‹</button>
+        <span id="page-label">1 / 1</span>
+        <button class="btn btn-sm" id="page-next">›</button>
+      </div>
+      <button class="btn btn-sm" id="viewer-save">Save markup</button>
+      <button class="iconbtn" id="viewer-close">&times;</button>
+    </div>
+  </div>
+  <div class="viewer-body" id="viewer-body"></div>
+  <div class="toolbar" id="markup-toolbar" style="display:none;">
+    <div class="tool-group" id="tool-buttons"></div>
+    <div class="divider"></div>
+    <div class="tool-group"><span class="tool-group-label">Colour</span><div id="color-swatches" style="display:flex; gap:6px;"></div></div>
+    <div class="divider"></div>
+    <div class="tool-group"><span class="tool-group-label">Size</span><div id="size-buttons" style="display:flex; gap:6px;"></div></div>
+    <div class="divider"></div>
+    <div class="tool-group">
+      <button class="btn btn-sm btn-ghost" id="undo-btn">Undo</button>
+      <button class="btn btn-sm btn-ghost" id="clear-btn">Clear</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ── tiny icon set ──────────────────────────────────────────────────────────
+const ICONS = {
+  pdf:  '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M14 3v4h4"/></svg>',
+  docx: '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M14 3v4h4"/><path d="M8.5 12.5 10 16l1.5-3.5L13 16l1.5-3.5"/></svg>',
+  dwg:  '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 15h6v6M15 3v6h6"/></svg>',
+  img:  '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5" fill="currentColor" stroke="none"/><path d="m5 18 5-5 3.5 3.5L18 12l3 3"/></svg>',
+  video:'<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="14" height="14" rx="2"/><path d="m17 9 4-2v10l-4-2"/></svg>',
+  file: '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/></svg>',
+};
+
+function kindOf(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  if (ext === 'pdf') return 'pdf';
+  if (ext === 'docx') return 'docx';
+  if (ext === 'doc') return 'doc';
+  if (ext === 'dwg') return 'dwg';
+  if (['png','jpg','jpeg'].includes(ext)) return 'img';
+  if (['mp4','mov','webm'].includes(ext)) return 'video';
+  return 'other';
+}
+function fmtSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024*1024) return (bytes/1024).toFixed(0) + ' KB';
+  return (bytes/1024/1024).toFixed(1) + ' MB';
+}
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('on');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove('on'), 2600);
+}
+
+// ── sample "at rest" attachment: an inline SVG tile-layout schematic ───────
+function buildSampleSchematicDataUrl() {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="900" height="620" viewBox="0 0 900 620">
+    <rect width="900" height="620" fill="#ffffff"/>
+    <rect x="40" y="40" width="820" height="540" fill="none" stroke="#16202e" stroke-width="4"/>
+    <rect x="40" y="40" width="260" height="180" fill="none" stroke="#8593a9" stroke-width="2"/>
+    <text x="60" y="66" font-family="DM Sans, sans-serif" font-size="15" fill="#44516a">Vanity</text>
+    <rect x="620" y="380" width="200" height="200" fill="none" stroke="#8593a9" stroke-width="2"/>
+    <text x="640" y="404" font-family="DM Sans, sans-serif" font-size="15" fill="#44516a">Shower</text>
+    <circle cx="720" cy="480" r="55" fill="none" stroke="#c2410c" stroke-width="2" stroke-dasharray="4 4"/>
+    <text x="686" y="484" font-family="DM Sans, sans-serif" font-size="12" fill="#c2410c">Niche — Marina Blu</text>
+    <line x1="40" y1="300" x2="860" y2="300" stroke="#c4cedd" stroke-width="1"/>
+    <line x1="450" y1="40" x2="450" y2="580" stroke="#c4cedd" stroke-width="1"/>
+    <text x="60" y="600" font-family="Syne, sans-serif" font-size="18" font-weight="800" fill="#16202e">Bathroom 2 — Tile Layout (Sample)</text>
+    <text x="700" y="600" font-family="JetBrains Mono, monospace" font-size="12" fill="#5b6880">1:50 @ A3</text>
+  </svg>`;
+  return 'data:image/svg+xml;base64,' + btoa(svg);
+}
+
+// ── app state ────────────────────────────────────────────────────────────
+let notes = [
+  { author: 'You (PM)', ts: '2026-09-08 14:12', text: "Client confirmed feature tile for shower niche — Cotto Del Sol ‘Marina Blu’, supply-only, tiler to install." },
+  { author: 'Site Supervisor', ts: '2026-09-09 07:40', text: 'Waterproofing membrane cured 48h before tiling starts — confirmed today, tiler cleared to start.' },
+];
+let purchaseOrders = [];
+let poSeq = 141;
+let attachments = [
+  { id: 'a1', name: 'Bathroom2_TileLayout.svg', size: 41200, kind: 'img', example: false, url: buildSampleSchematicDataUrl() },
+  { id: 'a2', name: 'Marina_Blu_TileSpec.docx', size: 348000, kind: 'docx', example: true },
+  { id: 'a3', name: 'Site_Progress_0908.jpg', size: 2190000, kind: 'img', example: true },
+];
+
+function renderNotes() {
+  const list = document.getElementById('notes-list');
+  document.getElementById('note-count').textContent = notes.length;
+  if (!notes.length) { list.innerHTML = '<div class="empty">No notes yet.</div>'; return; }
+  list.innerHTML = notes.map(n => `
+    <div class="note">
+      <div class="note-meta"><span class="note-author">${n.author}</span><span>${n.ts}</span></div>
+      <div class="note-body">${n.text}</div>
+    </div>`).join('');
+}
+
+function renderPOs() {
+  const outsourced = document.getElementById('outsourced-toggle').checked;
+  const list = document.getElementById('po-list');
+  if (!outsourced) { list.innerHTML = '<div class="po-off">This task is being completed in-house — no purchase order needed.</div>'; return; }
+  if (!purchaseOrders.length) { list.innerHTML = '<div class="empty">No purchase orders raised yet.</div>'; return; }
+  list.innerHTML = purchaseOrders.map(po => `
+    <div class="po-row">
+      <div>
+        <div class="po-num">${po.num}</div>
+        <div class="po-supplier">${po.supplier}</div>
+      </div>
+      <div style="text-align:right;">
+        <div class="po-amount">$${po.amount.toLocaleString('en-AU', {minimumFractionDigits:2})}</div>
+        <span class="po-status">${po.status}</span>
+      </div>
+    </div>`).join('');
+}
+
+function renderAttachments() {
+  const grid = document.getElementById('att-grid');
+  grid.innerHTML = attachments.map(a => {
+    const icon = ICONS[a.kind] || ICONS.file;
+    let actions = '';
+    if (a.kind === 'pdf' || a.kind === 'img') actions = `<button class="btn btn-sm" data-open="${a.id}">Markup</button>`;
+    else if (a.kind === 'docx') actions = `<button class="btn btn-sm" data-open="${a.id}">Preview</button>`;
+    else if (a.kind === 'video') actions = `<button class="btn btn-sm" data-open="${a.id}">Play</button>`;
+    else if (a.kind === 'dwg') actions = `<span style="font-size:11.5px;color:var(--muted);">Download only — no in-browser DWG preview</span>`;
+    else if (a.kind === 'doc') actions = `<span style="font-size:11.5px;color:var(--muted);">Legacy .doc not supported — re-save as .docx</span>`;
+    return `
+      <div class="att-card">
+        <div class="att-top">
+          <div class="att-icon">${icon}</div>
+          <div>
+            <div class="att-name">${a.name}</div>
+            <div class="att-sub">${fmtSize(a.size)}</div>
+            ${a.example ? '<span class="att-example">Example</span>' : ''}
+          </div>
+        </div>
+        <div class="att-actions">${actions}</div>
+      </div>`;
+  }).join('');
+  grid.querySelectorAll('[data-open]').forEach(btn => {
+    btn.addEventListener('click', () => openAttachment(attachments.find(a => a.id === btn.dataset.open)));
+  });
+}
+
+// ── notes ────────────────────────────────────────────────────────────────
+document.getElementById('add-note-btn').addEventListener('click', () => {
+  const ta = document.getElementById('note-text');
+  if (!ta.value.trim()) return;
+  notes.unshift({ author: 'You (PM)', ts: new Date().toISOString().slice(0,16).replace('T',' '), text: ta.value.trim() });
+  ta.value = '';
+  renderNotes();
+  toast('Note added');
+});
+document.getElementById('add-note-scroll').addEventListener('click', () => document.getElementById('note-text').focus());
+
+// ── outsourced toggle + PO ─────────────────────────────────────────────────
+const outsourcedToggle = document.getElementById('outsourced-toggle');
+const outsourcedPill = document.getElementById('outsourced-pill');
+outsourcedToggle.addEventListener('change', () => {
+  outsourcedPill.style.display = outsourcedToggle.checked ? '' : 'none';
+  renderPOs();
+});
+document.getElementById('raise-po-btn').addEventListener('click', () => {
+  if (!outsourcedToggle.checked) { toast('Turn on ‘Outsourced’ to raise a purchase order'); return; }
+  document.getElementById('po-overlay').classList.add('on');
+});
+document.getElementById('po-close').addEventListener('click', () => document.getElementById('po-overlay').classList.remove('on'));
+document.getElementById('po-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  purchaseOrders.unshift({
+    num: `PO-2026-${String(poSeq++).padStart(4,'0')}`,
+    supplier: document.getElementById('po-supplier').value,
+    amount: parseFloat(document.getElementById('po-amount').value) || 0,
+    status: 'Draft',
+  });
+  document.getElementById('po-overlay').classList.remove('on');
+  renderPOs();
+  toast('Purchase order raised');
+});
+
+// ── file input ───────────────────────────────────────────────────────────
+function addFiles(fileList) {
+  Array.from(fileList).forEach(file => {
+    const kind = kindOf(file.name);
+    const entry = { id: 'u' + Date.now() + Math.random().toString(36).slice(2,6), name: file.name, size: file.size, kind, example: false, file };
+    if (kind === 'pdf' || kind === 'img' || kind === 'docx' || kind === 'video') entry.url = URL.createObjectURL(file);
+    attachments.unshift(entry);
+  });
+  renderAttachments();
+  toast(fileList.length > 1 ? `${fileList.length} files added` : 'File added');
+}
+const fileInput = document.getElementById('file-input');
+document.getElementById('add-file-btn').addEventListener('click', () => fileInput.click());
+document.getElementById('add-file-btn-top').addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', (e) => { if (e.target.files.length) addFiles(e.target.files); fileInput.value = ''; });
+
+// ── viewer / markup ──────────────────────────────────────────────────────
+const viewerOverlay = document.getElementById('viewer-overlay');
+const viewerBody = document.getElementById('viewer-body');
+const toolbar = document.getElementById('markup-toolbar');
+const pageNav = document.getElementById('page-nav');
+let fabricCanvas = null;
+let currentPdf = null, currentPage = 1, pageStates = {};
+let activeTool = 'pen';
+const COLORS = ['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#a855f7','#111827'];
+let activeColor = COLORS[0];
+const SIZES = [2, 4, 8];
+let activeSize = SIZES[1];
+
+function closeViewer() {
+  viewerOverlay.classList.remove('on');
+  viewerBody.innerHTML = '';
+  toolbar.style.display = 'none';
+  pageNav.style.display = 'none';
+  fabricCanvas = null; currentPdf = null; pageStates = {};
+}
+document.getElementById('viewer-close').addEventListener('click', closeViewer);
+
+function buildToolbarOnce() {
+  if (document.getElementById('tool-buttons').childElementCount) return;
+  const tools = [
+    { id: 'pen', label: 'Pen', svg: '<path d="M4 20l3-1 11-11-2-2L5 17l-1 3Z"/><path d="M14 6l2 2"/>' },
+    { id: 'rect', label: 'Rectangle', svg: '<rect x="4" y="6" width="16" height="12" rx="1"/>' },
+    { id: 'ellipse', label: 'Ellipse', svg: '<ellipse cx="12" cy="12" rx="8" ry="6"/>' },
+    { id: 'line', label: 'Line', svg: '<path d="M4 20 20 4"/>' },
+    { id: 'arrow', label: 'Arrow', svg: '<path d="M4 20 18 6"/><path d="M9 6h9v9"/>' },
+    { id: 'triangle', label: 'Triangle', svg: '<path d="M12 4 20 20H4Z"/>' },
+    { id: 'text', label: 'Text', svg: '<path d="M5 5h14M12 5v14"/>' },
+  ];
+  document.getElementById('tool-buttons').innerHTML = tools.map(t =>
+    `<button class="tool-btn" data-tool="${t.id}" title="${t.label}"><svg viewBox="0 0 24 24">${t.svg}</svg></button>`
+  ).join('');
+  document.querySelectorAll('.tool-btn').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
+
+  document.getElementById('color-swatches').innerHTML = COLORS.map(c =>
+    `<button class="swatch" data-color="${c}" style="background:${c}" title="${c}"></button>`
+  ).join('');
+  document.querySelectorAll('.swatch').forEach(b => b.addEventListener('click', () => {
+    activeColor = b.dataset.color;
+    document.querySelectorAll('.swatch').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    if (fabricCanvas) fabricCanvas.freeDrawingBrush.color = activeColor;
+  }));
+
+  document.getElementById('size-buttons').innerHTML = SIZES.map((s,i) =>
+    `<button class="size-btn" data-size="${s}" title="${['Thin','Medium','Thick'][i]}"><span class="size-dot" style="width:${4+i*4}px;height:${4+i*4}px"></span></button>`
+  ).join('');
+  document.querySelectorAll('.size-btn').forEach(b => b.addEventListener('click', () => {
+    activeSize = parseInt(b.dataset.size, 10);
+    document.querySelectorAll('.size-btn').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    if (fabricCanvas) fabricCanvas.freeDrawingBrush.width = activeSize;
+  }));
+
+  document.getElementById('undo-btn').addEventListener('click', () => {
+    if (!fabricCanvas) return;
+    const objs = fabricCanvas.getObjects();
+    if (objs.length) fabricCanvas.remove(objs[objs.length - 1]);
+  });
+  document.getElementById('clear-btn').addEventListener('click', () => {
+    if (fabricCanvas) fabricCanvas.clear();
+  });
+
+  syncToolbarUI();
+}
+
+// Reflects activeTool/activeColor/activeSize onto the toolbar's highlight state —
+// called once after the toolbar is built and again each time a canvas is (re)wired,
+// since swatch/size highlighting isn't touched by setTool()'s own tool-btn sync.
+function syncToolbarUI() {
+  document.querySelectorAll('.tool-btn').forEach(b => b.classList.toggle('active', b.dataset.tool === activeTool));
+  document.querySelectorAll('.swatch').forEach(b => b.classList.toggle('active', b.dataset.color === activeColor));
+  document.querySelectorAll('.size-btn').forEach(b => b.classList.toggle('active', parseInt(b.dataset.size, 10) === activeSize));
+}
+
+function setTool(id) {
+  activeTool = id;
+  document.querySelectorAll('.tool-btn').forEach(b => b.classList.toggle('active', b.dataset.tool === id));
+  if (!fabricCanvas) return;
+  fabricCanvas.isDrawingMode = (id === 'pen');
+  fabricCanvas.selection = (id === 'select');
+  if (id === 'pen') { fabricCanvas.freeDrawingBrush.color = activeColor; fabricCanvas.freeDrawingBrush.width = activeSize; }
+}
+
+function wireShapeDrawing(canvas) {
+  let drawing = null, startX = 0, startY = 0;
+  canvas.on('mouse:down', (opt) => {
+    if (['pen'].includes(activeTool)) return;
+    const p = canvas.getPointer(opt.e);
+    startX = p.x; startY = p.y;
+    const common = { stroke: activeColor, strokeWidth: activeSize, fill: 'transparent', selectable: false };
+    if (activeTool === 'rect') drawing = new fabric.Rect({ left: startX, top: startY, width: 1, height: 1, ...common });
+    else if (activeTool === 'ellipse') drawing = new fabric.Ellipse({ left: startX, top: startY, rx: 1, ry: 1, ...common });
+    else if (activeTool === 'line') drawing = new fabric.Line([startX, startY, startX, startY], { stroke: activeColor, strokeWidth: activeSize, selectable: false });
+    else if (activeTool === 'arrow') drawing = new fabric.Group([
+        new fabric.Line([0,0,0,0], { stroke: activeColor, strokeWidth: activeSize }),
+        new fabric.Triangle({ width: 6 + activeSize*1.5, height: 8 + activeSize*1.8, fill: activeColor, left: 0, top: 0, angle: 0 }),
+      ], { left: startX, top: startY, selectable: false });
+    else if (activeTool === 'triangle') drawing = new fabric.Triangle({ left: startX, top: startY, width: 1, height: 1, ...common });
+    else if (activeTool === 'text') {
+      const t = new fabric.IText('Note', { left: startX, top: startY, fill: activeColor, fontFamily: 'DM Sans, sans-serif', fontSize: 14 + activeSize*2 });
+      canvas.add(t); canvas.setActiveObject(t); t.enterEditing(); drawing = null; return;
+    }
+    if (drawing) canvas.add(drawing);
+  });
+  canvas.on('mouse:move', (opt) => {
+    if (!drawing) return;
+    const p = canvas.getPointer(opt.e);
+    if (activeTool === 'rect' || activeTool === 'triangle') drawing.set({ width: Math.abs(p.x - startX), height: Math.abs(p.y - startY), left: Math.min(p.x, startX), top: Math.min(p.y, startY) });
+    else if (activeTool === 'ellipse') drawing.set({ rx: Math.abs(p.x - startX)/2, ry: Math.abs(p.y - startY)/2, left: Math.min(p.x, startX), top: Math.min(p.y, startY) });
+    else if (activeTool === 'line') drawing.set({ x2: p.x, y2: p.y });
+    else if (activeTool === 'arrow') {
+      const dx = p.x - startX, dy = p.y - startY, angle = Math.atan2(dy, dx) * 180/Math.PI;
+      const line = drawing.item(0), head = drawing.item(1);
+      line.set({ x2: dx, y2: dy });
+      head.set({ left: dx, top: dy, angle: angle + 90, originX: 'center', originY: 'center' });
+      drawing.addWithUpdate();
+    }
+    canvas.requestRenderAll();
+  });
+  canvas.on('mouse:up', () => { drawing = null; });
+}
+
+function openAttachment(att) {
+  if (!att || !att.url && att.example) { toast('This is an example row — add a real file to preview it'); return; }
+  buildToolbarOnce();
+  document.getElementById('viewer-name').textContent = att.name;
+  document.getElementById('viewer-sub').textContent = fmtSize(att.size);
+  viewerBody.innerHTML = '';
+  pageNav.style.display = 'none';
+  viewerOverlay.classList.add('on');
+
+  if (att.kind === 'img') {
+    toolbar.style.display = 'flex';
+    const stack = document.createElement('div'); stack.className = 'canvas-stack';
+    const canvasEl = document.createElement('canvas'); stack.appendChild(canvasEl);
+    viewerBody.appendChild(stack);
+    fabric.Image.fromURL(att.url, (img) => {
+      const w = Math.min(img.width, 900), scale = w / img.width;
+      fabricCanvas = new fabric.Canvas(canvasEl, { width: w, height: img.height * scale, backgroundColor: '#fff' });
+      img.scale(scale);
+      fabricCanvas.setBackgroundImage(img, fabricCanvas.renderAll.bind(fabricCanvas));
+      wireShapeDrawing(fabricCanvas);
+      setTool('pen');
+      syncToolbarUI();
+    }, { crossOrigin: 'anonymous' });
+  } else if (att.kind === 'pdf') {
+    toolbar.style.display = 'flex';
+    pageNav.style.display = 'flex';
+    const stack = document.createElement('div'); stack.className = 'canvas-stack';
+    const pdfCanvasEl = document.createElement('canvas');
+    const overlayEl = document.createElement('canvas');
+    stack.appendChild(pdfCanvasEl); stack.appendChild(overlayEl);
+    viewerBody.appendChild(stack);
+    (att.file ? att.file.arrayBuffer() : fetch(att.url).then(r => r.arrayBuffer())).then(buf => {
+      pdfjsLib.getDocument({ data: buf }).promise.then(pdf => {
+        currentPdf = pdf; currentPage = 1; pageStates = {};
+        renderPdfPage(pdfCanvasEl, overlayEl, stack);
+      }).catch(() => toast('Could not read that PDF'));
+    });
+  } else if (att.kind === 'docx') {
+    const pane = document.createElement('div'); pane.className = 'docx-pane'; pane.innerHTML = 'Loading preview…';
+    viewerBody.appendChild(pane);
+    (att.file ? att.file.arrayBuffer() : fetch(att.url).then(r => r.arrayBuffer())).then(buf => {
+      mammoth.convertToHtml({ arrayBuffer: buf }).then(res => { pane.innerHTML = res.value || '<p><em>Empty document.</em></p>'; })
+        .catch(() => { pane.innerHTML = '<p>Could not preview this file.</p>'; });
+    });
+  } else if (att.kind === 'video') {
+    const v = document.createElement('video'); v.src = att.url; v.controls = true; v.autoplay = false;
+    v.style.maxWidth = '900px'; v.style.width = '100%'; v.style.boxShadow = '0 10px 40px rgba(0,0,0,.4)';
+    viewerBody.appendChild(v);
+  }
+}
+
+function renderPdfPage(pdfCanvasEl, overlayEl, stack) {
+  currentPdf.getPage(currentPage).then(page => {
+    const viewport = page.getViewport({ scale: 1.2 });
+    pdfCanvasEl.width = overlayEl.width = viewport.width;
+    pdfCanvasEl.height = overlayEl.height = viewport.height;
+    stack.style.width = viewport.width + 'px';
+    stack.style.height = viewport.height + 'px';
+    page.render({ canvasContext: pdfCanvasEl.getContext('2d'), viewport });
+
+    fabricCanvas = new fabric.Canvas(overlayEl, { width: viewport.width, height: viewport.height });
+    if (pageStates[currentPage]) fabricCanvas.loadFromJSON(pageStates[currentPage], fabricCanvas.renderAll.bind(fabricCanvas));
+    wireShapeDrawing(fabricCanvas);
+    setTool(activeTool);
+    syncToolbarUI();
+    document.getElementById('page-label').textContent = `${currentPage} / ${currentPdf.numPages}`;
+  });
+}
+document.getElementById('page-prev').addEventListener('click', () => {
+  if (!currentPdf || currentPage <= 1) return;
+  pageStates[currentPage] = fabricCanvas.toJSON(); currentPage--;
+  const stack = viewerBody.querySelector('.canvas-stack');
+  renderPdfPage(stack.children[0], stack.children[1], stack);
+});
+document.getElementById('page-next').addEventListener('click', () => {
+  if (!currentPdf || currentPage >= currentPdf.numPages) return;
+  pageStates[currentPage] = fabricCanvas.toJSON(); currentPage++;
+  const stack = viewerBody.querySelector('.canvas-stack');
+  renderPdfPage(stack.children[0], stack.children[1], stack);
+});
+document.getElementById('viewer-save').addEventListener('click', () => {
+  if (!fabricCanvas) { toast('Nothing to save for this file type'); return; }
+  toast('Markup saved as a new attachment version (mock)');
+});
+
+renderNotes(); renderPOs(); renderAttachments();
+</script>

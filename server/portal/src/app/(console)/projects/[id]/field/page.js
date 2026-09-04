@@ -14,6 +14,7 @@
 
 import { useState, useEffect, useCallback, Fragment } from 'react';
 import { useParams } from 'next/navigation';
+import Link from 'next/link';
 import { PortalCard }    from '@/components/portal/PortalCard';
 import { PortalKpi }     from '@/components/portal/PortalKpi';
 import { PortalEmpty }   from '@/components/portal/PortalEmpty';
@@ -258,7 +259,7 @@ export default function FieldPage() {
               const f = flash[t.id];
               return (
                 <tr key={t.id} style={{ borderBottom: i < tasks.length - 1 ? '1px solid var(--b2)' : 'none' }}>
-                  <Td>{t.name}</Td>
+                  <Td><Link href={`/projects/${id}/tasks/${t.id}`} style={{ color: 'var(--brand)', textDecoration: 'none' }}>{t.name}</Link></Td>
                   <Td muted>{stageLabel[t.stage_id] || '—'}</Td>
                   <Td muted>{t.assigned_to_name || short(t.assigned_to)}</Td>
                   <Td><Progress pct={t.completion} /></Td>
