@@ -253,11 +253,25 @@ async function postSubscriptionRevenue({ paymentId, amount, paidAt }) {
 // context.
 const BALANCE_SIGN = { asset: 1, expense: 1, liability: -1, equity: -1, revenue: -1 };
 
+// AU GST is 10%, always quoted/priced GST-INCLUSIVE by convention (subscription
+// pricing, same as every other AU B2B SaaS) — there is no separate ex-GST price
+// field anywhere upstream (BillingService/subscriptions), so the inclusive figure
+// IS what's posted to fin_journal today and always has been. The GST component of
+// an inclusive amount is amount/11 (amount - amount/1.1 simplifies to amount/11).
+const GST_RATE = 0.10;
+
 // Loads every active account, sums fin_journal per account over `journalWhere`
 // (the caller decides period-delta vs. cumulative-to-date), links parent→children,
 // and rolls up each node's `total` = its own balance + every descendant's. Returns
 // the top-level (parent_id IS NULL) roots, `accType`-filtered to `rootTypes`.
-async function buildAccountTree({ rootTypes, journalWhereSql, journalParams }) {
+//
+// `exclusiveNetByAccount` (optional): when given, OVERRIDES a leaf's ownBalance
+// with a GST-exclusive figure instead of the (GST-inclusive) journal sum — see
+// profitAndLoss's `gstMode` for how each account kind derives its own exclusive
+// figure. An account absent from the map (nothing GST-bearing posts to it — Wages
+// Expense, Interest Income, any balance-sheet account) is left on the journal
+// figure unchanged in EITHER mode, since there's no GST content to back out.
+async function buildAccountTree({ rootTypes, journalWhereSql, journalParams, exclusiveNetByAccount }) {
   const [accountRows] = await pool.query(
     `SELECT id, parent_id, seq, acc_type, name FROM fin_accounts WHERE is_active = 1 ORDER BY seq`
   );
@@ -268,12 +282,14 @@ async function buildAccountTree({ rootTypes, journalWhereSql, journalParams }) {
   );
   const journalByAccount = new Map(journalRows.map((r) => [r.account_id, { debit: Number(r.debit), credit: Number(r.credit) }]));
 
-  const byId = new Map(accountRows.map((a) => [a.id, {
-    id: a.id, name: a.name, accType: a.acc_type, seq: a.seq, parentId: a.parent_id,
-    children: [],
-    ownBalance: ((journalByAccount.get(a.id)?.debit || 0) - (journalByAccount.get(a.id)?.credit || 0)) * BALANCE_SIGN[a.acc_type],
-    total: 0,
-  }]));
+  const byId = new Map(accountRows.map((a) => {
+    const fromJournal = ((journalByAccount.get(a.id)?.debit || 0) - (journalByAccount.get(a.id)?.credit || 0)) * BALANCE_SIGN[a.acc_type];
+    const ownBalance = exclusiveNetByAccount?.has(a.id) ? exclusiveNetByAccount.get(a.id) : fromJournal;
+    return [a.id, {
+      id: a.id, name: a.name, accType: a.acc_type, seq: a.seq, parentId: a.parent_id,
+      children: [], ownBalance, total: 0,
+    }];
+  }));
   for (const node of byId.values()) {
     if (node.parentId && byId.has(node.parentId)) byId.get(node.parentId).children.push(node);
   }
@@ -293,20 +309,80 @@ async function buildAccountTree({ rootTypes, journalWhereSql, journalParams }) {
 // walked down through category → leaf, a rolled-up total at every level, plus a
 // Net Profit summary. `from`/`to` bound the PERIOD (a delta, not cumulative) —
 // defaults to the current calendar month if neither is given.
-async function profitAndLoss({ from, to }) {
+//
+// `gstMode` ('inclusive' default | 'exclusive'): a DISPLAY toggle only, same
+// journal postings either way (§7.2.1-style redaction precedent: never two
+// different stored figures for one fact). 'exclusive' backs GST out of every
+// GST-bearing leaf: `fin_expenses.amount` (the pre-tax figure already recorded
+// per row — `fin_expenses.tax` is stored separately, so this is exact, not a
+// formula guess) for expense leaves, and Subscription Revenue's journal total /
+// 1.1 (the one place a formula is unavoidable — no per-payment GST field exists
+// upstream yet).
+//
+// The GST/PAYG summary block is independent of `gstMode` (always the true figures
+// for the period, same as ihms's own always-on GST Sales/Purchases/PAYG rows):
+//   gstCollected    — output tax on Subscription Revenue this period (amount/11)
+//   gstPaid         — input tax credits: SUM(fin_expenses.tax) incurred this period
+//   netGstPayable   — gstCollected - gstPaid (the BAS 1A - 1B figure)
+//   paygWithheld    — SUM(fin_payroll.tax) for runs PAID this period (W2)
+//   totalBasPayable — netGstPayable + paygWithheld (what a BAS lodgement remits)
+async function profitAndLoss({ from, to, gstMode = 'inclusive' }) {
   const today = new Date();
   const defaultFrom = from || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
   const defaultTo = to || today.toISOString().slice(0, 10);
+
+  const [[subRev]] = await pool.query(
+    `SELECT SUM(credit) - SUM(debit) AS inclusive
+       FROM fin_journal WHERE account_id = ? AND entry_date >= ? AND entry_date <= ?`,
+    [ACCOUNTS.SUBSCRIPTION_REVENUE, defaultFrom, defaultTo]
+  );
+  const subRevInclusive = Number(subRev.inclusive || 0);
+
+  let exclusiveNetByAccount;
+  if (gstMode === 'exclusive') {
+    const [expenseRows] = await pool.query(
+      `SELECT account_id, SUM(amount) AS net
+         FROM fin_expenses
+        WHERE is_deleted = 0 AND incurred_at >= ? AND incurred_at <= ?
+        GROUP BY account_id`,
+      [defaultFrom, defaultTo]
+    );
+    exclusiveNetByAccount = new Map(expenseRows.map((r) => [r.account_id, Number(r.net)]));
+    exclusiveNetByAccount.set(ACCOUNTS.SUBSCRIPTION_REVENUE, subRevInclusive / (1 + GST_RATE));
+  }
 
   const tree = await buildAccountTree({
     rootTypes: ['revenue', 'expense'],
     journalWhereSql: 'entry_date >= ? AND entry_date <= ?',
     journalParams: [defaultFrom, defaultTo],
+    exclusiveNetByAccount,
   });
   const revenueRoot = tree.find((n) => n.accType === 'revenue');
   const expenseRoot = tree.find((n) => n.accType === 'expense');
   const netProfit = (revenueRoot?.total || 0) - (expenseRoot?.total || 0);
-  return { from: defaultFrom, to: defaultTo, tree, netProfit };
+
+  const gstCollected = subRevInclusive / (1 + GST_RATE) * GST_RATE;
+  const [[expenseTax]] = await pool.query(
+    `SELECT COALESCE(SUM(tax), 0) AS total FROM fin_expenses
+      WHERE is_deleted = 0 AND incurred_at >= ? AND incurred_at <= ?`,
+    [defaultFrom, defaultTo]
+  );
+  const gstPaid = Number(expenseTax.total);
+  const [[payrollTax]] = await pool.query(
+    `SELECT COALESCE(SUM(tax), 0) AS total FROM fin_payroll
+      WHERE status = 'paid' AND paid_at >= ? AND paid_at <= ?`,
+    [defaultFrom, defaultTo]
+  );
+  const paygWithheld = Number(payrollTax.total);
+  const netGstPayable = gstCollected - gstPaid;
+
+  return {
+    from: defaultFrom, to: defaultTo, gstMode, tree, netProfit,
+    gst: {
+      collected: gstCollected, paid: gstPaid, netPayable: netGstPayable,
+      paygWithheld, totalBasPayable: netGstPayable + paygWithheld,
+    },
+  };
 }
 
 // Balance Sheet: account balances AS OF a date — cumulative from the start of the

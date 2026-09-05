@@ -289,8 +289,13 @@ router.post('/finance/payroll/:id/pay', canMoney, async (req, res) => {
 });
 
 router.get('/finance/reports/pnl', canMoney,
-  [query('from').optional().isISO8601(), query('to').optional().isISO8601()],
-  wrap((req) => FinanceService.profitAndLoss({ from: req.query.from, to: req.query.to })));
+  [
+    query('from').optional().isISO8601(), query('to').optional().isISO8601(),
+    query('gst_mode').optional().isIn(['inclusive', 'exclusive']),
+  ],
+  wrap((req) => FinanceService.profitAndLoss({
+    from: req.query.from, to: req.query.to, gstMode: req.query.gst_mode,
+  })));
 
 router.get('/finance/reports/balance-sheet', canMoney,
   [query('as_of').optional().isISO8601()],
