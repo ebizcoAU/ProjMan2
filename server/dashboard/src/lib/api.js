@@ -47,10 +47,47 @@ export function webDeviceUid() {
   return uid;
 }
 
+// The access token is deliberately short-lived (config.js JWT_EXPIRES_IN) — the
+// refreshToken already stored by setSession is what's SUPPOSED to renew it
+// silently. Before this, a 401 went straight to clearSession()+redirect, so the
+// refresh token sat in localStorage completely unused (same gap owner-reported
+// and fixed in Portal's api.js, xprojman-36 — ported here). Single-flight:
+// concurrent 401s across in-flight requests share one refresh call rather than
+// each firing their own POST /auth/refresh.
+const REFRESH_PATH = '/auth/refresh';
+let refreshPromise = null;
+
+function getRefreshToken() {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(REFRESH_KEY);
+}
+
+async function refreshAccessToken() {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      const refreshToken = getRefreshToken();
+      if (!refreshToken) throw new Error('No refresh token');
+      const res = await fetch(`${BASE}/api/v1${REFRESH_PATH}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.message || 'Refresh failed');
+      localStorage.setItem(TOKEN_KEY, json.data.accessToken);
+      return json.data.accessToken;
+    })().finally(() => { refreshPromise = null; });
+  }
+  return refreshPromise;
+}
+
 // ── Core fetch ────────────────────────────────────────────────────────────────
 // Always returns { data: <parsed json> } to match the axios response shape.
 // Throws on non-2xx with err.response = { data, status } like axios does.
-async function request(method, path, body) {
+// `_retried` is internal — set only on the one silent-refresh retry below, so a
+// request that STILL 401s after a successful refresh falls straight through to
+// the redirect instead of looping.
+async function request(method, path, body, _retried = false) {
   const token = getToken();
   const url = `${BASE}/api/v1${path}`;
 
@@ -68,14 +105,29 @@ async function request(method, path, body) {
   catch { json = {}; }
 
   if (!res.ok) {
+    // A still-valid refresh token can renew an expired access token silently — try
+    // that ONCE before giving up. Never for the refresh call itself, and never
+    // twice for the same original request.
+    if (res.status === 401 && path !== REFRESH_PATH && !_retried && typeof window !== 'undefined') {
+      try {
+        await refreshAccessToken();
+        return request(method, path, body, true);
+      } catch {
+        // refresh token itself is missing/expired/revoked — fall through to the
+        // redirect below, same as the pre-refresh behaviour.
+      }
+    }
     const err = new Error(json.message || `API error ${res.status}`);
     err.response = { data: json, status: res.status };
     err.code = json.code;
     // Auto-redirect to login on auth failures — except on the login page itself.
+    // Dashboard's login route is /admin/login (there is no plain /login here) —
+    // the old guard/target both pointed at /login, a 404; fixed alongside the
+    // refresh addition since a broken fallback target defeats the point of it.
     if (res.status === 401 && typeof window !== 'undefined'
-        && !window.location.pathname.startsWith('/login')) {
+        && !window.location.pathname.startsWith('/admin/login')) {
       clearSession();
-      window.location.replace('/login');
+      window.location.replace('/admin/login');
     }
     throw err;
   }
