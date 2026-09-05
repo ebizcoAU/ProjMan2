@@ -37,7 +37,44 @@ export function isLoggedIn() {
   return !!getToken();
 }
 
-async function request(method, path, body, { auth = true, allow401 = false } = {}) {
+// The access token is deliberately short-lived; the refreshToken setSession() already
+// stores alongside it is what's SUPPOSED to renew it silently. Portal had this exact
+// same gap (stored refreshToken, never used — owner-reported forced-relogin bug) and
+// xprojman-36 §3 flagged that VeriTrade's api.js has the identical gap, unfixed. Fix
+// ported from Portal's `lib/api.js`, adapted to this file's auth/allow401 option
+// shape: a refresh is only attempted when the call actually carried a token — an
+// `auth:false` public call's 401 means something else (e.g. an unapproved login poll),
+// not an expired session, so it must not trigger a refresh.
+let refreshPromise = null;
+
+function getRefreshToken() {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(REFRESH_KEY);
+}
+
+async function refreshAccessToken() {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      const refreshToken = getRefreshToken();
+      if (!refreshToken) throw new Error('No refresh token');
+      const res = await fetch(`${BASE}/api/v1/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.message || 'Refresh failed');
+      localStorage.setItem(TOKEN_KEY, json.data.accessToken);
+      return json.data.accessToken;
+    })().finally(() => { refreshPromise = null; });
+  }
+  return refreshPromise;
+}
+
+// `_retried` is internal-only (set solely on the one silent-refresh retry below) so a
+// request that STILL 401s after a successful refresh falls straight through instead
+// of looping.
+async function request(method, path, body, { auth = true, allow401 = false, _retried = false } = {}) {
   const token = auth ? getToken() : null;
   const url = `${BASE}/api/v1${path}`;
 
@@ -55,6 +92,17 @@ async function request(method, path, body, { auth = true, allow401 = false } = {
   catch { json = {}; }
 
   if (!res.ok) {
+    // A still-valid refresh token can renew an expired access token silently — try
+    // that ONCE before treating this as a real session expiry.
+    if (res.status === 401 && auth && token && !_retried && typeof window !== 'undefined') {
+      try {
+        await refreshAccessToken();
+        return request(method, path, body, { auth, allow401, _retried: true });
+      } catch {
+        // refresh token itself is missing/expired/revoked — fall through below,
+        // same as the pre-refresh behaviour.
+      }
+    }
     const err = new Error(json.message || `API error ${res.status}`);
     err.response = { data: json, status: res.status };
     err.code = json.code;
