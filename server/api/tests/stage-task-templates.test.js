@@ -120,8 +120,13 @@ const EXPECTED = {
   ok('output_note persisted and readable via GET /projects/:id',
     patchedTask?.output_note === 'Title search clean, vendor matches', patchedTask?.output_note);
 
+  // xprojman-38: output_note/status are now both optional (either or both may be
+  // set in one call), so an empty body is no longer a validator-level 422 — it's
+  // a service-level "nothing to update" (400 NO_FIELDS), same as updateProject's
+  // own NO_FIELDS posture elsewhere in this file's surface.
   const patchMissingBody = await call('PATCH', `/projects/${projId}/tasks/${s1_1.id}`, {}, pm);
-  ok('PATCH with no output_note refused (422)', patchMissingBody.status === 422);
+  ok('PATCH with neither field refused (400 NO_FIELDS)',
+    patchMissingBody.status === 400 && patchMissingBody.json.code === 'NO_FIELDS', JSON.stringify(patchMissingBody.json));
 
   const patchUnknownTask = await call('PATCH', `/projects/${projId}/tasks/00000000-0000-0000-0000-000000000000`,
     { output_note: 'x' }, pm);

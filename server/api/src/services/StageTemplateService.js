@@ -112,10 +112,15 @@ async function instantiate({ orgId, projectId, templateId, actorUserId }) {
         [templateId, it.seq]
       );
       for (const t of taskTemplates) {
+        // xprojman-38: seed `seq` (own column, continues as the SAME Sx.y
+        // numbering a hand-added task via POST /:id/tasks picks up from —
+        // MAX(seq)+1 within the stage) and an explicit `status` — going forward
+        // every task gets one at creation, not just via the one-time v038
+        // backfill of rows that predate this column.
         await conn.query(
-          `INSERT INTO tasks (id, org_id, project_id, stage_id, name, template_item_id)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          [uuidv4(), orgId, projectId, stageId, `${t.code} ${t.name}`, t.id]
+          `INSERT INTO tasks (id, org_id, project_id, stage_id, name, template_item_id, seq, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'not_started')`,
+          [uuidv4(), orgId, projectId, stageId, `${t.code} ${t.name}`, t.id, t.seq]
         );
       }
     }

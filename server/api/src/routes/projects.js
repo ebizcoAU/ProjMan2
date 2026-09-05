@@ -666,25 +666,66 @@ router.post('/:id/tasks/:taskId/verify', canVerifyProgress, async (req, res) => 
   }
 });
 
-// ── PATCH /projects/:id/tasks/:taskId  office-side output_note edit (xprojman-32) ─
-// `projects.write`, not progress.tick/verify — plain task metadata, not the
-// tick-then-verify chain. Portal's task drill-down was read-only until this landed.
+// ── PATCH /projects/:id/tasks/:taskId  office-side output_note/status edit ──────
+// `projects.write`, not progress.tick/verify — plain task metadata/office
+// correction, not the tick-then-verify chain. output_note (xprojman-32) and status
+// (xprojman-38 — the ONLY path that may set 'cancelled'/'n_a') are both optional,
+// but at least one is required; fully reversible, no terminal-state lock.
 router.patch(
   '/:id/tasks/:taskId',
   canWriteProjects,
-  [body('output_note').isString().withMessage('output_note is required')],
+  [
+    body('output_note').optional().isString(),
+    body('status').optional().isIn(['not_started', 'in_progress', 'complete', 'cancelled', 'n_a']),
+  ],
   async (req, res) => {
     if (validation(req, res)) return;
     try {
       const result = await TaskProgressService.updateOfficeFields({
         orgId: req.auth.orgId, projectId: req.params.id, taskId: req.params.taskId,
         actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
-        outputNote: req.body.output_note,
+        outputNote: req.body.output_note, status: req.body.status,
       });
       await audit(req, 'task.update', {
-        entity: 'tasks', entityId: req.params.taskId, detail: { project_id: req.params.id, fields: ['output_note'] },
+        entity: 'tasks', entityId: req.params.taskId,
+        detail: { project_id: req.params.id, fields: Object.keys(req.body) },
       });
       return res.json({ success: true, data: result });
+    } catch (err) {
+      return sendError(res, err);
+    }
+  }
+);
+
+// ── POST /projects/:id/tasks — a hand-added, ad-hoc task under a stage ──────────
+// (xprojman-38 §3; no create-task endpoint existed before this, confirmed by a
+// full route audit). Same permission tier + Stage-range scoping as adding a
+// STAGE itself (programme.write + assertProgrammeWriteScope) — a hand-added task
+// is the same class of programme-shaping action.
+router.post(
+  '/:id/tasks',
+  canWriteProgramme,
+  [
+    body('stage_id').trim().notEmpty().withMessage('stage_id is required'),
+    body('name').trim().notEmpty().withMessage('A task name is required'),
+    body('predecessor_id').optional({ nullable: true }).isString(),
+    body('assigned_to').optional({ nullable: true }).isString(),
+    body('budget_hours').optional({ nullable: true }).isFloat({ min: 0 }),
+  ],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await TaskProgressService.createTask({
+        orgId: req.auth.orgId, projectId: req.params.id,
+        actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+        stageId: req.body.stage_id, name: req.body.name,
+        predecessorId: req.body.predecessor_id, assignedTo: req.body.assigned_to,
+        budgetHours: req.body.budget_hours,
+      });
+      await audit(req, 'task.create', {
+        entity: 'tasks', entityId: result.id, detail: { project_id: req.params.id, stage_id: req.body.stage_id },
+      });
+      return res.status(201).json({ success: true, data: result });
     } catch (err) {
       return sendError(res, err);
     }
