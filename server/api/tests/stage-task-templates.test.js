@@ -95,6 +95,15 @@ const EXPECTED = {
   const s1_1 = tasks.find((t) => byTemplateId.get(t.template_item_id)?.code === 'S1.1');
   ok('a task resolves back to its template (S1.1)', s1_1?.name?.includes('Initial client meeting'), JSON.stringify(s1_1));
 
+  // ── 4b. xprojman-37: GET /projects/:id now carries code/seq DIRECTLY on the
+  // task row (the stage_task_templates JOIN), not just via a client-side lookup
+  // against a separately-fetched template — Portal's TaskPopup reads t.code bare.
+  ok('task.code is exposed directly (no client-side join needed)', s1_1?.code === 'S1.1', s1_1?.code);
+  ok('task.seq is exposed directly', typeof s1_1?.seq === 'number', JSON.stringify(s1_1?.seq));
+  ok('description/is_outsourced default to NULL, not a false 0/empty-string',
+    s1_1?.description === null && s1_1?.is_outsourced === null,
+    JSON.stringify({ description: s1_1?.description, is_outsourced: s1_1?.is_outsourced }));
+
   // ── 5. Re-instantiation refused (existing behaviour, unaffected) ──
   const reInst = await call('POST', `/projects/${projId}/programme`, { template_id: wa18.id }, pm);
   ok('re-instantiation refused (PROGRAMME_EXISTS)',
@@ -120,6 +129,24 @@ const EXPECTED = {
 
   const patchNoAuth = await call('PATCH', `/projects/${projId}/tasks/${s1_1.id}`, { output_note: 'x' }, undefined);
   ok('PATCH without auth refused (401)', patchNoAuth.status === 401);
+
+  // ── 7. xprojman-37: description/is_outsourced are READ-ONLY (owner's own call,
+  // §3 of the doc) — neither is in tasks' sync-registry `columns` set, so
+  // sanitise() strips both same as any unrecognised field; with nothing left to
+  // change, SyncService acknowledges applied:false (its existing no-op posture,
+  // "nothing this device may change" — not a 400, the app ships ahead of the
+  // server routinely) rather than silently pretending to write them.
+  const badPush = await call('POST', '/sync/push', {
+    table_name: 'tasks', operation: 'update',
+    data: { id: s1_1.id, description: 'device-written', is_outsourced: 1 },
+  }, pm);
+  ok('device push accepted but a no-op (unknown fields stripped, nothing left to change)',
+    badPush.status === 200 && badPush.json.applied === false, JSON.stringify(badPush.json));
+  const afterBadPush = await call('GET', `/projects/${projId}`, undefined, pm);
+  const stillNull = (afterBadPush.json.data?.tasks || []).find((t) => t.id === s1_1.id);
+  ok('description/is_outsourced NOT device-writable (still NULL after the push)',
+    stillNull?.description === null && stillNull?.is_outsourced === null,
+    JSON.stringify({ description: stillNull?.description, is_outsourced: stillNull?.is_outsourced }));
 
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);

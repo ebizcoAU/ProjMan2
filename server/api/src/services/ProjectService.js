@@ -140,9 +140,17 @@ async function getProject({ orgId, role, userId, id }) {
       WHERE project_id = ? AND org_id = ? AND is_deleted = 0 ORDER BY seq, created_at`,
     [id, orgId]
   );
+  // xprojman-37 (Portal's Task popup, 2026-09-05): expose the Sx.x reference
+  // code/order for a template-seeded task via its stage_task_templates row —
+  // `template_item_id IS NULL` for a hand-added task with no template (v034's
+  // own documented case, not an error), so `code`/`seq` come back NULL there,
+  // same "not captured" posture the popup already handles for description/
+  // is_outsourced.
   const [tasks] = await pool.query(
-    `SELECT t.*, u.full_name AS assigned_to_name
-       FROM tasks t LEFT JOIN users u ON u.id = t.assigned_to
+    `SELECT t.*, u.full_name AS assigned_to_name, stt.code AS code, stt.seq AS seq
+       FROM tasks t
+       LEFT JOIN users u ON u.id = t.assigned_to
+       LEFT JOIN stage_task_templates stt ON stt.id = t.template_item_id
       WHERE t.project_id = ? AND t.org_id = ? AND t.is_deleted = 0
       ORDER BY t.start_date IS NULL, t.start_date, t.created_at`,
     [id, orgId]
