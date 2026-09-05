@@ -47,10 +47,49 @@ export function webDeviceUid() {
   return uid;
 }
 
+// The access token is deliberately short-lived (15min, config.js JWT_EXPIRES_IN) —
+// the 30-day refreshToken already stored by setSession is what's SUPPOSED to renew
+// it silently. Before this, a 401 went straight to clearSession()+redirect, so the
+// refresh token sat in localStorage completely unused and the Portal bounced to
+// /login every 15 minutes of use (owner-reported, 2026-09-05: "forcing portal
+// re-login so often"). Single-flight: concurrent 401s across in-flight requests
+// share one refresh call rather than each firing their own POST /auth/refresh (the
+// server doesn't rotate the refresh token on use, so this is purely to avoid a
+// request storm, not a correctness issue).
+const REFRESH_PATH = '/auth/refresh';
+let refreshPromise = null;
+
+function getRefreshToken() {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(REFRESH_KEY);
+}
+
+async function refreshAccessToken() {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      const refreshToken = getRefreshToken();
+      if (!refreshToken) throw new Error('No refresh token');
+      const res = await fetch(`${BASE}/api/v1${REFRESH_PATH}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.message || 'Refresh failed');
+      localStorage.setItem(TOKEN_KEY, json.data.accessToken);
+      return json.data.accessToken;
+    })().finally(() => { refreshPromise = null; });
+  }
+  return refreshPromise;
+}
+
 // ── Core fetch ────────────────────────────────────────────────────────────────
 // Always returns { data: <parsed json> } to match the axios response shape.
 // Throws on non-2xx with err.response = { data, status } like axios does.
-async function request(method, path, body) {
+// `_retried` is internal — set only on the one silent-refresh retry below, so a
+// request that STILL 401s after a successful refresh falls straight through to
+// the redirect instead of looping.
+async function request(method, path, body, _retried = false) {
   const token = getToken();
   const url = `${BASE}/api/v1${path}`;
 
@@ -68,6 +107,18 @@ async function request(method, path, body) {
   catch { json = {}; }
 
   if (!res.ok) {
+    // A still-valid refresh token can renew an expired access token silently — try
+    // that ONCE before giving up. Never for the refresh call itself, and never
+    // twice for the same original request.
+    if (res.status === 401 && path !== REFRESH_PATH && !_retried && typeof window !== 'undefined') {
+      try {
+        await refreshAccessToken();
+        return request(method, path, body, true);
+      } catch {
+        // refresh token itself is missing/expired/revoked — fall through to the
+        // redirect below, same as the pre-refresh behaviour.
+      }
+    }
     const err = new Error(json.message || `API error ${res.status}`);
     err.response = { data: json, status: res.status };
     err.code = json.code;
@@ -215,6 +266,15 @@ export const projectsApi = {
   dashboardSummary: () => request('GET', '/projects/dashboard-summary'),
   create: (body)      => request('POST',  '/projects', body),
   patch:  (id, body)  => request('PATCH', `/projects/${id}`, body),
+  // Cancel = plain status flip, keeps every row (xprojman-35 §0/§1) — a project that
+  // did real work (invoices/POs) but was called off. Same PATCH shape as patch() above,
+  // named separately since callers reach for intent, not the wire shape.
+  cancel: (id)        => request('PATCH', `/projects/${id}`, { status: 'cancelled' }),
+  // Delete = daisy-chain cascade purge, only for a draft project with zero progress
+  // claims/job awards/engagements (xprojman-35 §2/§3, enforced server-side — this call
+  // can 409 with code NOT_DRAFT | HAS_PROGRESS_CLAIMS | HAS_JOB_AWARDS | HAS_ENGAGEMENTS;
+  // callers read err.code off the thrown error, per request()'s err.code convention).
+  remove: (id)        => request('DELETE', `/projects/${id}`),
 
   // Programme (18-stage engine)
   instantiate: (id, templateId) => request('POST', `/projects/${id}/programme`, { template_id: templateId }),
