@@ -18,7 +18,12 @@ import { adminApi }      from '@/lib/api';
 
 const money = (v) => Number(v || 0).toLocaleString('en-AU', { style: 'currency', currency: 'AUD' });
 const fmtDate = (v) => v ? new Date(v).toLocaleDateString('en-AU') : '—';
-const iso = (d) => d.toISOString().slice(0, 10);
+// NEVER d.toISOString().slice(0,10) here — that converts to UTC, but every
+// Date below is built in LOCAL time (new Date(y, m, day)). For any timezone
+// ahead of UTC (all of Australia), that silently shifts every boundary back
+// one calendar day (1 Sep local midnight -> 31 Aug UTC). Format from the
+// LOCAL getters instead, so the string matches the calendar day intended.
+const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 // AU financial year: 1 Jul – 30 Jun. `fyStartYear` is the calendar year Jul 1 falls in.
 function fyStartYear(d) { return d.getMonth() >= 6 ? d.getFullYear() : d.getFullYear() - 1; }
