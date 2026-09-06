@@ -6,6 +6,8 @@
 //   POST  /organisation/users     invite/create a user (org_admin)
 //   PATCH /organisation/users/:id role and status (org_admin)
 //   GET   /organisation/audit     the audit trail
+//   GET   /organisation/rate-card the org's skill-tier hourly rates (money.read)
+//   PUT   /organisation/rate-card set one tier's rate                (money.write)
 //
 // Adapted from Nexus `businesses.js` / `companies.js` / `subscriber.js`. Those three
 // existed because FTPOS separated the subscriber (who pays), the business (which
@@ -25,6 +27,8 @@ const { authenticate, requireOrgAdmin } = require('../middleware/auth');
 const { audit } = require('../lib/audit');
 const { validateAbn } = require('../lib/abn');
 const access = require('../lib/access');
+const { sendError } = require('../services/errors');
+const CostingService = require('../services/CostingService');
 
 // Assignability lives in the roles table now (§9.2): a role a user may be given must
 // be is_assignable=1. The post-v1 four (construction_manager/estimator/subcontractor/
@@ -425,6 +429,41 @@ router.get(
       console.error('[ORG/AUDIT] Error:', err.message);
       return res.status(500).json({ success: false, message: 'Failed to read audit log' });
     }
+  }
+);
+
+// ============================================================================
+// GET/PUT /organisation/rate-card — xprojman-39 §1, the Settings "Cost Rates"
+// panel. Org-wide only, 4 fixed rows (Expert/Professional/Std/Free), no new
+// permission — reuses money.read/money.write, same gate as Cost Plan editing.
+// ============================================================================
+router.get('/rate-card', async (req, res) => {
+  try {
+    const data = await CostingService.listRateCard({
+      orgId: req.auth.orgId, actor: { role: req.auth.role },
+    });
+    return res.json({ success: true, data });
+  } catch (err) { return sendError(res, err); }
+});
+
+router.put(
+  '/rate-card',
+  [
+    body('skill_level').isIn(CostingService.SKILL_LEVELS),
+    body('hourly_rate').isFloat({ min: 0 }),
+  ],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await CostingService.setRate({
+        orgId: req.auth.orgId, actor: { role: req.auth.role },
+        skillLevel: req.body.skill_level, hourlyRate: req.body.hourly_rate,
+      });
+      await audit(req, 'organisation.rate_card.set', {
+        entity: 'org_rate_cards', entityId: result.skill_level, detail: result,
+      });
+      return res.json({ success: true, data: result });
+    } catch (err) { return sendError(res, err); }
   }
 );
 

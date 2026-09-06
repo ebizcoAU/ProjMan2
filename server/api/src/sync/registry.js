@@ -175,7 +175,9 @@ const TABLES = {
     // actual_hours is app-writable (xprojman-29 — on-site ground truth, unlike the office-set
     // budget figures) but stays financial-adjacent for pull redaction, same posture as
     // budget_hours: a role without money.read shouldn't see it on the wire either.
-    financialColumns: new Set(['budget_hours', 'budget_amount', 'actual_hours']),
+    // skill_level/cost_centre_id (xprojman-39 §2, CostingService) drive live labour-cost
+    // computation off this row — redacted for the same reason.
+    financialColumns: new Set(['budget_hours', 'budget_amount', 'actual_hours', 'skill_level', 'cost_centre_id']),
   },
 
   // ── Site operations (migration_v008) ── servdesignspec §11 ─────────────────

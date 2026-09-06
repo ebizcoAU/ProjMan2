@@ -1,14 +1,14 @@
 # xprojman-39 — Cost Plan costing engine (skill-rate based) + Job Scheduler
 
-**Status:** 🟡 DRAFT — spec-before-code, owner explicitly chose this path
-2026-09-05 over building directly, same convention as `xprojman-28.md`.
-Nothing in this doc is built. Open for Server/PM correction before any
-schema work starts.
+**Status:** ✅ APPROVED FOR BUILD — phased implementation authorised (xprojman-39 §§1-4).
+**§1/§2 BUILT** (Server, migration v039, 2026-09-06 — see §7 below). §3
+(quotes) and §4 (Job Scheduler) NOT started, per the doc's own §5 build
+order.
 **Author:** Portal Agent (`projman2-portal-agent`) · **For:** All teams,
 owner sign-off requested.
 **Date:** 2026-09-06
-**Related:** `xprojman-37.md`/`xprojman-38.md` (task fields this spec builds
-on: `is_outsourced`, `status`, `predecessor_id`, `seq`/code — assumed
+**Related:** `xprojman-37.md`/`xprojman-38.md` (task fields this spec
+builds on: `is_outsourced`, `status`, `predecessor_id`, `seq`/code — assumed
 CONFIRMED by the time this is built, not necessarily by the time it's
 reviewed), `schema-relationship-map.md` (source for every existing-table
 claim below).
@@ -298,5 +298,65 @@ it in the same pass as the drag interaction itself, not ahead of it.
 
 Build order (§5) unaffected by any of this — still xprojman-38 (done) →
 §1/§2 → §3 → §4.
+
+— Server Agent (`projman2-server-agent`)
+
+---
+
+## §7 Build report — Server Agent (2026-09-06)
+
+**§1 (rate card) + §2 (task costing, cost centres) BUILT, migration v039.**
+§3 (quotes) and §4 (Scheduler) NOT started, per §5's own build order.
+
+**No cached cost figure anywhere** — the design principle from
+`CostingService.js`'s own header, worth restating here since it's the one
+architectural choice everything else follows from: labour cost is computed
+LIVE (`budget_hours`/`actual_hours` × the CURRENT rate card) on every read
+of `GET /projects/:id/cost-plan`, never stored on the task. A stored
+per-task cost column would go stale the instant an org edits a rate in
+Settings — there's no write event on `tasks` to hang a recompute off, unlike
+`estimate_lines.amount` (a value genuinely fixed at entry time). Same
+anti-drift stance as `fin_accounts`/the P&L work earlier this session.
+
+**Built:**
+- `GET/PUT /organisation/rate-card` — 4 fixed tiers, `money.read`/
+  `money.write`, upsert-safe (re-setting a tier updates, never duplicates).
+  Reports `configured: false` until all 4 have a rate, per §1's own "not yet
+  configured" banner note.
+- `GET/POST /cost-centres` — the fixed, admin-managed list confirmed in my
+  §6 response, same shape as `suppliers` (org-shared, `money.write` to
+  create, no permission needed to list — a code/name pair isn't sensitive).
+- `tasks.skill_level`/`tasks.cost_centre_id` (both nullable — "not yet
+  costed" is a real state, same posture as `is_outsourced`), settable via
+  `PATCH /projects/:id/tasks/:taskId` — **the SAME endpoint** `output_note`/
+  `status` already use, but gated by a DIFFERENT permission
+  (`money.write`, not `projects.write`), checked inside `CostingService`
+  independently of `TaskProgressService`. A caller holding only one of the
+  two permissions can patch the fields their permission covers — an
+  `estimator` (`money.write`, no `projects.write`) can set a task's skill
+  tier without being able to touch its `output_note`, verified via a real
+  request, not assumed.
+- `GET /projects/:id/cost-plan` now also returns `labour` (per-stage +
+  total estimated/actual, live-computed) and `grandTotal` (existing
+  `estimate_lines` total + labour estimated) — additive, `lines`/`total`
+  unchanged for anything already reading them.
+- **Owner rule enforced at the right moment, not too early**: "internal
+  cost requires a cost centre" is checked at `POST /:id/cost-plan/lock`
+  (`409 MISSING_COST_CENTRE` if any skill-tiered task lacks one), NOT at
+  task-creation or at skill-tier-set time — a freshly custom-added task
+  (xprojman-38 §3) exists un-costed and un-blocked until someone actually
+  tries to finalise the plan, exactly as §2's Parameters specified.
+- `skill_level`/`cost_centre_id` redacted for a role without `money.read`,
+  both on the REST read (`ProjectService.redactTask`) and on
+  `/sync/pull` (`financialColumns`) — same two-path redaction every other
+  cost-adjacent task field already gets.
+
+**24 new checks** (`tests/task-costing.test.js`) + full suite (27 suites
+total) re-run clean. Migration applied to `c1projman2_e2e` and the real dev
+DB `c1projman2`.
+
+**Next up per §5: §3 (quotes)** — awaiting a build request; the two open
+questions there (`quotes.approve` permission, separate `task_quotes` table)
+are already answered in my §6 response above.
 
 — Server Agent (`projman2-server-agent`)

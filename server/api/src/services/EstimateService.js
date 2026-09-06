@@ -12,6 +12,7 @@ const pool = require('../db/pool');
 const { ServiceError } = require('./errors');
 const access = require('../lib/access');
 const ProjectService = require('./ProjectService');
+const CostingService = require('./CostingService');
 
 const canRead  = (role) => access.hasPermission(role, 'money.read');
 const canWrite = (role) => access.hasPermission(role, 'money.write');
@@ -128,7 +129,15 @@ async function list({ orgId, projectId, actor }) {
     [projectId, orgId]
   );
   const total = lines.reduce((s, l) => s + Number(l.amount), 0);
-  return { cost_plan: { id: plan.id, status: plan.status, locked_at: plan.locked_at }, lines, total };
+  // xprojman-39 §2: labour-from-tasks is a NEW figure alongside estimate_lines'
+  // own total, not a replacement — computed live, never stored (CostingService's
+  // own header explains why: a rate-card edit must retroactively reprice every
+  // task, which a cached column could never reflect without a bulk rewrite).
+  const labour = await CostingService.labourRollup({ orgId, projectId });
+  return {
+    cost_plan: { id: plan.id, status: plan.status, locked_at: plan.locked_at },
+    lines, total, labour, grandTotal: total + labour.total.estimated,
+  };
 }
 
 /** POST /projects/:id/cost-plan/lock  |  /unlock */
@@ -136,6 +145,17 @@ async function setLock({ orgId, projectId, actor, locked }) {
   if (!canWrite(actor.role)) throw new ServiceError('FORBIDDEN', 'Requires permission: money.write', 403);
   await ProjectService.assertProjectReachable(orgId, projectId, { role: actor.role, userId: actor.userId });
   await getOrCreatePlan({ orgId, projectId });
+  // xprojman-39 §2 owner rule: internal cost requires a cost centre — enforced
+  // HERE (at lock/finalise), not at task-creation or task-costing time, so a
+  // freshly custom-added task (xprojman-38 §3) isn't blocked from existing
+  // before anyone gets round to costing it.
+  if (locked) {
+    const { tasksMissingCostCentre } = await CostingService.labourRollup({ orgId, projectId });
+    if (tasksMissingCostCentre.length > 0) {
+      throw new ServiceError('MISSING_COST_CENTRE',
+        `${tasksMissingCostCentre.length} costed task(s) have no cost centre set — assign one before locking`, 409);
+    }
+  }
   await pool.query(
     `UPDATE cost_plans SET status = ?, locked_at = ?, locked_by = ? WHERE project_id = ? AND org_id = ?`,
     [locked ? 'locked' : 'draft', locked ? new Date() : null, locked ? actor.userId : null, projectId, orgId]

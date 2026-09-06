@@ -36,6 +36,7 @@ const jobAwardsRoutes = require('./routes/jobAwards');
 const engagementsRoutes = require('./routes/engagements');
 const identityRoutes = require('./routes/identity');
 const suppliersRoutes = require('./routes/suppliers');
+const costCentresRoutes = require('./routes/costCentres');
 const accountsRoutes = require('./routes/accounts');
 const documentsRoutes = require('./routes/documents');
 const adminRoutes = require('./routes/admin');
@@ -161,6 +162,7 @@ app.use('/api/v1/job-awards',    jobAwardsRoutes);
 app.use('/api/v1/engagements',   engagementsRoutes);
 app.use('/api/v1/identity',      identityRoutes);
 app.use('/api/v1/suppliers',     suppliersRoutes);
+app.use('/api/v1/cost-centres',  costCentresRoutes); // xprojman-39 §2
 app.use('/api/v1/accounts',      accountsRoutes);   // P8b GST/BAS (org-level)
 app.use('/api/v1/documents',     documentsRoutes);  // Documents/Upload (xprojman-21)
 app.use('/api/v1/veritrade',     veritradeRoutes);  // VeriTrade V1 core loop

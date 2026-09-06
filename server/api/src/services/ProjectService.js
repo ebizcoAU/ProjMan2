@@ -60,7 +60,9 @@ function redactStage(row, role, engagementMode, isTheBuilder) {
 
 function redactTask(row, role) {
   if (seesMoney(role)) return row;
-  const { budget_hours, budget_amount, ...rest } = row;
+  // xprojman-39 §2: skill_level/cost_centre_id drive live labour-cost — same
+  // money.read gate as budget_hours/budget_amount, same reasoning.
+  const { budget_hours, budget_amount, skill_level, cost_centre_id, ...rest } = row;
   return rest;
 }
 

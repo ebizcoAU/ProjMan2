@@ -51,6 +51,7 @@ const ProcurementService = require('../services/ProcurementService');
 const ContractService = require('../services/ContractService');
 const DepreciationService = require('../services/DepreciationService');
 const ProjectDeletionService = require('../services/ProjectDeletionService');
+const CostingService = require('../services/CostingService');
 
 router.use(authenticate);
 
@@ -666,26 +667,54 @@ router.post('/:id/tasks/:taskId/verify', canVerifyProgress, async (req, res) => 
   }
 });
 
-// ── PATCH /projects/:id/tasks/:taskId  office-side output_note/status edit ──────
-// `projects.write`, not progress.tick/verify — plain task metadata/office
-// correction, not the tick-then-verify chain. output_note (xprojman-32) and status
-// (xprojman-38 — the ONLY path that may set 'cancelled'/'n_a') are both optional,
-// but at least one is required; fully reversible, no terminal-state lock.
+// ── PATCH /projects/:id/tasks/:taskId  office-side task edit ───────────────────
+// No blanket permission middleware — the two field groups below sit behind
+// DIFFERENT permissions, each checked inside its own service call, same pattern
+// every other mixed-tier route in this file already uses:
+//   output_note (xprojman-32) / status (xprojman-38, the ONLY path that may set
+//     'cancelled'/'n_a', fully reversible) — projects.write, TaskProgressService.
+//   skill_level / cost_centre_id (xprojman-39 §2) — money.write, CostingService.
+// At least one field across BOTH groups is required. A caller holding only one
+// of the two permissions may still patch the fields that permission covers —
+// e.g. an `estimator` (money.write, no projects.write) can set a task's skill
+// tier without being able to touch its output_note.
 router.patch(
   '/:id/tasks/:taskId',
-  canWriteProjects,
   [
     body('output_note').optional().isString(),
     body('status').optional().isIn(['not_started', 'in_progress', 'complete', 'cancelled', 'n_a']),
+    body('skill_level').optional({ nullable: true }).isIn(CostingService.SKILL_LEVELS),
+    body('cost_centre_id').optional({ nullable: true }).isString(),
   ],
   async (req, res) => {
     if (validation(req, res)) return;
+    const { output_note, status, skill_level, cost_centre_id } = req.body;
+    if (output_note === undefined && status === undefined
+        && skill_level === undefined && cost_centre_id === undefined) {
+      return res.status(400).json({ success: false, message: 'Nothing to update', code: 'NO_FIELDS' });
+    }
     try {
-      const result = await TaskProgressService.updateOfficeFields({
-        orgId: req.auth.orgId, projectId: req.params.id, taskId: req.params.taskId,
-        actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
-        outputNote: req.body.output_note, status: req.body.status,
-      });
+      let result = { id: req.params.taskId };
+      if (output_note !== undefined || status !== undefined) {
+        result = {
+          ...result,
+          ...await TaskProgressService.updateOfficeFields({
+            orgId: req.auth.orgId, projectId: req.params.id, taskId: req.params.taskId,
+            actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+            outputNote: output_note, status,
+          }),
+        };
+      }
+      if (skill_level !== undefined || cost_centre_id !== undefined) {
+        result = {
+          ...result,
+          ...await CostingService.setTaskCosting({
+            orgId: req.auth.orgId, projectId: req.params.id, taskId: req.params.taskId,
+            actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+            skillLevel: skill_level, costCentreId: cost_centre_id,
+          }),
+        };
+      }
       await audit(req, 'task.update', {
         entity: 'tasks', entityId: req.params.taskId,
         detail: { project_id: req.params.id, fields: Object.keys(req.body) },
