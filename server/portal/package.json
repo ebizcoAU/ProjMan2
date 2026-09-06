@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "description": "ProjMan Portal — the app's desktop companion for app users (Next.js)",
   "scripts": {
-    "dev": "next dev -p 5220",
+    "dev": "next dev -p 5102",
     "build": "next build",
-    "start": "next start -p 5220"
+    "start": "next start -p 5102"
   },
   "dependencies": {
     "next": "^14.2.5",
@@ -15,7 +15,6 @@
   },
   "devDependencies": {
     "autoprefixer": "^10.4.19",
-    "postcss": "^8.4.39",
-    "tailwindcss": "^3.4.6"
+    "postcss": "^8.4.39"
   }
 }

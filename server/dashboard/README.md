@@ -29,7 +29,7 @@ Nexus portal UI kit per `docs/servdesignspecification.md` §5:
 ```bash
 cd server/dashboard
 npm install
-npm run dev            # http://localhost:5110 — API assumed at :5100 (API_URL to override)
+npm run dev            # http://localhost:5101 — API assumed at :5100 (API_URL to override)
 ```
 
 Auth: tokens in `localStorage` (`pm2Token` / `pm2Refresh` / `pm2User`); the console

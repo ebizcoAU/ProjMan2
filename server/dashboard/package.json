@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "description": "ProjMan Platform Management — internal admin/support tool: accounts, subscriptions, billing, device health (Next.js). Tenant Portal lives in server/portal.",
   "scripts": {
-    "dev": "next dev -p 5110",
+    "dev": "next dev -p 5101",
     "build": "next build",
-    "start": "next start -p 5110"
+    "start": "next start -p 5101"
   },
   "dependencies": {
     "next": "^14.2.5",

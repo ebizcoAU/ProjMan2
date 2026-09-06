@@ -18,10 +18,16 @@
 // as a live endpoint; it's a slot to fill in when deployment actually happens.
 
 const development = {
+  // Renumbered 2026-09-06 (owner directive) into one contiguous 51xx block —
+  // was 5100/5110/5220/5330, an arbitrary spread with no visible relationship
+  // between the services. SKILLS_URL is a reserved slot: server/skills/ has no
+  // code yet (just .env + .gitignore), nothing actually listens on 5104 today.
   API_URL:        'http://localhost:5100',
-  DASHBOARD_URL:  'http://localhost:5110',
-  PORTAL_URL:     'http://localhost:5220',
-  VERITRADE_URL:  'http://localhost:5330',
+  DASHBOARD_URL:  'http://localhost:5101',
+  PORTAL_URL:     'http://localhost:5102',
+  VERITRADE_URL:  'http://localhost:5103',
+  SKILLS_URL:     'http://localhost:5104', // reserved — nothing built here yet
+  PRODUCT_URL:    'http://localhost:5105',
 
   DB_HOST: 'localhost',
   DB_PORT: 3306,

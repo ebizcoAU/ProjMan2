@@ -4,9 +4,9 @@
   "private": true,
   "description": "ProjMan public SaaS marketing website — 18-Stage Construction Lifecycle platform.",
   "scripts": {
-    "dev": "next dev -p 5010",
+    "dev": "next dev -p 5105",
     "build": "next build",
-    "start": "next start -p 5010",
+    "start": "next start -p 5105",
     "lint": "next lint"
   },
   "dependencies": {
