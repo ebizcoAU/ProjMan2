@@ -4,6 +4,7 @@
 //   GET    /projects/dashboard-summary     Portal console aggregate (money block gated)
 //   POST   /projects                       create           (org_admin | project_developer)
 //   GET    /projects/:id                   detail + stages + tasks
+//   GET    /projects/:id/site-map          server-mediated Google Static Map (xprojman-40)
 //   PATCH  /projects/:id                   update           (org_admin | project_developer)
 //   DELETE /projects/:id                   daisy-chain delete — draft/no-claims/no-awards/
 //                                           no-engagements only (xprojman-35); Cancel is the
@@ -52,6 +53,7 @@ const ContractService = require('../services/ContractService');
 const DepreciationService = require('../services/DepreciationService');
 const ProjectDeletionService = require('../services/ProjectDeletionService');
 const CostingService = require('../services/CostingService');
+const SiteMapService = require('../services/SiteMapService');
 
 router.use(authenticate);
 
@@ -163,6 +165,23 @@ router.get('/:id', canReadProjects, async (req, res) => {
       orgId: req.auth.orgId, role: req.auth.role, userId: req.auth.userId, id: req.params.id,
     });
     return res.json({ success: true, data });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+// ── GET /projects/:id/site-map — server-mediated Google Static Map (xprojman-40
+// §2). Same read gate as the project itself; the Google API key never reaches
+// the browser (SiteMapService), and the image bytes are proxied through this
+// authenticated endpoint — same "authenticated blob, not a public URL" shape
+// GET /documents/:id already uses. Disk-cached by address, so a repeat view
+// costs nothing against the (metered, billed) upstream API.
+router.get('/:id/site-map', canReadProjects, async (req, res) => {
+  try {
+    const buffer = await SiteMapService.getSiteMap({ orgId: req.auth.orgId, projectId: req.params.id });
+    res.set('Content-Type', 'image/png');
+    res.set('Cache-Control', 'private, max-age=86400');
+    return res.send(buffer);
   } catch (err) {
     return sendError(res, err);
   }

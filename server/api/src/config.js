@@ -176,4 +176,15 @@ module.exports = {
     // https://developers.clicksend.com/docs#authentication.
     clicksend:    { username: process.env.CLICKSEND_USERNAME, apiKey: process.env.CLICKSEND_API_KEY },
   },
+
+  // Google Static Maps (xprojman-40 §2) — the site-map panel on the Portal's
+  // project edit page. Server-mediated ONLY: this key is never returned in any
+  // API response, only used server-side to build the upstream request URL.
+  // Restrict it (Google Cloud Console) to "Maps Static API" + this server's own
+  // IP — never HTTP-referrer, since it's called server-to-server, not from a
+  // browser. Absent by default; SiteMapService reports "not configured" rather
+  // than erroring when it's unset.
+  googleMaps: {
+    apiKey: process.env.GOOGLE_MAPS_API_KEY || null,
+  },
 };
