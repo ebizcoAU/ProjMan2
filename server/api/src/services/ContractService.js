@@ -121,6 +121,18 @@ async function respondVariation({ orgId, projectId, variationId, actor, accept }
   await pool.query(
     'UPDATE variations SET status = ?, approved_by = ?, approved_at = NOW() WHERE id = ? AND org_id = ?',
     [status, actor.userId, variationId, orgId]);
+
+  // xprojman-41 §3/§9: an approved variation is a fresh point-in-time
+  // confirmation between both parties — auto-generate the dated Project
+  // Brief snapshot the owner's own workflow calls for, no separate action
+  // needed. Best-effort: a PDF failure must never fail an approval that
+  // already committed (same posture as AttestationService.emit elsewhere).
+  if (status === 'approved') {
+    const ProjectBriefService = require('./ProjectBriefService');
+    ProjectBriefService.generateFromVariationApproval({ orgId, projectId, actor, variationId })
+      .catch((err) => console.warn('[PROJECT_BRIEF] snapshot generation failed (non-fatal):', err.message));
+  }
+
   return { id: variationId, status };
 }
 
