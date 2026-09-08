@@ -46,6 +46,10 @@ const production = {
   DASHBOARD_URL: 'https://dashboard.projman2.ebizco.com.au',
   PORTAL_URL:    'https://portal.projman2.ebizco.com.au',
   VERITRADE_URL: 'https://veritrade.ebizco.com.au',
+  // REAL — owner-confirmed 2026-09-08, first production domain actually
+  // committed to for ProjMan2 (everything else in this block is still an
+  // unconfirmed placeholder).
+  PRODUCT_URL:   'https://projman.ebizco.com.au',
 
   // PLACEHOLDER — production DB host/port, not yet provisioned for ProjMan2.
   DB_HOST: 'PLACEHOLDER-not-yet-provisioned',

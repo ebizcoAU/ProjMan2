@@ -7,6 +7,6 @@ export default function robots(): MetadataRoute.Robots {
       allow: "/",
       disallow: "/api/",
     },
-    sitemap: "https://www.projman.com.au/sitemap.xml",
+    sitemap: "https://projman.ebizco.com.au/sitemap.xml",
   };
 }

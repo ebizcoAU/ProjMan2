@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-const siteUrl = "https://www.projman.com.au";
+const siteUrl = "https://projman.ebizco.com.au";
 
 const routes = [
   "",

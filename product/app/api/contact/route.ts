@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { sendContactLead } from "@/lib/email";
 
 const contactSchema = z.object({
   name: z.string().min(2),
@@ -17,9 +18,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Invalid submission." }, { status: 400 });
   }
 
-  // Lead is validated here. Wiring to the CRM / HubSpot / email pipeline
-  // (see marketing integration in the site brief) is a deployment-time step.
-  console.log("New ProjMan lead:", parsed.data);
+  try {
+    await sendContactLead(parsed.data);
+  } catch (err) {
+    console.error("Failed to send contact lead:", err);
+    return NextResponse.json({ ok: false, error: "Could not send message. Please try again." }, { status: 502 });
+  }
 
   return NextResponse.json({ ok: true });
 }
