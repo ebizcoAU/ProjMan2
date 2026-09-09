@@ -1,6 +1,11 @@
 // /organisation/settings — Admin module: org profile (Portal build step 6).
 // View + edit the organisation (name, ABN, address, contact). PATCH /organisation
 // re-validates a changed ABN server-side. org.manage gated (projectManager).
+//
+// Cost Rates / Cost Centres moved OUT to /finance/settings (owner ask
+// 2026-09-08) — they exist to link a cost to an account, which is a Finance
+// concept, not general org-admin; this page stays org-profile-only now that a
+// FINANCE nav group exists to be their real home.
 'use client';
 
 import { useState, useEffect } from 'react';

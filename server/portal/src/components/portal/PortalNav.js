@@ -98,6 +98,29 @@ export const CONSOLE_NAV = [
       { k: 'audit',    href: '/organisation/audit',    label: 'Audit' },
     ],
   },
+  // Owner ask 2026-09-08: a per-tenant Finance module — P&L, Balance Sheet,
+  // Expenses, Sales, plus a Settings page for chart-of-accounts/cost-centre
+  // setup. NOT the same thing as FinanceService.js/fin_accounts (that's
+  // eBizco's OWN single set of books, mounted under the Dashboard's /admin/*,
+  // deliberately has no org_id per migration_v031's own comment) — this needs
+  // its own org-scoped tables, spec'd separately (see docs/decisions). Cost
+  // Centres moved here from Organisation → Settings (xprojman-39 §2) since
+  // they exist specifically to link a cost to an account — Finance is the
+  // right home now that this group exists, Organisation wasn't.
+  {
+    group: 'FINANCE',
+    items: [
+      { k: 'finance-settings', href: '/finance/settings', label: 'Settings' },
+      { k: 'finance-pl',       href: '/finance/settings', label: 'Profit & Loss', mock: true,
+        tooltip: 'Coming: per-project and org-wide P&L' },
+      { k: 'finance-bs',       href: '/finance/settings', label: 'Balance Sheet', mock: true,
+        tooltip: 'Coming: assets/liabilities/equity as of a date' },
+      { k: 'finance-expenses', href: '/finance/settings', label: 'Expenses', mock: true,
+        tooltip: 'Coming: org-wide expense tracking, chart-of-accounts coded' },
+      { k: 'finance-sales',    href: '/finance/settings', label: 'Sales', mock: true,
+        tooltip: 'Coming: revenue by project, chart-of-accounts coded' },
+    ],
+  },
 ];
 
 // ── Nav — Builder console (portaldesignspec §2: `(builder)/*` = Builder,
@@ -151,6 +174,13 @@ const ICONS = {
   users:      <><circle cx="5" cy="5" r="2.2" stroke="currentColor" strokeWidth="1.2" fill="none"/><circle cx="10.5" cy="5.5" r="1.8" stroke="currentColor" strokeWidth="1.2" fill="none"/><path d="M1.5 12.5c0-2.3 1.6-3.5 3.5-3.5s3.5 1.2 3.5 3.5M9.5 12.5c0-1.8 1-2.8 2.5-2.8s2 .9 2 2.8" stroke="currentColor" strokeWidth="1.15" strokeLinecap="round" fill="none"/></>,
   settings:   <><circle cx="7.5" cy="7.5" r="2" stroke="currentColor" strokeWidth="1.3" fill="none"/><path d="M7.5 1.5v2M7.5 11.5v2M1.5 7.5h2M11.5 7.5h2M3.3 3.3l1.4 1.4M10.3 10.3l1.4 1.4M11.7 3.3l-1.4 1.4M4.7 10.3l-1.4 1.4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></>,
   audit:      <><path d="M2 3.5h11M2 6.5h8M2 9.5h5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><circle cx="11" cy="10.5" r="2.3" stroke="currentColor" strokeWidth="1.2" fill="none"/><path d="M12.7 12.2l1.3 1.3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></>,
+  // Shared across all FINANCE items ($ in a circle) — they're one report family,
+  // not five distinct concepts; Settings alone would earn its own icon once real.
+  'finance-settings': <><circle cx="7.5" cy="7.5" r="6" stroke="currentColor" strokeWidth="1.3" fill="none"/><path d="M7.5 4v7M9.6 5.8c0-.9-.9-1.4-2.1-1.4-1.2 0-2.1.6-2.1 1.4 0 1.9 4.2.9 4.2 2.8 0 .9-.9 1.4-2.1 1.4-1.2 0-2.1-.5-2.1-1.4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" fill="none"/></>,
+  'finance-pl':       <><circle cx="7.5" cy="7.5" r="6" stroke="currentColor" strokeWidth="1.3" fill="none"/><path d="M7.5 4v7M9.6 5.8c0-.9-.9-1.4-2.1-1.4-1.2 0-2.1.6-2.1 1.4 0 1.9 4.2.9 4.2 2.8 0 .9-.9 1.4-2.1 1.4-1.2 0-2.1-.5-2.1-1.4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" fill="none"/></>,
+  'finance-bs':       <><circle cx="7.5" cy="7.5" r="6" stroke="currentColor" strokeWidth="1.3" fill="none"/><path d="M7.5 4v7M9.6 5.8c0-.9-.9-1.4-2.1-1.4-1.2 0-2.1.6-2.1 1.4 0 1.9 4.2.9 4.2 2.8 0 .9-.9 1.4-2.1 1.4-1.2 0-2.1-.5-2.1-1.4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" fill="none"/></>,
+  'finance-expenses': <><circle cx="7.5" cy="7.5" r="6" stroke="currentColor" strokeWidth="1.3" fill="none"/><path d="M7.5 4v7M9.6 5.8c0-.9-.9-1.4-2.1-1.4-1.2 0-2.1.6-2.1 1.4 0 1.9 4.2.9 4.2 2.8 0 .9-.9 1.4-2.1 1.4-1.2 0-2.1-.5-2.1-1.4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" fill="none"/></>,
+  'finance-sales':    <><circle cx="7.5" cy="7.5" r="6" stroke="currentColor" strokeWidth="1.3" fill="none"/><path d="M7.5 4v7M9.6 5.8c0-.9-.9-1.4-2.1-1.4-1.2 0-2.1.6-2.1 1.4 0 1.9 4.2.9 4.2 2.8 0 .9-.9 1.4-2.1 1.4-1.2 0-2.1-.5-2.1-1.4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" fill="none"/></>,
 };
 
 function NavIcon({ k }) {

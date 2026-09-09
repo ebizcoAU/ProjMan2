@@ -166,7 +166,18 @@ async function fetchAuthedBlob(path) {
   const res = await fetch(`${BASE}/api/v1${path}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-  if (!res.ok) throw new Error(`Could not load file (${res.status})`);
+  if (!res.ok) {
+    // Error responses here are JSON ({message, code}, same shape as request()'s),
+    // unlike the success case which is raw bytes — read it for a real message/code
+    // (e.g. SiteMapService's SITE_MAP_NOT_CONFIGURED/NO_SITE_ADDRESS) instead of
+    // just the HTTP status.
+    let body = {};
+    try { body = await res.json(); } catch { /* non-JSON error body, fall through */ }
+    const err = new Error(body.message || `Could not load file (${res.status})`);
+    err.code = body.code;
+    err.status = res.status;
+    throw err;
+  }
   return res.blob();
 }
 
@@ -251,6 +262,17 @@ export const organisationApi = {
     const qs = new URLSearchParams(params).toString();
     return request('GET', `/organisation/audit${qs ? `?${qs}` : ''}`);
   },
+  // Skill-rate card (xprojman-39 §1) — 4 fixed tiers, money.read/money.write.
+  // PUT is per-tier (Settings saves one row's rate at a time), not a bulk replace.
+  getRateCard: ()                        => request('GET', '/organisation/rate-card'),
+  setRate:     (skillLevel, hourlyRate)  => request('PUT', '/organisation/rate-card', { skill_level: skillLevel, hourly_rate: hourlyRate }),
+};
+
+// Cost centres (xprojman-39 §2) — org-shared fixed list, same shape as `suppliers`.
+// List needs no permission (a code/name pair isn't sensitive); create is money.write.
+export const costCentresApi = {
+  list:   ()       => request('GET',  '/cost-centres'),
+  create: (body)   => request('POST', '/cost-centres', body),
 };
 
 export const projectsApi = {
@@ -290,10 +312,29 @@ export const projectsApi = {
   // instantiation) uses `instantiate` above; this is the raw per-stage add a Builder
   // uses to break down his own Stages 9-18.
   createStage: (id, body) => request('POST', `/projects/${id}/stages`, body),
-  // Office-side task edit (xprojman-32 §5, TaskProgressService.updateOfficeFields) —
-  // `projects.write`, deliberately NOT the progress.tick/verify chain. Currently just
-  // `output_note`; the route validates it as a required string.
-  patchTask: (id, taskId, outputNote) => request('PATCH', `/projects/${id}/tasks/${taskId}`, { output_note: outputNote }),
+  // Office-side task edit (xprojman-32 §5 / xprojman-38 §1, TaskProgressService.
+  // updateOfficeFields) — `projects.write`, deliberately NOT the progress.tick/verify
+  // chain. Widened past just `output_note` once `status` became office-settable
+  // (N/A, cancelled, and reversing either) — takes a fields object now rather than a
+  // single positional string, since there's more than one settable field.
+  patchTask: (id, taskId, fields) => request('PATCH', `/projects/${id}/tasks/${taskId}`, fields),
+  // Custom/ad-hoc task creation (xprojman-38 §3) — `programme.write`, same
+  // Stage-1-8-vs-engaged-Builder-Stage-9-18 scope as createStage. Server assigns
+  // `seq`/`code` (`S{stage.seq}.{seq}`) and echoes both back, so callers don't
+  // compute the code client-side.
+  createTask: (id, body) => request('POST', `/projects/${id}/tasks`, body),
+  // Server-mediated Google Static Map (xprojman-40 §2, SiteMapService) — bytes,
+  // not JSON, same auth-header-required shape as documentsApi.fetchBlob. 503
+  // SITE_MAP_NOT_CONFIGURED (no Google Maps key yet) / 404 NO_SITE_ADDRESS are
+  // real, expected states here, not just error noise — callers read err.code.
+  siteMap: (id) => fetchAuthedBlob(`/projects/${id}/site-map`),
+  // Project Brief snapshots (xprojman-41 §3/§9/§10, ProjectBriefService) — an
+  // append-only history, one PDF per "Formalize Brief"/"Re-issue" click or
+  // approved variation. `create` is projects.write, `list`/`fetchPdf` are
+  // projects.read, same tier as the project fields the brief is built from.
+  createBriefSnapshot: (id)        => request('POST', `/projects/${id}/brief-snapshots`),
+  listBriefSnapshots:  (id)        => request('GET',  `/projects/${id}/brief-snapshots`),
+  fetchBriefSnapshot:  (id, sid)   => fetchAuthedBlob(`/projects/${id}/brief-snapshots/${sid}`),
 };
 
 // Commercial (P7a Cost Plan + Progress Claims, P7b Procurement) — read model for the
@@ -361,6 +402,9 @@ export const documentsApi = {
   },
   // Bytes, not JSON — see fetchAuthedBlob's own note above.
   fetchBlob: (id) => fetchAuthedBlob(`/documents/${id}`),
+  // Soft-delete (DocumentService.softDelete) — quality.write or documents.write,
+  // not uploader-only. Server already had this; the client just never exposed it.
+  remove: (id) => request('DELETE', `/documents/${id}`),
   remove: (id) => request('DELETE', `/documents/${id}`),
 };
 
@@ -371,7 +415,7 @@ export const customersApi = {
 };
 
 // NOTE: the platform-admin API surface (`adminApi`, `/admin/*`) deliberately does NOT
-// live here. Platform management is a SEPARATE application (`server/dashboard`, port 5110)
+// live here. Platform management is a SEPARATE application (`server/dashboard`, port 5101)
 // with no access to app-user content. This Portal is app-users-only. See §0 of
 // portaldesignspecification.md.
 
@@ -389,6 +433,7 @@ const api = {
   documents:      documentsApi,
   quality:        qualityApi,
   commercial:     commercialApi,
+  costCentres:    costCentresApi,
 };
 
 export default api;

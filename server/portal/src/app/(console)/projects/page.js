@@ -23,33 +23,54 @@
 // show different numbers (the mockup's own reviewed defect — flagged, not repeated).
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { PortalEmpty }   from '@/components/portal/PortalEmpty';
 import { PortalError }   from '@/components/portal/PortalError';
 import { usePortalData } from '@/components/portal/usePortalData';
 import { projectsApi, organisationApi } from '@/lib/api';
+import { PROJECT_STATUS_BADGE, PROJECT_STATUS_LABEL } from '@/components/portal/projectStatus';
+import { usePortalDialog } from '@/components/portal/PortalDialog';
 
-const ALERT = {
-  draft:    { label: 'Draft',    cls: 'green' , none: true },
-  hidden:   { label: '—',        cls: 'green',  none: true },
-  on_track: { label: 'On track', cls: 'green'  },
-  watch:    { label: 'Watch',    cls: 'amber'  },
-  at_risk:  { label: 'At risk',  cls: 'red'    },
-};
-
-function AlertChip({ alertKey }) {
-  const a = ALERT[alertKey] || ALERT.hidden;
-  if (a.none) return <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>{alertKey === 'draft' ? '— Draft' : a.label}</span>;
-  const tone = { green: 'var(--green)', amber: 'var(--yellow)', red: 'var(--red)' }[a.cls];
-  const dim  = { green: 'var(--gdim)',  amber: 'var(--ydim)',   red: 'var(--rdim)' }[a.cls];
+// Raw project.status badge (xprojman-35). Owner call, 2026-09-05: this used to sit
+// twice — once here on the right, once duplicated as a derived "Alert" chip (Draft/
+// On track/Watch/At risk) on the left. One badge, on the right, replaces both.
+function StatusBadge({ status }) {
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 700,
-      padding: '4px 10px', borderRadius: 20, background: dim, color: tone,
-    }}>
-      <span style={{ width: 7, height: 7, borderRadius: '50%', background: tone, flexShrink: 0 }} />
-      {a.label}
+    <span className={`badge ${PROJECT_STATUS_BADGE[status] || 'badge-muted'}`}>
+      {PROJECT_STATUS_LABEL[status] || status}
     </span>
+  );
+}
+
+// Edit (owner report 2026-09-07: no way to correct customer name/brief/land info
+// after creation — Cancel/Delete existed, Edit never did), Cancel (any non-terminal
+// status, keeps every row per xprojman-35 §0/§1), and Delete (draft only — server
+// re-checks progress-claims/job-awards/engagements and 409s with a code this reads
+// to give the real reason; see ProjectDeletionService.js).
+function ProjectActions({ project, busy, onCancel, onDelete }) {
+  const canCancel = !['completed', 'cancelled'].includes(project.status);
+  const canDelete = project.status === 'draft';
+  return (
+    <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+      <Link href={`/projects/${project.id}/edit`} className="btn btn-ghost" style={{ padding: '3px 9px', fontSize: 11 }}>
+        Edit
+      </Link>
+      {canCancel && (
+        <button type="button" className="btn btn-ghost" disabled={busy}
+          style={{ padding: '3px 9px', fontSize: 11 }}
+          onClick={() => onCancel(project)}>
+          Cancel
+        </button>
+      )}
+      {canDelete && (
+        <button type="button" className="btn btn-danger" disabled={busy}
+          style={{ padding: '3px 9px', fontSize: 11 }}
+          onClick={() => onDelete(project)}>
+          Delete
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -83,6 +104,9 @@ function computeProgress(project, stages) {
   let alertKey;
   if (project.status === 'draft' || total === 0) alertKey = 'draft';
   else if (project.status === 'on_hold') alertKey = 'watch';
+  // xprojman-35: cancelled/inactive projects aren't "at risk" or "on track" — the
+  // StatusBadge already tells the real story, this chip should just stay out of the way.
+  else if (project.status === 'cancelled' || project.status === 'inactive') alertKey = 'hidden';
   else if (budgetPct == null) alertKey = 'hidden';
   else {
     const gap = budgetPct - schedulePct;
@@ -111,7 +135,46 @@ async function loadProjectsWithProgress() {
 }
 
 export default function ProjectsPage() {
-  const { data, loading, error } = usePortalData(loadProjectsWithProgress, []);
+  const { data, loading, error, refetch } = usePortalData(loadProjectsWithProgress, []);
+  const [busyId, setBusyId]     = useState(null);
+  const [actionErr, setActionErr] = useState(null);
+  const { confirm } = usePortalDialog();
+
+  async function handleCancel(project) {
+    const ok = await confirm(
+      `Cancel "${project.name}"? This keeps every record (invoices, purchase orders, contracts) — it only marks the project as called off.`,
+      { title: 'Cancel project', confirmLabel: 'Cancel project' }
+    );
+    if (!ok) return;
+    setActionErr(null);
+    setBusyId(project.id);
+    try {
+      await projectsApi.cancel(project.id);
+      await refetch();
+    } catch (err) {
+      setActionErr(err?.message || 'Could not cancel this project.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleDelete(project) {
+    const ok = await confirm(
+      `Permanently delete "${project.name}"? This removes every related record and cannot be undone. Use Cancel instead if any work has actually started.`,
+      { title: 'Delete project', confirmLabel: 'Delete permanently', danger: true }
+    );
+    if (!ok) return;
+    setActionErr(null);
+    setBusyId(project.id);
+    try {
+      await projectsApi.remove(project.id);
+      await refetch();
+    } catch (err) {
+      setActionErr(err?.message || 'Could not delete this project.');
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   // usePortalData's own load() already unwraps one `.data` level
   // (`setData(result?.data ?? result)`) — loadProjectsWithProgress returns
@@ -179,13 +242,14 @@ export default function ProjectsPage() {
       </div>
 
       {error && <div style={{ marginBottom: 12 }}><PortalError message={error} /></div>}
+      {actionErr && <div style={{ marginBottom: 12 }}><PortalError message={actionErr} /></div>}
 
       {/* ── Project rows ───────────────────────────────────────────────── */}
       <div style={{ background: 'var(--s1)', border: '2px solid var(--b1)', borderRadius: 12, padding: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingBottom: 10, marginBottom: 4 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>Projects</div>
           <div style={{ display: 'flex', gap: 16, fontSize: 11, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.03em' }}>
-            <span style={{ width: 190 }}></span><span style={{ width: 190 }}>Schedule vs Budget</span><span style={{ width: 120 }}></span><span style={{ width: 100, textAlign: 'right' }}>Alert</span>
+            <span style={{ width: 190 }}></span><span style={{ width: 190 }}>Schedule vs Budget</span><span style={{ width: 120 }}></span><span style={{ width: 100, textAlign: 'right' }}>Status</span>
           </div>
         </div>
 
@@ -205,7 +269,8 @@ export default function ProjectsPage() {
               <div style={{ fontSize: 14.5, fontWeight: 700 }}>
                 <Link href={`/projects/${p.id}`} style={{ color: 'var(--text)', textDecoration: 'none' }}>{p.name}</Link>
               </div>
-              <div style={{ fontSize: 12, color: 'var(--muted)' }}>{p.customer_name || '—'}</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>{p.customer_name || '—'}</div>
+              <ProjectActions project={p} busy={busyId === p.id} onCancel={handleCancel} onDelete={handleDelete} />
             </div>
 
             <div style={{ flex: 1, minWidth: 190 }}>
@@ -220,17 +285,16 @@ export default function ProjectsPage() {
             </div>
 
             <div style={{ width: 120, flexShrink: 0, fontSize: 12.5, color: 'var(--dim)' }}>{p.site_address || '—'}</div>
-            <div style={{ width: 100, flexShrink: 0, textAlign: 'right' }}><AlertChip alertKey={p.alertKey} /></div>
+            <div style={{ width: 100, flexShrink: 0, textAlign: 'right' }}><StatusBadge status={p.status} /></div>
           </div>
         ))}
       </div>
 
       <div style={{ marginTop: 8, padding: '12px 16px', background: 'var(--s1)', border: '2px solid var(--b1)', borderRadius: 12 }}>
         <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>
-          <b style={{ color: 'var(--dim)' }}>Alert</b> compares Budget% against Schedule% — Budget running
-          well ahead of Schedule is the classic overrun signal; on-hold projects are flagged Watch
-          regardless of budget. Thresholds are a first pass, not a locked formula
-          (portaldesignspecification.md §3.4 module 18).
+          The <b style={{ color: 'var(--dim)' }}>Budget</b> bar turns red when spend is running
+          significantly ahead of Schedule — the classic overrun signal. Thresholds are a first
+          pass, not a locked formula (portaldesignspecification.md §3.4 module 18).
         </div>
       </div>
     </div>

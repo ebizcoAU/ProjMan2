@@ -5,10 +5,6 @@
    60+ / low-vision builders on site — so the accessible light theme IS the theme.
    Token names are kept verbatim so the ported portal components drop in unchanged. */
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
 :root {
   /* ── Surfaces: light canvas, white elevated cards ─────────────────────── */
   --bg:  #eaeef4;   /* app canvas (slightly grey so white cards lift)        */
@@ -75,7 +71,10 @@ body {
   font-size: 15px; font-weight: 600;
   cursor: pointer; transition: all .15s;
   border: none; outline: none; font-family: var(--fb);
+  text-decoration: none; /* .btn is also used on <a>/<Link> (e.g. "+ New Project") —
+                             the browser's default anchor underline otherwise shows through */
 }
+.btn:hover { text-decoration: none; }
 .btn-primary  { background: var(--brand); color: #fff; }
 .btn-primary:hover { background: #9a3412; }
 .btn-ghost    { background: transparent; color: var(--dim); border: 1px solid var(--b2); }

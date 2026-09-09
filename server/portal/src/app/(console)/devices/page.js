@@ -11,6 +11,7 @@ import { PortalEmpty }      from '@/components/portal/PortalEmpty';
 import { PortalError }      from '@/components/portal/PortalError';
 import { usePortalData }    from '@/components/portal/usePortalData';
 import { devicesApi, syncApi } from '@/lib/api';
+import { usePortalDialog } from '@/components/portal/PortalDialog';
 
 const ROLES = ['org_admin', 'project_developer', 'project_manager', 'supervisor', 'tradie', 'customer'];
 
@@ -33,6 +34,7 @@ export default function DevicesPage() {
   const sync = usePortalData(() => syncApi.status());
   const [busyId, setBusyId] = useState(null);
   const [actionError, setActionError] = useState(null);
+  const { confirm } = usePortalDialog();
 
   const devices = data?.data?.devices ?? [];
   const active  = devices.filter(d => d.status === 'active');
@@ -40,7 +42,9 @@ export default function DevicesPage() {
   const syncData = sync.data?.data;
 
   const revoke = async (d) => {
-    if (!window.confirm(`Revoke "${d.name || d.uid}"? Its next call to the server will fail.`)) return;
+    const ok = await confirm(`Revoke "${d.name || d.uid}"? Its next call to the server will fail.`,
+      { title: 'Revoke device', confirmLabel: 'Revoke', danger: true });
+    if (!ok) return;
     setBusyId(d.id); setActionError(null);
     try { await devicesApi.revoke(d.id); await refetch(); }
     catch (err) { setActionError(err?.response?.data?.message || err.message); }

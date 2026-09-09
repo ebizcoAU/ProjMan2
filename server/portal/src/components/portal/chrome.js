@@ -4,7 +4,44 @@
 // ticks. Keep this generic — it must not assume which route group is rendering it.
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useContext, createContext } from 'react';
+
+// ── Topbar override ─────────────────────────────────────────────────────────
+// Owner ask 2026-09-07: the generic topbar ("Projects" / "ProjMan · Office
+// Console") is dead space on a project/task detail page that already has real
+// identity to show (project code+name+address, or task code+name+breadcrumb) —
+// and "ProjMan · Office Console" is redundant with the sidebar's own branding
+// anyway. Rather than have every leaf page duplicate topbar-shaped markup, a
+// page calls useTopbarOverride({title, subtitle, backHref}) to replace the
+// layout's default chrome while it's mounted; unmounting restores the default
+// automatically. Lives here (not the layout file) so both (console)/ and
+// builder/ route groups could use it without either importing the other.
+const TopbarContext = createContext(null);
+
+export function TopbarProvider({ children }) {
+  const [override, setOverride] = useState(null);
+  return (
+    <TopbarContext.Provider value={{ override, setOverride }}>
+      {children}
+    </TopbarContext.Provider>
+  );
+}
+
+/** Layout side: read whatever the current page has set, or null for the default chrome. */
+export function useTopbarState() {
+  return useContext(TopbarContext)?.override ?? null;
+}
+
+/** Page side: replace the topbar's title/subtitle (and optional back-arrow href) while mounted. */
+export function useTopbarOverride({ title, subtitle, backHref } = {}) {
+  const ctx = useContext(TopbarContext);
+  const setOverride = ctx?.setOverride;
+  useEffect(() => {
+    if (!setOverride) return;
+    setOverride(title == null && subtitle == null ? null : { title, subtitle, backHref });
+    return () => setOverride(null);
+  }, [title, subtitle, backHref, setOverride]);
+}
 
 export function parseJwt(token) {
   try {

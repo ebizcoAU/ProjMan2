@@ -5,10 +5,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { PortalNav, getNavLabel } from '@/components/portal/PortalNav';
 import { PortalPeriodProvider } from '@/components/portal/PeriodContext';
-import { parseJwt, useScreenTier, fs, useClockString, useTodayString } from '@/components/portal/chrome';
+import { parseJwt, useScreenTier, fs, useClockString, useTodayString, TopbarProvider, useTopbarState } from '@/components/portal/chrome';
 import { getToken, getSavedUser, clearSession, authApi } from '@/lib/api';
 
 // Page titles keyed by first path segment
@@ -16,15 +17,29 @@ const PAGE_TITLES = {
   devices:      'Devices',
   projects:     'Projects',
   organisation: 'Organisation',
+  finance:      'Finance',
 };
 
 export default function ConsoleLayout({ children }) {
+  return (
+    <TopbarProvider>
+      <ConsoleShell>{children}</ConsoleShell>
+    </TopbarProvider>
+  );
+}
+
+// Split from ConsoleLayout so this can consume useTopbarState() — a page (a
+// descendant of the TopbarProvider above) sets the override via
+// useTopbarOverride(); only a component BELOW the Provider in the tree can read
+// it back out, which ConsoleLayout itself, as the Provider's own parent, cannot.
+function ConsoleShell({ children }) {
   const router   = useRouter();
   const pathname = usePathname();
   const clock    = useClockString();
   const today    = useTodayString();
   const screenTier = useScreenTier();
   const [user, setUser] = useState(null);
+  const topbarOverride = useTopbarState();
 
   // ── Auth guard ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -96,32 +111,63 @@ export default function ConsoleLayout({ children }) {
           flexShrink: 0,
           position: 'relative', zIndex: 30,
         }}>
-          {/* Title + breadcrumb (Section › Page) */}
+          {/* Title + breadcrumb (Section › Page) — or a page's own identity override */}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
-              <span style={{
-                fontFamily: 'var(--fh)', fontSize: fs(20, screenTier), fontWeight: 700,
-                color: subTitle ? 'var(--dim)' : 'var(--text)', lineHeight: 1.1,
-                whiteSpace: 'nowrap', flexShrink: 0,
-              }}>
-                {pageTitle}
-              </span>
-              {subTitle && (
-                <>
-                  <span style={{ color: 'var(--muted)', fontSize: fs(16, screenTier), flexShrink: 0 }}>›</span>
+            {topbarOverride ? (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                  {topbarOverride.backHref && (
+                    <Link href={topbarOverride.backHref} aria-label="Back" style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      width: 26, height: 26, borderRadius: 6, flexShrink: 0,
+                      color: 'var(--dim)', textDecoration: 'none', fontSize: 16,
+                    }}>&larr;</Link>
+                  )}
                   <span style={{
                     fontFamily: 'var(--fh)', fontSize: fs(20, screenTier), fontWeight: 700,
                     color: 'var(--text)', lineHeight: 1.1,
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   }}>
-                    {subTitle}
+                    {topbarOverride.title}
                   </span>
-                </>
-              )}
-            </div>
-            <div style={{ fontSize: fs(13, screenTier), color: 'var(--dim)', marginTop: 3 }}>
-              ProjMan · Office Console
-            </div>
+                </div>
+                {topbarOverride.subtitle && (
+                  <div style={{
+                    fontSize: fs(13, screenTier), color: 'var(--dim)', marginTop: 3,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {topbarOverride.subtitle}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
+                  <span style={{
+                    fontFamily: 'var(--fh)', fontSize: fs(20, screenTier), fontWeight: 700,
+                    color: subTitle ? 'var(--dim)' : 'var(--text)', lineHeight: 1.1,
+                    whiteSpace: 'nowrap', flexShrink: 0,
+                  }}>
+                    {pageTitle}
+                  </span>
+                  {subTitle && (
+                    <>
+                      <span style={{ color: 'var(--muted)', fontSize: fs(16, screenTier), flexShrink: 0 }}>›</span>
+                      <span style={{
+                        fontFamily: 'var(--fh)', fontSize: fs(20, screenTier), fontWeight: 700,
+                        color: 'var(--text)', lineHeight: 1.1,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {subTitle}
+                      </span>
+                    </>
+                  )}
+                </div>
+                <div style={{ fontSize: fs(13, screenTier), color: 'var(--dim)', marginTop: 3 }}>
+                  ProjMan · Office Console
+                </div>
+              </>
+            )}
           </div>
 
           {/* Today's date (info only) */}

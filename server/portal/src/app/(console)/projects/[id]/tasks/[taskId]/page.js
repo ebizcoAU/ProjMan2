@@ -14,12 +14,26 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
-import Link from 'next/link';
 import { PortalCard }    from '@/components/portal/PortalCard';
 import { PortalEmpty }   from '@/components/portal/PortalEmpty';
 import { PortalError }   from '@/components/portal/PortalError';
 import { usePortalData } from '@/components/portal/usePortalData';
-import { projectsApi, commercialApi, documentsApi } from '@/lib/api';
+import { projectsApi, commercialApi, documentsApi, costCentresApi, authApi } from '@/lib/api';
+import { usePortalDialog } from '@/components/portal/PortalDialog';
+import { useTopbarOverride } from '@/components/portal/chrome';
+import { taskDisplayName } from '@/components/portal/taskDisplay';
+
+const SKILL_LABEL = { expert: 'Expert', professional: 'Professional', std: 'Std', free: 'Free' };
+const STATUS_LABEL = { not_started: 'Not started', in_progress: 'In progress', complete: 'Complete', cancelled: 'Cancelled', n_a: 'N/A' };
+const STATUS_BADGE = { not_started: 'badge-muted', in_progress: 'badge-pending', complete: 'badge-active', cancelled: 'badge-revoked', n_a: 'badge-revoked' };
+// completion=0/100 already implies not_started/complete for a task that predates
+// xprojman-38's status column — used only as the "restore" target.
+function deriveStatusFromCompletion(completion) {
+  const c = Number(completion) || 0;
+  if (c >= 100) return 'complete';
+  if (c > 0) return 'in_progress';
+  return 'not_started';
+}
 
 const PDFJS_SRC   = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
 const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -104,6 +118,7 @@ function ActionBtn({ children, onClick, disabled, title, primary }) {
 
 export default function TaskDetailPage() {
   const { id, taskId } = useParams();
+  const { alert, confirm } = usePortalDialog();
   const project = usePortalData(() => projectsApi.detail(id), [id]);
   const posData = usePortalData(() => commercialApi.purchaseOrders(id), [id]);
   const docsData = usePortalData(() => documentsApi.list('task', taskId), [taskId]);
@@ -113,8 +128,60 @@ export default function TaskDetailPage() {
   const tasks  = project.data?.data?.tasks || [];
   const task   = tasks.find((t) => String(t.id) === String(taskId));
   const stage  = task ? stages.find((s) => String(s.id) === String(task.stage_id)) : null;
+
+  // Owner ask 2026-09-07: replaces the generic "Projects" topbar title with the
+  // task's own identity + a back-arrow to the project overview — this IS the header
+  // now, the page body doesn't repeat it.
+  useTopbarOverride({
+    title: task ? (
+      <>
+        {task.code && <span style={{ fontFamily: 'var(--fm)', color: 'var(--brand)', fontWeight: 700, marginRight: 8 }}>{task.code}</span>}
+        {taskDisplayName(task)}
+      </>
+    ) : null,
+    subtitle: proj ? `${proj.code}  ${proj.name}${stage ? `  →  Stage ${stage.seq} · ${stage.name}` : ''}` : null,
+    backHref: `/projects/${id}`,
+  });
   const docs   = docsData.data?.data?.documents || [];
-  const pos    = (posData.data?.data || []).filter((po) => String(po.task_id) === String(taskId));
+  const pos    = (posData.data?.data?.purchase_orders || []).filter((po) => String(po.task_id) === String(taskId));
+  const predecessor = task?.predecessor_id ? tasks.find((t) => String(t.id) === String(task.predecessor_id)) : null;
+
+  // Skill/cost-centre (xprojman-39 §2) are money.write — a DIFFERENT permission
+  // than output_note/status (projects.write) — checked separately, same split the
+  // server itself enforces (CostingService vs. TaskProgressService).
+  const perms = usePortalData(() => authApi.permissions());
+  const canCost = (perms.data?.data?.permissions || []).includes('money.write');
+  const costCentresData = usePortalData(() => (canCost ? costCentresApi.list() : Promise.resolve({ data: { cost_centres: [] } })), [canCost]);
+  const costCentres = costCentresData.data?.data?.cost_centres || [];
+  const costCentre = task?.cost_centre_id ? costCentres.find((c) => String(c.id) === String(task.cost_centre_id)) : null;
+  const [costingBusy, setCostingBusy] = useState(false);
+  const [costingErr, setCostingErr] = useState(null);
+  const setCosting = async (fields) => {
+    setCostingBusy(true); setCostingErr(null);
+    try {
+      await projectsApi.patchTask(id, taskId, fields);
+      await project.refetch();
+    } catch (err) {
+      setCostingErr(err?.response?.data?.message || err.message || 'Could not update');
+    } finally {
+      setCostingBusy(false);
+    }
+  };
+
+  // N/A and Cancelled are both fully reversible office calls (xprojman-38 §5.1).
+  const [statusBusy, setStatusBusy] = useState(false);
+  const [statusErr, setStatusErr] = useState(null);
+  const setStatus = async (status) => {
+    setStatusBusy(true); setStatusErr(null);
+    try {
+      await projectsApi.patchTask(id, taskId, { status });
+      await project.refetch();
+    } catch (err) {
+      setStatusErr(err?.response?.data?.message || err.message || 'Could not update status');
+    } finally {
+      setStatusBusy(false);
+    }
+  };
 
   // ── attachments: upload ──────────────────────────────────────────────────
   const fileInputRef = useRef(null);
@@ -137,6 +204,23 @@ export default function TaskDetailPage() {
     }
   };
 
+  const [deleteBusyId, setDeleteBusyId] = useState(null);
+  const [deleteErr, setDeleteErr] = useState(null);
+  const deleteDoc = async (doc) => {
+    const ok = await confirm(`Delete "${doc.original_filename || 'this file'}"? This can't be undone.`,
+      { title: 'Delete attachment', confirmLabel: 'Delete', danger: true });
+    if (!ok) return;
+    setDeleteBusyId(doc.document_id); setDeleteErr(null);
+    try {
+      await documentsApi.remove(doc.document_id);
+      await docsData.refetch();
+    } catch (err) {
+      setDeleteErr(err?.response?.data?.message || err.message || 'Could not delete');
+    } finally {
+      setDeleteBusyId(null);
+    }
+  };
+
   // ── output / notes (PATCH /projects/:id/tasks/:taskId, xprojman-32 §5) ──────
   const [noteDraft, setNoteDraft] = useState('');
   const [noteDirty, setNoteDirty] = useState(false);
@@ -149,7 +233,7 @@ export default function TaskDetailPage() {
   const saveNote = async () => {
     setNoteBusy(true); setNoteErr(null);
     try {
-      await projectsApi.patchTask(id, taskId, noteDraft);
+      await projectsApi.patchTask(id, taskId, { output_note: noteDraft });
       setNoteDirty(false);
       await project.refetch();
     } catch (err) {
@@ -350,26 +434,77 @@ export default function TaskDetailPage() {
 
   return (
     <div style={{ padding: 20, maxWidth: 1000 }}>
-      <div style={{ marginBottom: 10 }}>
-        <Link href={`/projects/${id}/field`} style={{ fontSize: 13, color: 'var(--dim)', textDecoration: 'none' }}>&larr; Back to Field</Link>
-      </div>
-      <div style={{ fontFamily: 'var(--fh)', fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>
-        {task.name}
-      </div>
-      <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>
-        <span style={{ fontFamily: 'var(--fm)', color: 'var(--brand)' }}>{proj.code}</span> {proj.name}
-        {stage ? <> &nbsp;→&nbsp; Stage {stage.seq} · {stage.name}</> : null}
-      </div>
 
       <PortalCard>
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.03em', marginBottom: 4 }}>Description</div>
+          <div style={{ fontSize: 14, color: task.description ? 'var(--text)' : 'var(--muted)', fontStyle: task.description ? 'normal' : 'italic' }}>
+            {task.description || 'Not captured yet.'}
+          </div>
+        </div>
+
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 16 }}>
           <Field label="Assigned to">{task.assigned_to_name || '—'}</Field>
           <Field label="Start date">{task.start_date ? new Date(task.start_date).toLocaleDateString('en-AU') : '—'}</Field>
           <Field label="End date">{task.end_date ? new Date(task.end_date).toLocaleDateString('en-AU') : '—'}</Field>
+          <Field label="Duration (est.)">{task.budget_hours != null ? `${task.budget_hours} hr` : '—'}</Field>
           <Field label="Actual hours">{task.actual_hours != null ? task.actual_hours : '—'}</Field>
+          <Field label="Source">
+            {task.is_outsourced == null ? <span style={{ color: 'var(--muted)', fontWeight: 500, fontStyle: 'italic' }}>Not captured yet</span>
+              : <span className={`badge ${task.is_outsourced ? 'badge-pending' : 'badge-muted'}`}>{task.is_outsourced ? 'Outsourced' : 'Internal'}</span>}
+          </Field>
+          <Field label="Prerequisite">
+            {predecessor
+              ? <span>{predecessor.code ? `${predecessor.code} — ` : ''}{taskDisplayName(predecessor)}</span>
+              : task.predecessor_id ? <span style={{ color: 'var(--muted)', fontStyle: 'italic' }}>Not on this stage list</span> : '—'}
+          </Field>
+          <Field label="Status">
+            <span className={`badge ${STATUS_BADGE[task.status] || 'badge-muted'}`}>{STATUS_LABEL[task.status] || 'Not started'}</span>
+          </Field>
         </div>
+
+        {task.is_outsourced !== true && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 16 }}>
+            <Field label="Skill level (costing)">
+              {canCost ? (
+                <select value={task.skill_level || ''} disabled={costingBusy}
+                  onChange={(e) => setCosting({ skill_level: e.target.value || null })}
+                  style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid var(--b1)', background: 'var(--s2)', color: 'var(--text)', fontSize: 13 }}>
+                  <option value="">Not set</option>
+                  {Object.entries(SKILL_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                </select>
+              ) : task.skill_level ? SKILL_LABEL[task.skill_level] : <span style={{ color: 'var(--muted)', fontStyle: 'italic' }}>Not set</span>}
+            </Field>
+            <Field label="Cost centre">
+              {canCost ? (
+                <select value={task.cost_centre_id || ''} disabled={costingBusy}
+                  onChange={(e) => setCosting({ cost_centre_id: e.target.value || null })}
+                  style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid var(--b1)', background: 'var(--s2)', color: 'var(--text)', fontSize: 13 }}>
+                  <option value="">Not set</option>
+                  {costCentres.map((c) => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
+                </select>
+              ) : costCentre ? `${costCentre.code} — ${costCentre.name}` : <span style={{ color: 'var(--muted)', fontStyle: 'italic' }}>Not set</span>}
+            </Field>
+          </div>
+        )}
+        {costingErr && <div style={{ marginBottom: 12 }}><PortalError message={costingErr} /></div>}
+
         <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.03em', marginBottom: 6 }}>Completion</div>
         <Progress pct={task.completion} />
+
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--s4)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {task.status === 'n_a' || task.status === 'cancelled' ? (
+            <ActionBtn disabled={statusBusy} onClick={() => setStatus(deriveStatusFromCompletion(task.completion))}>
+              {statusBusy ? 'Restoring…' : 'Restore task'}
+            </ActionBtn>
+          ) : (
+            <>
+              <ActionBtn disabled={statusBusy} onClick={() => setStatus('n_a')}>{statusBusy ? '…' : 'Mark N/A'}</ActionBtn>
+              <ActionBtn disabled={statusBusy} onClick={() => setStatus('cancelled')}>{statusBusy ? '…' : 'Cancel task'}</ActionBtn>
+            </>
+          )}
+          {statusErr && <PortalError message={statusErr} />}
+        </div>
       </PortalCard>
 
       <PortalCard title="Output / notes">
@@ -387,6 +522,9 @@ export default function TaskDetailPage() {
         </div>
       </PortalCard>
 
+      {/* Owner ask 2026-09-08: side by side on wide screens — Purchase Orders stays
+          a single (internal) column, Attachments keeps its own auto-fill grid. */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
       <PortalCard title="Purchase orders">
         {pos.length === 0 ? <PortalEmpty message="No purchase orders raised against this task." /> : (
           <div style={{ overflowX: 'auto' }}>
@@ -455,15 +593,22 @@ export default function TaskDetailPage() {
                   <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--fm)', marginBottom: 8 }}>
                     {fmtSize(doc.size_bytes)} · {doc.uploaded_by_name || 'unknown'} · {dt(doc.created_at)}
                   </div>
-                  <ActionBtn onClick={() => openViewer(doc)} disabled={!libsReady && kind !== 'dwg' && kind !== 'doc' && kind !== 'other'}>
-                    {kind === 'pdf' || kind === 'img' ? 'Markup' : kind === 'docx' ? 'Preview' : kind === 'video' ? 'Play' : 'Download'}
-                  </ActionBtn>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <ActionBtn onClick={() => openViewer(doc)} disabled={!libsReady && kind !== 'dwg' && kind !== 'doc' && kind !== 'other'}>
+                      {kind === 'pdf' || kind === 'img' ? 'Markup' : kind === 'docx' ? 'Preview' : kind === 'video' ? 'Play' : 'Download'}
+                    </ActionBtn>
+                    <ActionBtn onClick={() => deleteDoc(doc)} disabled={deleteBusyId === doc.document_id}>
+                      {deleteBusyId === doc.document_id ? 'Deleting…' : 'Delete'}
+                    </ActionBtn>
+                  </div>
                 </div>
               );
             })}
           </div>
         )}
+        {deleteErr && <div style={{ marginTop: 10 }}><PortalError message={deleteErr} /></div>}
       </PortalCard>
+      </div>
 
       {/* ── Viewer / markup overlay ─────────────────────────────────────────── */}
       {viewer && (
@@ -478,7 +623,7 @@ export default function TaskDetailPage() {
                   <ActionBtn onClick={() => goPage(1)}>›</ActionBtn>
                 </div>
               )}
-              <ActionBtn onClick={() => alert('Markup saved as a new attachment version (not yet wired to a save-back endpoint).')}>Save markup</ActionBtn>
+              <ActionBtn onClick={() => alert('Markup saved as a new attachment version (not yet wired to a save-back endpoint).', { title: 'Save markup' })}>Save markup</ActionBtn>
               <button onClick={closeViewer} style={{ background: 'none', border: 'none', fontSize: 22, color: 'var(--muted)', cursor: 'pointer' }}>&times;</button>
             </div>
           </div>

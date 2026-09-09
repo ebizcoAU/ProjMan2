@@ -88,6 +88,10 @@ export default function CostPlanPage() {
       project:  d?.data?.data?.project,
       stages:   d?.data?.data?.stages || [],
       lines:    cp?.data?.data?.lines || [],
+      // xprojman-39 §2 — labour-from-tasks, computed live (never stored), additive
+      // alongside estimate_lines' own total (EstimateService.list, CostingService.labourRollup).
+      labour:      cp?.data?.data?.labour || null,
+      grandTotal:  cp?.data?.data?.grandTotal ?? null,
       pos:      po?.data?.data?.purchase_orders || [],
       invoices: inv?.data?.data?.supplier_invoices || [],
       claims:   cl?.data?.data?.claims || [],
@@ -102,9 +106,12 @@ export default function CostPlanPage() {
 
   const stages   = data.data.stages;
   const lines    = data.data.lines;
+  const labour   = data.data.labour;
+  const grandTotal = data.data.grandTotal;
   const pos      = data.data.pos;
   const invoices = data.data.invoices;
   const claims   = data.data.claims;
+  const labourByStage = (sid) => labour?.byStage.find((l) => l.stage_id === sid);
   const seesMoney = stages.some(s => 'estimated_amount' in s) || ('contract_value' in project);
   const stageName = (sid) => { const st = stages.find(s => s.id === sid); return st ? `${st.seq}. ${st.name}` : '—'; };
 
@@ -129,7 +136,16 @@ export default function CostPlanPage() {
             {COLS.map(c => <PortalKpi key={c.key} label={c.label} value={money(total(c.key))} color="var(--text)" />)}
             <PortalKpi label="Variance (actual−est)" value={money(totalVariance)}
               color={totalVariance > 0 ? 'var(--red)' : 'var(--green)'} />
+            {grandTotal != null && <PortalKpi label="Grand total (+labour)" value={money(grandTotal)} color="var(--brand)" />}
           </div>
+
+          {labour?.tasksMissingCostCentre?.length > 0 && (
+            <div style={{ marginBottom: 12, padding: '10px 14px', background: 'var(--ydim)', border: '1px solid var(--yellow)', borderRadius: 8, fontSize: 13, color: 'var(--yellow)' }}>
+              {labour.tasksMissingCostCentre.length} task{labour.tasksMissingCostCentre.length === 1 ? '' : 's'} with
+              a skill level set {labour.tasksMissingCostCentre.length === 1 ? 'has' : 'have'} no cost centre yet —
+              required before this Cost Plan can be locked. Set it from the task's popup on the Programme tab.
+            </div>
+          )}
 
           <PortalCard title="Cost plan by stage — derived from source documents">
             <div style={{ overflowX: 'auto' }}>
@@ -139,17 +155,22 @@ export default function CostPlanPage() {
                     <th style={th}>#</th>
                     <th style={th}>Stage</th>
                     {COLS.map(c => <th key={c.key} style={thR}>{c.label}</th>)}
+                    {labour && <th style={thR}>Labour (est.)</th>}
+                    {labour && <th style={thR}>Labour (act.)</th>}
                     <th style={thR}>Variance</th>
                   </tr>
                 </thead>
                 <tbody>
                   {stages.map((st, i) => {
                     const vr = variance(st);
+                    const lb = labourByStage(st.id);
                     return (
                       <tr key={st.id} style={{ borderBottom: i < stages.length - 1 ? '1px solid var(--b2)' : 'none' }}>
                         <td style={{ ...td, fontFamily: 'var(--fm)', color: 'var(--muted)' }}>{st.seq}</td>
                         <td style={td}>{st.name}</td>
                         {COLS.map(c => <td key={c.key} style={tdR}>{money(st[c.key])}</td>)}
+                        {labour && <td style={{ ...tdR, color: 'var(--muted)' }}>{lb ? money(lb.estimated) : '—'}</td>}
+                        {labour && <td style={{ ...tdR, color: 'var(--muted)' }}>{lb ? money(lb.actual) : '—'}</td>}
                         <td style={{ ...tdR, color: vr > 0 ? 'var(--red)' : vr < 0 ? 'var(--green)' : 'var(--dim)' }}>
                           {vr === 0 ? '—' : money(vr)}
                         </td>
@@ -161,6 +182,8 @@ export default function CostPlanPage() {
                   <tr style={{ borderTop: '2px solid var(--b1)', fontWeight: 700 }}>
                     <td colSpan={2} style={{ ...td, fontWeight: 700 }}>Total</td>
                     {COLS.map(c => <td key={c.key} style={{ ...tdR, fontWeight: 700 }}>{money(total(c.key))}</td>)}
+                    {labour && <td style={{ ...tdR, fontWeight: 700 }}>{money(labour.total.estimated)}</td>}
+                    {labour && <td style={{ ...tdR, fontWeight: 700 }}>{money(labour.total.actual)}</td>}
                     <td style={{ ...tdR, fontWeight: 700, color: totalVariance > 0 ? 'var(--red)' : 'var(--green)' }}>{money(totalVariance)}</td>
                   </tr>
                 </tfoot>

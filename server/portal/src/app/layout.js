@@ -2,6 +2,7 @@
 // Same three families as the Nexus portal so the ported components keep their look.
 import { Syne, DM_Sans, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
+import { PortalDialogProvider } from '@/components/portal/PortalDialog';
 
 const syne = Syne({
   subsets: ['latin'],
@@ -32,7 +33,9 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en-AU" className={`${syne.variable} ${dmSans.variable} ${jetbrains.variable}`}>
-      <body>{children}</body>
+      <body>
+        <PortalDialogProvider>{children}</PortalDialogProvider>
+      </body>
     </html>
   );
 }
