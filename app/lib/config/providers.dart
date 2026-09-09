@@ -32,6 +32,12 @@ final activeSiteProjectProvider = StateProvider<Project?>((ref) => null);
 // project-scoped, so the Quality tab picks one job at a time too.
 final activeQualityProjectProvider = StateProvider<Project?>((ref) => null);
 
+// ── Active safety project ─────────────────────────────────────────────────────
+// Same pattern again — Hazards/Incidents are project-scoped. UI mockup only for
+// now (SafetyOpsService is in-memory, no schema/API — appspec §9 module 5,
+// xprojman-28 §5, gated on a 3-team schema pass before real wiring).
+final activeSafetyProjectProvider = StateProvider<Project?>((ref) => null);
+
 // ── Database service singleton ────────────────────────────────────────────────
 final databaseServiceProvider = FutureProvider<DatabaseService>((ref) async {
   final db = DatabaseService();
