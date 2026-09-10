@@ -2,8 +2,10 @@
 // §2, confirmed §6 response: same fixed-list shape as `suppliers`, not project-
 // level free text). Org-shared, not project-scoped — a code/name pair is not
 // sensitive; what's costed against it lives on the task row (money-gated there).
-//   GET  /cost-centres        list (any authenticated org member)
-//   POST /cost-centres        add a cost centre (money.write)
+//   GET   /cost-centres         list (any authenticated org member)
+//   POST  /cost-centres         add a cost centre (money.write)
+//   PATCH /cost-centres/:id/account  link/unlink a chart-of-accounts leaf
+//                                     (money.write, xprojman-42 §4 point 2)
 
 const router = require('express').Router();
 const { body, validationResult } = require('express-validator');
@@ -45,6 +47,22 @@ router.post(
       });
       await audit(req, 'cost_centre.create', { entity: 'cost_centres', entityId: result.id, detail: result });
       return res.status(201).json({ success: true, data: result });
+    } catch (err) { return sendError(res, err); }
+  }
+);
+
+router.patch(
+  '/:id/account',
+  [body('account_id').optional({ nullable: true })],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await CostingService.setLinkedAccount({
+        orgId: req.auth.orgId, actor: { role: req.auth.role },
+        costCentreId: req.params.id, accountId: req.body.account_id || null,
+      });
+      await audit(req, 'cost_centre.link_account', { entity: 'cost_centres', entityId: req.params.id, detail: result });
+      return res.json({ success: true, data: result });
     } catch (err) { return sendError(res, err); }
   }
 );

@@ -58,7 +58,7 @@ async function setRate({ orgId, actor, skillLevel, hourlyRate }) {
 // response: same shape as `suppliers`, not project-level free text) ─────────
 async function listCostCentres({ orgId }) {
   const [rows] = await pool.query(
-    'SELECT id, code, name FROM cost_centres WHERE org_id = ? AND is_deleted = 0 ORDER BY code',
+    'SELECT id, code, name, linked_account_id FROM cost_centres WHERE org_id = ? AND is_deleted = 0 ORDER BY code',
     [orgId]
   );
   return { cost_centres: rows };
@@ -79,6 +79,35 @@ async function createCostCentre({ orgId, actor, code, name }) {
     [id, orgId, code.trim(), name.trim()]
   );
   return { id, code: code.trim(), name: name.trim() };
+}
+
+// Links (or unlinks) a cost centre to a chart-of-accounts leaf (xprojman-42
+// §4 point 2, migration v042's cost_centres.linked_account_id). Stays
+// money.write, same tier as createCostCentre — this tags an existing
+// money.write-gated row, it isn't a structural chart-of-accounts edit
+// (OrgFinanceService's finance.manage is for those), so it doesn't need the
+// narrower permission.
+async function setLinkedAccount({ orgId, actor, costCentreId, accountId }) {
+  if (!canWrite(actor.role)) throw new ServiceError('FORBIDDEN', 'Requires permission: money.write', 403);
+  const [[cc]] = await pool.query(
+    'SELECT id FROM cost_centres WHERE id = ? AND org_id = ? AND is_deleted = 0 LIMIT 1',
+    [costCentreId, orgId]
+  );
+  if (!cc) throw new ServiceError('NOT_FOUND', 'Cost centre not found', 404);
+
+  if (accountId) {
+    const [[acc]] = await pool.query(
+      'SELECT id, acc_type FROM org_accounts WHERE id = ? AND org_id = ? LIMIT 1',
+      [accountId, orgId]
+    );
+    if (!acc) throw new ServiceError('VALIDATION_ERROR', 'account_id not found in your organisation', 422);
+    if (acc.acc_type !== 'expense') throw new ServiceError('VALIDATION_ERROR', 'account_id must be an expense account', 422);
+  }
+  await pool.query(
+    'UPDATE cost_centres SET linked_account_id = ? WHERE id = ? AND org_id = ?',
+    [accountId || null, costCentreId, orgId]
+  );
+  return { id: costCentreId, linked_account_id: accountId || null };
 }
 
 // ── Task costing fields (skill_level/cost_centre_id) — money.write, same
@@ -165,5 +194,5 @@ async function labourRollup({ orgId, projectId }) {
 
 module.exports = {
   SKILL_LEVELS, listRateCard, setRate, listCostCentres, createCostCentre,
-  setTaskCosting, labourRollup,
+  setLinkedAccount, setTaskCosting, labourRollup,
 };

@@ -70,7 +70,11 @@ async function pairAs(admin, adminUserId, role, uid, stamp) {
   // v12 (v025, decision #19): + documents.read (builder only) — sees documents on ENGAGED jobs.
   // Narrow on purpose: granting builder `projects.read` would hand over the whole project-detail
   // surface (/projects, /:id, /inspections, /defects, /certificates, /members) as a side effect.
-  ok('permissions: matrixVersion present', d?.matrixVersion === 12, JSON.stringify(d?.matrixVersion));
+  // v13 (v042, xprojman-42 §2): + finance.manage (projectManager only) — structural chart-of-
+  // accounts edits, narrower than money.write (same reasoning as tax.approve).
+  ok('permissions: matrixVersion present', d?.matrixVersion === 13, JSON.stringify(d?.matrixVersion));
+  ok('permissions: projectManager has finance.manage (v13)', d?.permissions?.includes('finance.manage'),
+    JSON.stringify(d?.permissions));
   ok('permissions: projectManager has accounts.read (v10)', d?.permissions?.includes('accounts.read'),
     JSON.stringify(d?.permissions));
   ok('permissions: projectManager does NOT need documents.write (quality.write covers DELETE)',
