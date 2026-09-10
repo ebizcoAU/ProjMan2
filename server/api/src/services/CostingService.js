@@ -15,6 +15,7 @@ const { v4: uuidv4 } = require('uuid');
 const pool = require('../db/pool');
 const { ServiceError } = require('./errors');
 const access = require('../lib/access');
+const { PO_COMMITTED, INV_ACTUAL } = require('./ProcurementService');
 
 const SKILL_LEVELS = ['expert', 'professional', 'std', 'free'];
 const canRead  = (role) => access.hasPermission(role, 'money.read');
@@ -157,13 +158,24 @@ async function setTaskCosting({ orgId, projectId, taskId, actor, skillLevel, cos
 }
 
 // ── Labour-cost rollup — read live, never stored (see file header) ─────────
-// Outsourced tasks contribute nothing yet — §3 (quotes) isn't built; internal-
-// only costing already delivers real value without it (xprojman-39 §5's own
-// sequencing call). A task with no skill_level was never asked to be costed
-// (not an error, not "missing"). A task WITH a skill_level but no
-// cost_centre_id IS flagged (`missingCostCentre`) — owner rule (§0.1):
-// internal cost requires a cost centre; enforced at cost-plan LOCK time
-// (setLock below), not here — read paths should never 403/refuse, only report.
+// An internal task with no skill_level was never asked to be costed (not an
+// error, not "missing"). A task WITH a skill_level but no cost_centre_id IS
+// flagged (`missingCostCentre`) — owner rule (§0.1): internal cost requires
+// a cost centre; enforced at cost-plan LOCK time (setLock below), not here —
+// read paths should never 403/refuse, only report.
+//
+// Outsourced tasks (xprojman-39 §3, built) now DO contribute: estimated =
+// SUM of committed purchase_orders against the task (an approved quote
+// raises one of these, xprojman-39 §3 phase 4), actual = SUM of matched/
+// approved supplier_invoices — same PO_COMMITTED/INV_ACTUAL statuses
+// ProcurementService's own stage-level committed_amount/actual_amount
+// rollups already use, just aggregated per-task instead of per-stage.
+//
+// `byTask` (xprojman-39 §4's own server dependency — the Scheduler's dual
+// completion/spend bar needs a per-task figure, not just the stage rollup
+// this function returned before) covers EVERY task with a non-zero figure
+// either way, internal or outsourced — a task nobody has costed at all is
+// simply absent from it, same "not an error" posture as skill_level being null.
 async function labourRollup({ orgId, projectId }) {
   const [rateRows] = await pool.query(
     'SELECT skill_level, hourly_rate FROM org_rate_cards WHERE org_id = ?', [orgId]
@@ -174,19 +186,42 @@ async function labourRollup({ orgId, projectId }) {
        FROM tasks WHERE project_id = ? AND org_id = ? AND is_deleted = 0`,
     [projectId, orgId]
   );
+  const [poRows] = await pool.query(
+    `SELECT task_id, SUM(amount) AS total FROM purchase_orders
+      WHERE project_id = ? AND org_id = ? AND is_deleted = 0 AND task_id IS NOT NULL
+        AND status IN (?) GROUP BY task_id`,
+    [projectId, orgId, PO_COMMITTED]
+  );
+  const [invRows] = await pool.query(
+    `SELECT task_id, SUM(amount) AS total FROM supplier_invoices
+      WHERE project_id = ? AND org_id = ? AND is_deleted = 0 AND task_id IS NOT NULL
+        AND status IN (?) GROUP BY task_id`,
+    [projectId, orgId, INV_ACTUAL]
+  );
+  const committedByTask = new Map(poRows.map((r) => [r.task_id, Number(r.total)]));
+  const actualByTask = new Map(invRows.map((r) => [r.task_id, Number(r.total)]));
 
   const byStage = new Map();
+  const byTask = [];
   let totalEstimated = 0, totalActual = 0;
   const missingCostCentre = [];
   for (const t of tasks) {
-    if (t.is_outsourced || !t.skill_level) continue;
-    if (!t.cost_centre_id) { missingCostCentre.push(t.id); continue; }
-    const rate = rateMap.get(t.skill_level);
-    if (rate === undefined) continue; // rate card not (yet) configured for this tier
-    const estimated = Number(t.budget_hours || 0) * rate;
-    const actual = Number(t.actual_hours || 0) * rate;
+    let estimated, actual;
+    if (t.is_outsourced) {
+      estimated = committedByTask.get(t.id) || 0;
+      actual = actualByTask.get(t.id) || 0;
+      if (estimated === 0 && actual === 0) continue; // no quote/PO/invoice against this task yet
+    } else {
+      if (!t.skill_level) continue;
+      if (!t.cost_centre_id) { missingCostCentre.push(t.id); continue; }
+      const rate = rateMap.get(t.skill_level);
+      if (rate === undefined) continue; // rate card not (yet) configured for this tier
+      estimated = Number(t.budget_hours || 0) * rate;
+      actual = Number(t.actual_hours || 0) * rate;
+    }
     totalEstimated += estimated;
     totalActual += actual;
+    byTask.push({ task_id: t.id, estimated: round2(estimated), actual: round2(actual) });
     const stageKey = t.stage_id || 'unassigned';
     const cur = byStage.get(stageKey) || { stage_id: t.stage_id, estimated: 0, actual: 0 };
     cur.estimated += estimated;
@@ -195,6 +230,7 @@ async function labourRollup({ orgId, projectId }) {
   }
   return {
     byStage: [...byStage.values()].map((s) => ({ ...s, estimated: round2(s.estimated), actual: round2(s.actual) })),
+    byTask,
     total: { estimated: round2(totalEstimated), actual: round2(totalActual) },
     tasksMissingCostCentre: missingCostCentre,
   };

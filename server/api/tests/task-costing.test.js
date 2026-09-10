@@ -124,6 +124,9 @@ async function pairAs(admin, userId, role, uid) {
   ok('labour estimated cost = budget_hours x professional rate (10 x 150 = 1500)',
     Math.abs(plan.json.data.labour.total.estimated - 1500) < 0.01, JSON.stringify(plan.json.data.labour));
   ok('no longer flagged as missing a cost centre', !plan.json.data.labour.tasksMissingCostCentre.includes(taskId));
+  const byTaskEntry = plan.json.data.labour.byTask.find((t) => t.task_id === taskId);
+  ok('byTask (xprojman-39 §4 dependency) includes this internally-costed task at the same figure',
+    byTaskEntry && Math.abs(byTaskEntry.estimated - 1500) < 0.01, JSON.stringify(byTaskEntry));
   ok('grandTotal = estimate_lines total + labour estimated',
     Math.abs(plan.json.data.grandTotal - (plan.json.data.total + plan.json.data.labour.total.estimated)) < 0.01,
     JSON.stringify({ grandTotal: plan.json.data.grandTotal, total: plan.json.data.total, labour: plan.json.data.labour.total }));

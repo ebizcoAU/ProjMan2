@@ -112,6 +112,14 @@ async function pairAs(admin, userId, role, uid) {
   const resolvedQuote = quoteAfter.json.data.task_quotes.find((q) => q.id === quoteId);
   ok('the quote row itself is now approved with the PO id linked back', resolvedQuote.status === 'approved' && resolvedQuote.purchase_order_id === raisedPo.id);
 
+  // ── xprojman-39 §4 server dependency: per-task cost figures for the Scheduler's
+  // dual completion/spend bar. An outsourced task's estimated cost comes from the
+  // committed PO; actual stays 0 until a supplier invoice is matched/approved. ──
+  const costPlan = await call('GET', `/projects/${projId}/cost-plan`, undefined, pm);
+  const taskRollup = costPlan.json.data.labour.byTask.find((t) => t.task_id === taskId);
+  ok('byTask includes the outsourced task, estimated = the committed PO amount, actual = 0 (no invoice yet)',
+    taskRollup && Math.abs(taskRollup.estimated - 5000) < 0.01 && taskRollup.actual === 0, JSON.stringify(taskRollup));
+
   // ── 6. Already resolved ──
   const reApprove = await call('POST', `/projects/${projId}/task-quotes/${quoteId}/approve`, { accept: true }, pm);
   ok('approving an already-approved quote is refused (409)', reApprove.status === 409, JSON.stringify(reApprove.json));

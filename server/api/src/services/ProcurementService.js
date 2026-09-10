@@ -412,6 +412,7 @@ module.exports = {
   createSupplierInvoice, setInvoiceStatus, listSupplierInvoices,
   subcontractorRegister,
   recomputeStageCommitted, recomputeStageActual,
+  PO_COMMITTED, INV_ACTUAL,
   // exported for tests
   applyVisibility, partyForRole,
 };
