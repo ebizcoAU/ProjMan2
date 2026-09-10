@@ -138,10 +138,20 @@ async function pairAs(admin, userId, role, uid) {
   ok('an unknown cost_centre_id is refused (422)', badCC.status === 422, JSON.stringify(badCC.json));
 
   const noFields = await call('PATCH', `/projects/${projId}/tasks/${taskId}`, {}, pm);
-  ok('PATCH with none of the 4 fields refused (400 NO_FIELDS)', noFields.status === 400 && noFields.json.code === 'NO_FIELDS');
+  ok('PATCH with none of the 5 fields refused (400 NO_FIELDS)', noFields.status === 400 && noFields.json.code === 'NO_FIELDS');
 
   const tradieCosting = await call('PATCH', `/projects/${projId}/tasks/${taskId}`, { skill_level: 'expert' }, tradieTok);
   ok('a tradie (no money.write) cannot set skill_level (403)', tradieCosting.status === 403, JSON.stringify(tradieCosting.json));
+
+  // ── is_outsourced (v037 column, left read-only until xprojman-39 §3 needed a
+  // writer — money-gated like skill_level/cost_centre_id, not projects.write) ──
+  const tradieOutsourced = await call('PATCH', `/projects/${projId}/tasks/${taskId}`, { is_outsourced: true }, tradieTok);
+  ok('a tradie (no money.write) cannot set is_outsourced (403)', tradieOutsourced.status === 403, JSON.stringify(tradieOutsourced.json));
+  const setOutsourced = await call('PATCH', `/projects/${projId}/tasks/${taskId}`, { is_outsourced: true }, pm);
+  ok('PM sets is_outsourced via money.write', setOutsourced.status === 200 && setOutsourced.json.data.is_outsourced === 1, JSON.stringify(setOutsourced.json));
+  const detailOutsourced = await call('GET', `/projects/${projId}`, undefined, pm);
+  const taskNowOutsourced = detailOutsourced.json.data.tasks.find((t) => t.id === taskId);
+  ok('is_outsourced sticks and reads back true', !!taskNowOutsourced.is_outsourced, JSON.stringify(taskNowOutsourced.is_outsourced));
 
   // ── 5. Redaction ──
   const asTradie = await call('GET', `/projects/${projId}`, undefined, tradieTok);

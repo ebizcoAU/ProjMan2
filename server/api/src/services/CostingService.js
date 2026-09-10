@@ -114,8 +114,15 @@ async function setLinkedAccount({ orgId, actor, costCentreId, accountId }) {
 // tier as everything else in this file. Lives alongside TaskProgressService.
 // updateOfficeFields (output_note/status, projects.write) rather than folded
 // into it — different permission, different owner (this file), same task row.
-async function setTaskCosting({ orgId, projectId, taskId, actor, skillLevel, costCentreId }) {
-  if (skillLevel === undefined && costCentreId === undefined) {
+//
+// `isOutsourced` added here (xprojman-39 §3 prerequisite, migration v043's
+// task_quotes needs is_outsourced=1 to be actually reachable) — v037 added
+// the column itself but left it READ-ONLY on purpose pending a real need
+// (xprojman-37 §3: "if this needs to become editable later, small follow-up
+// not a redesign"); that need is now real, and it's money-gated same as
+// skill_level/cost_centre_id per that same v037 decision, not projects.write.
+async function setTaskCosting({ orgId, projectId, taskId, actor, skillLevel, costCentreId, isOutsourced }) {
+  if (skillLevel === undefined && costCentreId === undefined && isOutsourced === undefined) {
     throw new ServiceError('NO_FIELDS', 'Nothing to update', 400);
   }
   if (!canWrite(actor.role)) throw new ServiceError('FORBIDDEN', 'Requires permission: money.write', 403);
@@ -139,6 +146,7 @@ async function setTaskCosting({ orgId, projectId, taskId, actor, skillLevel, cos
   const fields = {};
   if (skillLevel !== undefined) fields.skill_level = skillLevel;
   if (costCentreId !== undefined) fields.cost_centre_id = costCentreId;
+  if (isOutsourced !== undefined) fields.is_outsourced = isOutsourced ? 1 : 0;
   const columns = Object.keys(fields);
   await pool.query(
     `UPDATE tasks SET ${columns.map((c) => `\`${c}\` = ?`).join(', ')}, server_updated_at = NOW(3)

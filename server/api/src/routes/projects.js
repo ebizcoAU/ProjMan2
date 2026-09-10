@@ -49,6 +49,7 @@ const HoldPointService = require('../services/HoldPointService');
 const EstimateService = require('../services/EstimateService');
 const ClaimService = require('../services/ClaimService');
 const ProcurementService = require('../services/ProcurementService');
+const TaskQuoteService = require('../services/TaskQuoteService');
 const ContractService = require('../services/ContractService');
 const DepreciationService = require('../services/DepreciationService');
 const ProjectDeletionService = require('../services/ProjectDeletionService');
@@ -74,6 +75,7 @@ const canWriteMoney = requirePermission('money.write');   // P7a estimate/cost-p
 const canSubmitClaims = requirePermission('claims.submit'); // P7a Builder submits
 const canApproveClaims = requirePermission('claims.approve'); // P7a PM approves/pays
 const canWritePo = requirePermission('po.write');           // P7b procurement writes
+const canApproveQuotes = requirePermission('quotes.approve'); // xprojman-39 §3
 const canRaiseVariation = requirePermission('variations.raise'); // P7c PM raises variations
 const canApproveTax = requirePermission('tax.approve');     // P8a S18.12 accountant approval (v012, reused)
 
@@ -731,7 +733,10 @@ router.post('/:id/tasks/:taskId/verify', canVerifyProgress, async (req, res) => 
 // every other mixed-tier route in this file already uses:
 //   output_note (xprojman-32) / status (xprojman-38, the ONLY path that may set
 //     'cancelled'/'n_a', fully reversible) — projects.write, TaskProgressService.
-//   skill_level / cost_centre_id (xprojman-39 §2) — money.write, CostingService.
+//   skill_level / cost_centre_id / is_outsourced (xprojman-39 §2/§3) — money.write,
+//     CostingService. `is_outsourced` (column existed since v037, left read-only
+//     until §3's task_quotes actually needed a way to reach it) rides this same
+//     branch, not TaskProgressService, per v037's own money-gated-separately call.
 // At least one field across BOTH groups is required. A caller holding only one
 // of the two permissions may still patch the fields that permission covers —
 // e.g. an `estimator` (money.write, no projects.write) can set a task's skill
@@ -743,12 +748,13 @@ router.patch(
     body('status').optional().isIn(['not_started', 'in_progress', 'complete', 'cancelled', 'n_a']),
     body('skill_level').optional({ nullable: true }).isIn(CostingService.SKILL_LEVELS),
     body('cost_centre_id').optional({ nullable: true }).isString(),
+    body('is_outsourced').optional().isBoolean(),
   ],
   async (req, res) => {
     if (validation(req, res)) return;
-    const { output_note, status, skill_level, cost_centre_id } = req.body;
+    const { output_note, status, skill_level, cost_centre_id, is_outsourced } = req.body;
     if (output_note === undefined && status === undefined
-        && skill_level === undefined && cost_centre_id === undefined) {
+        && skill_level === undefined && cost_centre_id === undefined && is_outsourced === undefined) {
       return res.status(400).json({ success: false, message: 'Nothing to update', code: 'NO_FIELDS' });
     }
     try {
@@ -763,13 +769,13 @@ router.patch(
           }),
         };
       }
-      if (skill_level !== undefined || cost_centre_id !== undefined) {
+      if (skill_level !== undefined || cost_centre_id !== undefined || is_outsourced !== undefined) {
         result = {
           ...result,
           ...await CostingService.setTaskCosting({
             orgId: req.auth.orgId, projectId: req.params.id, taskId: req.params.taskId,
             actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
-            skillLevel: skill_level, costCentreId: cost_centre_id,
+            skillLevel: skill_level, costCentreId: cost_centre_id, isOutsourced: is_outsourced,
           }),
         };
       }
@@ -1117,6 +1123,72 @@ router.post(
       });
       await audit(req, 'supplier_invoice.status', {
         entity: 'supplier_invoices', entityId: req.params.invId,
+        detail: { project_id: req.params.id, status: result.status },
+      });
+      return res.json({ success: true, data: result });
+    } catch (err) { return sendError(res, err); }
+  }
+);
+
+// ── Task quotes — outsourced-task external cost (xprojman-39 §3, migration v043) ──
+// Raise (po.write) → approve/decline (quotes.approve). Approval raises a real
+// purchase_orders row through the existing procurement flow above — a quote
+// never feeds §2's cost rollup directly, only the PO it produces does.
+//   GET  /:id/task-quotes                   list (money.read | po.write)
+//   POST /:id/task-quotes                   raise a quote        (po.write)
+//   POST /:id/task-quotes/:quoteId/approve  approve/decline      (quotes.approve)
+router.get('/:id/task-quotes', async (req, res) => {
+  try {
+    const data = await TaskQuoteService.listQuotes({
+      orgId: req.auth.orgId, projectId: req.params.id,
+      actor: { role: req.auth.role, userId: req.auth.userId },
+    });
+    return res.json({ success: true, data });
+  } catch (err) { return sendError(res, err); }
+});
+
+router.post(
+  '/:id/task-quotes',
+  canWritePo,
+  [
+    body('task_id').trim().notEmpty().withMessage('task_id is required'),
+    body('supplier_name').trim().notEmpty().withMessage('supplier_name is required'),
+    body('amount').isFloat({ gt: 0 }).withMessage('amount must be a positive number'),
+    body('valid_until').optional({ nullable: true }).isISO8601(),
+    body('document_id').optional({ nullable: true }).isString(),
+  ],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await TaskQuoteService.raise({
+        orgId: req.auth.orgId, projectId: req.params.id,
+        actor: { role: req.auth.role, userId: req.auth.userId },
+        taskId: req.body.task_id, supplierName: req.body.supplier_name,
+        amount: req.body.amount, validUntil: req.body.valid_until, documentId: req.body.document_id,
+      });
+      await audit(req, 'task_quote.raise', {
+        entity: 'task_quotes', entityId: result.id,
+        detail: { project_id: req.params.id, task_id: req.body.task_id, amount: req.body.amount },
+      });
+      return res.status(201).json({ success: true, data: result });
+    } catch (err) { return sendError(res, err); }
+  }
+);
+
+router.post(
+  '/:id/task-quotes/:quoteId/approve',
+  canApproveQuotes,
+  [body('accept').optional().isBoolean()],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await TaskQuoteService.approve({
+        orgId: req.auth.orgId, projectId: req.params.id, quoteId: req.params.quoteId,
+        actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+        accept: req.body.accept !== false,
+      });
+      await audit(req, 'task_quote.approve', {
+        entity: 'task_quotes', entityId: req.params.quoteId,
         detail: { project_id: req.params.id, status: result.status },
       });
       return res.json({ success: true, data: result });
