@@ -1,14 +1,17 @@
-// Mounted at /finance — per-tenant chart of accounts (xprojman-42 §2,
-// migration v042). Not /accounts (already taken — routes/accounts.js is the
-// org-level BAS/TPAR/depreciation surface, a different table entirely) and
-// not /admin/finance (that's eBizco's OWN books, FinanceService.js, platform-
-// admin only). §3's journal + P&L/Balance Sheet/Expenses/Sales read screens
-// are NOT built yet — this file is the accounts tree only.
+// Mounted at /finance — per-tenant chart of accounts + journal reports
+// (xprojman-42 §2/§3, migrations v042/v044). Not /accounts (already taken —
+// routes/accounts.js is the org-level BAS/TPAR/depreciation surface, a
+// different table entirely) and not /admin/finance (that's eBizco's OWN
+// books, FinanceService.js, platform-admin only).
 //
-//   GET   /finance/accounts        chart of accounts, seeded lazily on first
-//                                   read (money.read)
-//   POST  /finance/accounts        add an account                (finance.manage)
-//   PATCH /finance/accounts/:id    rename/activate/re-parent      (finance.manage)
+//   GET   /finance/accounts             chart of accounts, seeded lazily on
+//                                        first read                (money.read)
+//   POST  /finance/accounts             add an account              (finance.manage)
+//   PATCH /finance/accounts/:id         rename/activate/re-parent   (finance.manage)
+//   GET   /finance/reports/pnl          period P&L                 (money.read)
+//   GET   /finance/reports/balance-sheet  as-of snapshot            (money.read)
+//   GET   /finance/reports/expenses     period expense transactions (money.read)
+//   GET   /finance/reports/sales        period revenue transactions (money.read)
 
 const router = require('express').Router();
 const { body, validationResult } = require('express-validator');
@@ -74,5 +77,44 @@ router.patch(
     } catch (err) { return sendError(res, err); }
   }
 );
+
+router.get('/reports/pnl', async (req, res) => {
+  try {
+    const data = await OrgFinanceService.profitAndLoss({
+      orgId: req.auth.orgId, actor: { role: req.auth.role },
+      from: req.query.from, to: req.query.to,
+    });
+    return res.json({ success: true, data });
+  } catch (err) { return sendError(res, err); }
+});
+
+router.get('/reports/balance-sheet', async (req, res) => {
+  try {
+    const data = await OrgFinanceService.balanceSheet({
+      orgId: req.auth.orgId, actor: { role: req.auth.role }, asOf: req.query.as_of,
+    });
+    return res.json({ success: true, data });
+  } catch (err) { return sendError(res, err); }
+});
+
+router.get('/reports/expenses', async (req, res) => {
+  try {
+    const data = await OrgFinanceService.listEntries({
+      orgId: req.auth.orgId, actor: { role: req.auth.role }, accType: 'expense',
+      from: req.query.from, to: req.query.to,
+    });
+    return res.json({ success: true, data });
+  } catch (err) { return sendError(res, err); }
+});
+
+router.get('/reports/sales', async (req, res) => {
+  try {
+    const data = await OrgFinanceService.listEntries({
+      orgId: req.auth.orgId, actor: { role: req.auth.role }, accType: 'revenue',
+      from: req.query.from, to: req.query.to,
+    });
+    return res.json({ success: true, data });
+  } catch (err) { return sendError(res, err); }
+});
 
 module.exports = router;

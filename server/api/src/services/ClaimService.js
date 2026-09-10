@@ -15,6 +15,7 @@ const { ServiceError } = require('./errors');
 const access = require('../lib/access');
 const ProjectService = require('./ProjectService');
 const stageHooks = require('./stageHooks');
+const OrgFinanceService = require('./OrgFinanceService');
 
 const canRead = (role) => access.hasPermission(role, 'money.read');
 
@@ -109,6 +110,20 @@ async function pay({ orgId, projectId, claimId, actor, reference }) {
     [paymentId, claimId, orgId]
   );
   await recomputeStageClaimed({ orgId, projectId, stageId: claim.stage_id });
+
+  // xprojman-42 §3 auto-posting: real cash out — debit Subcontractor Labour, credit
+  // Cash & Bank. Fire-and-forget, same posture as AttestationService.emit elsewhere —
+  // a posting failure must never block the payment that actually happened.
+  Promise.all([
+    OrgFinanceService.accountByCode({ orgId, code: '5020' }),
+    OrgFinanceService.accountByCode({ orgId, code: '1000' }),
+  ])
+    .then(([debitAccountId, creditAccountId]) => OrgFinanceService.postEntry({
+      orgId, projectId, debitAccountId, creditAccountId, amount: Number(claim.amount),
+      refType: 'progress_claim', refId: claimId, memo: `Progress claim #${claim.claim_number}`,
+    }))
+    .catch((err) => console.warn('[ORG_JOURNAL] progress_claim pay posting failed (non-fatal):', err.message));
+
   return { id: claimId, status: 'paid', payment_id: paymentId };
 }
 

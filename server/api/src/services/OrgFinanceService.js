@@ -5,11 +5,14 @@
 // no cached balance columns, live-computed rollups) is copied from there;
 // the tables are not (xprojman-42 §0.1, confirmed §6).
 //
-// §3 (org_journal + P&L/Balance Sheet/Expenses/Sales) is NOT built here —
-// this file is the chart-of-accounts foundation only, per the doc's own
-// build order. `total`/`ownBalance` don't exist yet on these nodes; there is
-// no journal to sum. That's why `listAccounts` returns a plain tree, not a
-// FinanceService.buildAccountTree-shaped report.
+// §3 (org_journal, migration v044) — AUTO posting, confirmed. postEntry is
+// the generic, best-effort two-sided writer every auto-posting call site
+// uses (ClaimService.pay, ProcurementService's supplier-invoice matched/
+// approved transition — see those files for the "why these two, not PO
+// issue" reasoning); profitAndLoss/balanceSheet mirror FinanceService's own
+// live-computed, no-cached-balance report shape, org-scoped. Revenue
+// posting has no write path yet (see migration_v044's header) — the P&L
+// will show real expenses against zero revenue until that gap is closed.
 //
 // PERMISSION BOUNDARY (confirmed §6 response): `finance.manage` gates only
 // STRUCTURAL org_accounts edits (create/rename/deactivate/re-parent) — a
@@ -250,4 +253,216 @@ async function updateAccount({ orgId, actor, accountId, name, isActive, parentId
   return { id: accountId, ...fields };
 }
 
-module.exports = { ensureSeeded, listAccounts, createAccount, updateAccount };
+// ── §3: the journal + reports (migration v044) ──────────────────────────────
+
+/** A seeded template account by its stable CODE (e.g. '1000' Cash & Bank) — the
+ * handle every auto-posting caller uses for a well-known account, since ids are
+ * minted fresh per org. Runs ensureSeeded first so a never-visited-Finance org
+ * still resolves on its very first journal-worthy write. */
+async function accountByCode({ orgId, code }) {
+  await ensureSeeded(orgId);
+  const [[row]] = await pool.query('SELECT id FROM org_accounts WHERE org_id = ? AND code = ? LIMIT 1', [orgId, code]);
+  return row?.id || null;
+}
+
+/**
+ * Resolves the expense account a cost should post against. Primary source:
+ * the task's own cost_centre_id → linked_account_id (§2/§4 point 2 —
+ * exactly what that link was built FOR). Falls back to the seeded template's
+ * "Materials Cost" root (code 5100, always exists once ensureSeeded has run)
+ * when the task has no cost centre, or no cost centre is linked yet — most
+ * supplier invoices in this app ARE materials/subcontractor costs, and a
+ * best-guess bucket beats silently dropping the posting.
+ */
+async function resolveExpenseAccount({ orgId, taskId }) {
+  await ensureSeeded(orgId);
+  if (taskId) {
+    const [[row]] = await pool.query(
+      `SELECT cc.linked_account_id AS id FROM tasks t
+         JOIN cost_centres cc ON cc.id = t.cost_centre_id
+        WHERE t.id = ? AND t.org_id = ? AND cc.linked_account_id IS NOT NULL LIMIT 1`,
+      [taskId, orgId]
+    );
+    if (row?.id) return row.id;
+  }
+  return accountByCode({ orgId, code: '5100' });
+}
+
+/**
+ * The generic, best-effort two-sided writer. Every caller invokes this
+ * fire-and-forget (`.catch(...)`, not awaited into the request path) — same
+ * posture as AttestationService.emit elsewhere in this codebase: a posting
+ * failure must never block the write that actually happened.
+ *
+ * Silently no-ops (does not throw) when either account can't be resolved or
+ * amount isn't positive — an unresolvable mapping is a data-completeness gap
+ * to surface on the report, not a reason to fail a procurement write days
+ * after the fact. Idempotent on (org_id, ref_type, ref_id): a second call
+ * for the same ref (e.g. an invoice re-entering 'approved' from 'matched')
+ * is a no-op, not a duplicate posting.
+ */
+async function postEntry({ orgId, projectId, debitAccountId, creditAccountId, amount, refType, refId, memo, entryDate }) {
+  if (!debitAccountId || !creditAccountId || !(Number(amount) > 0)) return;
+  const [[dup]] = await pool.query(
+    'SELECT id FROM org_journal WHERE org_id = ? AND ref_type = ? AND ref_id = ? LIMIT 1',
+    [orgId, refType, refId]
+  );
+  if (dup) return;
+
+  const date = entryDate || new Date().toISOString().slice(0, 10);
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query(
+      `INSERT INTO org_journal (id, org_id, account_id, project_id, debit, credit, ref_type, ref_id, memo, entry_date)
+       VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+      [uuidv4(), orgId, debitAccountId, projectId || null, amount, refType, refId || null, memo || null, date]
+    );
+    await conn.query(
+      `INSERT INTO org_journal (id, org_id, account_id, project_id, debit, credit, ref_type, ref_id, memo, entry_date)
+       VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
+      [uuidv4(), orgId, creditAccountId, projectId || null, amount, refType, refId || null, memo || null, date]
+    );
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+// Same BALANCE_SIGN/tree-rollup shape as FinanceService.buildAccountTree —
+// the pattern this whole module was told to copy (§0.1), org-scoped instead
+// of global, and reading org_accounts/org_journal instead of the fin_*
+// tables. No GST toggle — org_journal carries no parallel gross/net figure
+// the way fin_expenses.tax does; that's a real gap for a future pass, not
+// silently faked here.
+const BALANCE_SIGN = { asset: 1, expense: 1, liability: -1, equity: -1, revenue: -1 };
+
+async function buildOrgAccountTree({ orgId, rootTypes, journalWhereSql, journalParams }) {
+  const [accountRows] = await pool.query(
+    `SELECT id, parent_id, seq, acc_type, name FROM org_accounts WHERE org_id = ? AND is_active = 1 ORDER BY seq`,
+    [orgId]
+  );
+  const [journalRows] = await pool.query(
+    `SELECT account_id, SUM(debit) AS debit, SUM(credit) AS credit
+       FROM org_journal WHERE org_id = ? AND ${journalWhereSql} GROUP BY account_id`,
+    [orgId, ...journalParams]
+  );
+  const journalByAccount = new Map(journalRows.map((r) => [r.account_id, { debit: Number(r.debit), credit: Number(r.credit) }]));
+
+  const byId = new Map(accountRows.map((a) => {
+    const ownBalance = ((journalByAccount.get(a.id)?.debit || 0) - (journalByAccount.get(a.id)?.credit || 0)) * BALANCE_SIGN[a.acc_type];
+    return [a.id, { id: a.id, name: a.name, accType: a.acc_type, seq: a.seq, parentId: a.parent_id, children: [], ownBalance, total: 0 }];
+  }));
+  for (const node of byId.values()) {
+    if (node.parentId && byId.has(node.parentId)) byId.get(node.parentId).children.push(node);
+  }
+  function rollUp(node) {
+    node.children.sort((a, b) => a.seq - b.seq);
+    node.total = node.ownBalance + node.children.reduce((sum, c) => sum + rollUp(c), 0);
+    return node.total;
+  }
+  const roots = [...byId.values()].filter((n) => !n.parentId && rootTypes.includes(n.accType)).sort((a, b) => a.seq - b.seq);
+  roots.forEach(rollUp);
+  return roots;
+}
+
+/** GET /finance/reports/pnl?from=&to= — one period, Revenue/Expense roots + Net Profit. */
+async function profitAndLoss({ orgId, actor, from, to }) {
+  if (!canRead(actor.role)) throw new ServiceError('FORBIDDEN', 'Requires permission: money.read', 403);
+  await ensureSeeded(orgId);
+  const today = new Date();
+  const defaultFrom = from || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
+  const defaultTo = to || today.toISOString().slice(0, 10);
+  const tree = await buildOrgAccountTree({
+    orgId, rootTypes: ['revenue', 'expense'],
+    journalWhereSql: 'entry_date >= ? AND entry_date <= ?', journalParams: [defaultFrom, defaultTo],
+  });
+  const revenueRoot = tree.find((n) => n.accType === 'revenue');
+  const expenseRoot = tree.find((n) => n.accType === 'expense');
+  const netProfit = (revenueRoot?.total || 0) - (expenseRoot?.total || 0);
+  return { from: defaultFrom, to: defaultTo, tree, netProfit };
+}
+
+/** GET /finance/reports/balance-sheet?as_of= — cumulative snapshot, Retained Earnings plugged. */
+async function balanceSheet({ orgId, actor, asOf }) {
+  if (!canRead(actor.role)) throw new ServiceError('FORBIDDEN', 'Requires permission: money.read', 403);
+  await ensureSeeded(orgId);
+  const date = asOf || new Date().toISOString().slice(0, 10);
+  const tree = await buildOrgAccountTree({
+    orgId, rootTypes: ['asset', 'liability', 'equity'],
+    journalWhereSql: 'entry_date <= ?', journalParams: [date],
+  });
+
+  const [[pl]] = await pool.query(
+    `SELECT SUM(CASE WHEN a.acc_type = 'revenue' THEN j.credit - j.debit
+                      WHEN a.acc_type = 'expense' THEN -(j.debit - j.credit) ELSE 0 END) AS net
+       FROM org_journal j JOIN org_accounts a ON a.id = j.account_id
+      WHERE j.org_id = ? AND j.entry_date <= ? AND a.acc_type IN ('revenue','expense')`,
+    [orgId, date]
+  );
+  const retainedEarnings = Number(pl.net) || 0;
+  // '3100' Retained Earnings is a TOP-LEVEL root in the seeded template (a sibling
+  // of Owner's Equity 3000, not nested under it — the template's own multi-root-
+  // per-type shape, same as fin_accounts' Cash & Bank/Wages Expense sitting side
+  // by side). Find it directly among the tree's roots, not inside some other
+  // equity root's children — org_accounts ids are minted fresh per org, so the
+  // seeded CODE is the only stable handle here (unlike FinanceService.ACCOUNTS'
+  // fixed well-known ids).
+  const [[retainedAcct]] = await pool.query(
+    'SELECT id FROM org_accounts WHERE org_id = ? AND code = ? LIMIT 1', [orgId, '3100']
+  );
+  const retainedLeaf = retainedAcct && tree.find((n) => n.id === retainedAcct.id);
+  if (retainedLeaf) {
+    retainedLeaf.ownBalance = retainedEarnings;
+    retainedLeaf.total = retainedEarnings;
+  }
+
+  const assetTotal = tree.find((n) => n.accType === 'asset')?.total || 0;
+  const liabilityTotal = tree.find((n) => n.accType === 'liability')?.total || 0;
+  // Sum EVERY equity root, not just one — the template seeds two (Owner's
+  // Equity, Retained Earnings) side by side, same multi-root shape as above.
+  const equityTotal = tree.filter((n) => n.accType === 'equity').reduce((sum, n) => sum + n.total, 0);
+  return {
+    asOf: date, tree, totals: { asset: assetTotal, liability: liabilityTotal, equity: equityTotal },
+    retainedEarnings, balanced: Math.abs(assetTotal - (liabilityTotal + equityTotal)) < 0.01,
+  };
+}
+
+/**
+ * GET /finance/reports/expenses|sales — the doc's own framing: "arguably
+ * just two different account-type filters over the same journal, not
+ * separate data models." A flat, leaf-level (no children) listing of every
+ * posting in the period for one acc_type, newest first — not a tree, since
+ * a transaction list is what "Expenses"/"Sales" mean as nav items, not a
+ * rolled-up summary (that's what P&L already is).
+ */
+async function listEntries({ orgId, actor, accType, from, to }) {
+  if (!canRead(actor.role)) throw new ServiceError('FORBIDDEN', 'Requires permission: money.read', 403);
+  await ensureSeeded(orgId);
+  const today = new Date();
+  const defaultFrom = from || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
+  const defaultTo = to || today.toISOString().slice(0, 10);
+  const [rows] = await pool.query(
+    `SELECT j.id, j.entry_date, j.debit, j.credit, j.ref_type, j.ref_id, j.memo,
+            a.id AS account_id, a.name AS account_name, p.name AS project_name
+       FROM org_journal j
+       JOIN org_accounts a ON a.id = j.account_id
+       LEFT JOIN projects p ON p.id = j.project_id
+      WHERE j.org_id = ? AND a.acc_type = ? AND j.entry_date >= ? AND j.entry_date <= ?
+        AND ${accType === 'revenue' ? 'j.credit > 0' : 'j.debit > 0'}
+      ORDER BY j.entry_date DESC, j.created_at DESC`,
+    [orgId, accType, defaultFrom, defaultTo]
+  );
+  return {
+    from: defaultFrom, to: defaultTo,
+    entries: rows.map((r) => ({ ...r, amount: accType === 'revenue' ? Number(r.credit) : Number(r.debit) })),
+  };
+}
+
+module.exports = {
+  ensureSeeded, listAccounts, createAccount, updateAccount,
+  accountByCode, resolveExpenseAccount, postEntry, profitAndLoss, balanceSheet, listEntries,
+};

@@ -25,6 +25,7 @@ const access = require('../lib/access');
 const ProjectService = require('./ProjectService');
 const JobAwardService = require('./JobAwardService');
 const AttestationService = require('./AttestationService');
+const OrgFinanceService = require('./OrgFinanceService');
 
 const canWrite = (role) => access.hasPermission(role, 'po.write');
 const canRead  = (role) => access.hasPermission(role, 'money.read') || access.hasPermission(role, 'po.write');
@@ -36,6 +37,25 @@ const partyForRole = (role) => (role === 'builder' ? 'builder' : 'pm');
 
 const PO_COMMITTED  = ['issued', 'received'];     // statuses that count toward committed_amount
 const INV_ACTUAL    = ['matched', 'approved'];    // statuses that count toward actual_amount
+
+// xprojman-42 §3 auto-posting: a supplier invoice reaching matched/approved is the
+// real cost event — a purchase_orders status change is deliberately NOT posted here
+// (a PO is a commitment/encumbrance, already tracked via committed_amount, not yet a
+// real expense in either cash or accrual terms). Fire-and-forget, non-fatal; postEntry
+// itself is idempotent on (org_id, ref_type, ref_id) so calling this from BOTH
+// createSupplierInvoice (created already-matched) and setInvoiceStatus (transitioning
+// into it later) never double-posts.
+function postInvoiceCost({ orgId, projectId, invoiceId, taskId, amount }) {
+  Promise.all([
+    OrgFinanceService.resolveExpenseAccount({ orgId, taskId }),
+    OrgFinanceService.accountByCode({ orgId, code: '2000' }), // Accounts Payable
+  ])
+    .then(([debitAccountId, creditAccountId]) => OrgFinanceService.postEntry({
+      orgId, projectId, debitAccountId, creditAccountId, amount: Number(amount),
+      refType: 'supplier_invoice', refId: invoiceId, memo: 'Supplier invoice matched/approved',
+    }))
+    .catch((err) => console.warn('[ORG_JOURNAL] supplier_invoice posting failed (non-fatal):', err.message));
+}
 
 // ── Engagement resolution + the §7.2.1 visibility model ──────────────────────
 async function engagementContext({ orgId, projectId, actor }) {
@@ -278,6 +298,9 @@ async function createSupplierInvoice({ orgId, projectId, actor, poId, stageId, t
       })
       .catch((err) => console.warn('[ATTESTATION] invoice_matched emit failed (non-fatal):', err.message));
   }
+  if (INV_ACTUAL.includes(status)) {
+    postInvoiceCost({ orgId, projectId, invoiceId: id, taskId: resolvedTaskId, amount });
+  }
 
   return { id, status, matched: !!poId };
 }
@@ -300,6 +323,9 @@ async function setInvoiceStatus({ orgId, projectId, invoiceId, actor, status }) 
   assertOwnParty(actor, inv);
   await pool.query('UPDATE supplier_invoices SET status = ? WHERE id = ? AND org_id = ?', [status, invoiceId, orgId]);
   await recomputeStageActual({ orgId, projectId, stageId: inv.stage_id });
+  if (INV_ACTUAL.includes(status)) {
+    postInvoiceCost({ orgId, projectId, invoiceId, taskId: inv.task_id, amount: inv.amount });
+  }
   return { id: invoiceId, status };
 }
 
