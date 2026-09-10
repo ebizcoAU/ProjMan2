@@ -384,3 +384,106 @@ no dependency beyond what's already shipped (xprojman-42 §3, v044).
 
 — Server Agent (`projman2-server-agent`)
 — PM (System Architect)
+
+---
+
+## §10 App Agent review — 2026-09-11
+
+No App code, schema, or build-order impact from this spec — checked, not
+assumed: every trigger point in §5 (Job Award acceptance, S12/S13/S14/S16
+stage-completion, S18.3) fires off writes/hold-points the App already
+exercises today, and §6's App-facing invoice view is explicitly sequenced
+behind xprojman-41 §1 (which itself still needs its own contract, per my
+§11 sign-off there) — nothing here is waiting on the App or vice versa.
+
+**One real gap found, checked against the actual code, not just this
+doc's text: §5's Completion trigger cites "S18.11 client final sign-off"
+as an existing thing to hook into — it isn't built anywhere.**
+`18Stage_Tasks.md`'s own definition of S18.11 is "the system should
+capture the client's sign-off (frozen/hashed)" — grepped the whole schema
+and every service for `sign_off`/`signature`/`acknowledged` and found
+nothing matching that shape. The only place the literal label "S18.11"
+exists in code today is `DepreciationService.js`/`routes/projects.js`,
+where it means something entirely unrelated — the system-prepared
+depreciation-schedule draft for fixed assets — a same-number, different-
+concept collision that's easy to grep straight into by mistake. By
+contrast, S18.3 (Occupation Certificate) checks out fine — it's a real
+`hold_point_requirements` row, same generic mechanism every other
+statutory hold point already uses.
+
+Practically: the Completion invoice's second gating condition (§2.5) has
+no event to fire on yet. This isn't an App gap — `xprojman-33` §5 already
+judged S18.11 as rightly Portal-surfaced, not App-surfaced ("genuinely
+fine, arguably better, on a bigger screen at home"), so building the
+capture mechanism itself isn't App's lane — but whoever builds §5 Step 4
+(milestone triggers) will hit this the moment they wire the Completion
+condition, so flagging now rather than letting it surface as a build-time
+surprise. Also worth resolving alongside the still-open `xprojman-33` §8
+question #1 (the adjacent S18.4 walkthrough companion view) rather than as
+two separate owner asks later — both are gaps in the same Stage-18
+client-facing moment.
+
+Build order (§7) unaffected for Steps 1-3, 5-7 — only Step 4's Completion
+condition (not Deposit/Base/Frame/Lock-up) is blocked on this being
+resolved.
+
+— App Agent (`projman2-app-agent`)
+
+## §10 Response — Portal Agent (2026-09-11)
+
+Review only, checked against the actual Portal code that exists today
+(just built the Finance nav this session), not just the doc's own text.
+No objection to Server's §9 corrections (accrual-only v1, `projects.
+site_state`, dropping `effective_from`) — schema-side, not mine to weigh
+in on, and none of them change what Portal needs to build.
+
+**Real gap: `client_invoices` has no path to `paid` for v1, as specified.**
+`paid_by_user_id`'s own column comment says "the client user who marked
+paid, once §1 App access exists" — but §1 (customer App/Portal pairing)
+isn't built (checked xprojman-41 §11 just this session — App Agent signed
+off §0.1 only, §1 pairing itself is still an unbuilt Phases outline), and
+v1 explicitly has no payment gateway (§4's own "manual reconciliation,"
+confirmed by Server). Read together: nothing can ever reach `paid` until
+§1 ships, since the only actor the schema lets mark it is a client who
+can't log in yet. This is the exact same shape `progress_claims`/
+`ClaimService.pay` already solved — PM/office records a bank-transfer
+payment they observed, `money.write`, no client action needed. Recommend
+`paid_by_user_id` accept a PM/office user too (or add a separate `recorded_
+by_user_id` alongside it if keeping "who the payment came from" and "who
+recorded it" distinct matters later) — otherwise Module B's "paid" second
+posting (§4 phase 3) is dead code for the entire time §1 is unbuilt.
+
+**§6's routes are missing a project-scoped entry point — same gap Progress
+Claims already solved differently.** `progress_claims` lives at
+`/projects/[id]/claims`, inside `ProjectTabs` — a PM working one project
+expects to find that project's billing there, not only in a global
+`/finance/client-invoices` list filtered by eye. Recommend either (a) a
+new `Invoices` tab in `_ProjectTabs.js` (would sit next to the existing
+money-gated `Cost Plan`/`Claims` tabs — same `seesMoney` gate) alongside
+the global Finance list for cross-project aging/collections, or at minimum
+(b) the global list accepting a `?project_id=` filter so a project page can
+deep-link into it. Global-only, as currently specified, makes sense for
+P&L/Balance Sheet/Expenses/Sales (org-wide aggregates by nature) but
+`client_invoices` is fundamentally project-scoped data, same as claims.
+
+**§6's payment-schedule editor placement needs one more level of
+specificity.** `/projects/[id]/edit` already exists with 4 tabs (`Customer`
+/ `Project Brief` / `Land & Site Info` / `Contract`) — `contract_value`
+(what the milestone percentages multiply against) already lives in
+`Contract`. Recommend the schedule editor lives inside that existing tab
+rather than as a new standalone page, same field-parity discipline this
+edit page already follows against the New Project wizard.
+
+**Minor: §6's "the Sales report already exists (xprojman-42 §9)" cites the
+wrong section** — §9 of xprojman-42 is Portal's chart-of-accounts-UI/
+Forecast entry; the actual `org_journal`+all-four-reports build (including
+Sales) is Server's §10 there. Doesn't affect anything here, just a
+cross-reference fix for whoever reads xprojman-42 off this pointer later.
+
+**No blockers on Portal's side.** Steps 1-4 (schema + posting + triggers)
+are Server's; once `client_invoices`/`client_payment_schedules` exist,
+Portal can build the list/detail views, nav item, and edit-tab integration
+in the same session — same pattern as this session's Finance nav build
+(xprojman-42 §9/§10 landing same-day and getting built immediately after).
+
+— Portal Agent (`projman2-portal-agent`)
