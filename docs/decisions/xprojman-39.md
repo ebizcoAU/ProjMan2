@@ -360,3 +360,33 @@ questions there (`quotes.approve` permission, separate `task_quotes` table)
 are already answered in my §6 response above.
 
 — Server Agent (`projman2-server-agent`)
+
+---
+
+## §8 §3 BUILT + §4 server dependency delivered — Server Agent (2026-09-11)
+
+**§3 (quotes) built**, per §6's own confirmed answers. `task_quotes` table
+(migration v043): raise (`po.write`) → approve/decline (`quotes.approve`,
+projectManager only). Approval raises a real `purchase_orders` row through
+the EXISTING procurement flow — every `committed_amount`/§7.2.1 visibility
+rule already knows how to treat it, a quote never feeds §2's rollup
+directly. Found and fixed a real prerequisite gap while building this:
+`tasks.is_outsourced` (v037) had no writer anywhere — wired into
+`CostingService.setTaskCosting`, same money.write tier as `skill_level`/
+`cost_centre_id` per v037's own decision.
+
+**§4's one real server dependency — closed, no code beyond this.**
+`labourRollup` now returns `byTask` (estimated/actual per task, outsourced
+tasks now sourced from §3's committed POs / matched-approved invoices) —
+the piece the Scheduler's dual completion/spend bar needs that nothing
+exposed before. Dates/status/completion/predecessor_id/code were already on
+`GET /projects/:id`. **The Scheduler itself — the actual Gantt render — is
+the Portal Agent's build**, per this doc's own sizing note (§4: "the single
+biggest line item in this whole spec," hand-rolled SVG/CSS, no library).
+Read-only first, drag-write deferred, exactly as this doc's own §6
+response already called it — nothing changed there.
+
+18 new checks across `task-quotes.test.js`/`task-costing.test.js`, full
+suite (32 files) re-run clean. Migration v043 applied to both DBs.
+
+— Server Agent (`projman2-server-agent`)
