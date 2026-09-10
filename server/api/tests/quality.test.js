@@ -167,6 +167,34 @@ async function pull(tok, table) {
   ok('defect closed_at/closed_by are server-stamped on closing status push',
     closed && closed.closed_at && closed.closed_by, JSON.stringify(closed));
 
+  // ── 5b. PATCH /projects/:id/defects/:defectId — the Portal's own writer,
+  // a second door onto the same row as §5's sync push ──
+  const patchDefId = `def-${s}-3`;
+  await push(supTok, 'defects', 'create',
+    { id: patchDefId, project_id: projId, location: 'Laundry', description: 'Leaking pipe', severity: 'medium' });
+
+  const tradiePatch = await call('PATCH', `/projects/${projId}/defects/${patchDefId}`, { status: 'in_progress' }, tradieTok);
+  ok('tradie cannot PATCH a defect (no quality.write, 403)', tradiePatch.status === 403, JSON.stringify(tradiePatch.json));
+
+  const emptyPatch = await call('PATCH', `/projects/${projId}/defects/${patchDefId}`, {}, pm);
+  ok('an empty PATCH body is refused (400 NO_FIELDS)', emptyPatch.status === 400, JSON.stringify(emptyPatch.json));
+
+  const badSeverity = await call('PATCH', `/projects/${projId}/defects/${patchDefId}`, { severity: 'extreme' }, pm);
+  ok('an invalid severity is refused (422, express-validator gate)', badSeverity.status === 422);
+
+  const inProgress = await call('PATCH', `/projects/${projId}/defects/${patchDefId}`, { status: 'in_progress', assigned_to_name: 'Bob the plumber' }, pm);
+  ok('PM PATCHes status + assigned_to_name via Portal', inProgress.status === 200 && inProgress.json.data.status === 'in_progress', JSON.stringify(inProgress.json));
+
+  const patchClosed = await call('PATCH', `/projects/${projId}/defects/${patchDefId}`, { status: 'closed' }, supTok);
+  ok('siteSupervisor closes the defect via PATCH', patchClosed.status === 200, JSON.stringify(patchClosed.json));
+  const afterClose = await call('GET', `/projects/${projId}/defects?status=closed`, undefined, pm);
+  const closedViaPatch = afterClose.json.data.defects.find((d) => d.id === patchDefId);
+  ok('closing via PATCH stamps closed_at/closed_by too — same QualityOpsService.afterPush stamp as the sync path',
+    closedViaPatch && closedViaPatch.closed_at && closedViaPatch.closed_by, JSON.stringify(closedViaPatch));
+
+  const unknownDefect = await call('PATCH', `/projects/${projId}/defects/00000000-0000-4000-8000-000000000000`, { status: 'open' }, pm);
+  ok('PATCHing an unknown defect id is refused (404)', unknownDefect.status === 404, JSON.stringify(unknownDefect.json));
+
   // ── 6. Certificates: both app (inspector) and web (PM) surfaces may push ──
   const certApp = await push(inspTok, 'certificates', 'create', {
     id: `cert-${s}-app`, project_id: projId, type: 'BA2', reference: 'BA2-001',

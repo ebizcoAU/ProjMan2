@@ -3,6 +3,8 @@
 //
 //   POST   /documents                              multipart upload           (authenticated)
 //   GET    /documents?entity_type=&entity_id=      list for an entity         (projects.read | own)
+//   GET    /documents?project_id=                  repository view, every entity_type
+//                                                   on one project             (projects.read | own)
 //   GET    /documents/:id                          stream the bytes           (projects.read | own)
 //   DELETE /documents/:id                          soft delete                (quality.write | documents.write)
 //
@@ -66,12 +68,21 @@ router.post('/', (req, res) => {
   });
 });
 
+// ?project_id= (repository view, every entity_type on one project) OR the
+// original ?entity_type=&entity_id= (one entity's own documents) — two shapes
+// on the same store, branched here rather than a second route, since both are
+// GET /documents by the existing contract (xprojman-21) and a caller only ever
+// wants one or the other, never both filters combined.
 router.get('/', async (req, res) => {
   try {
-    const data = await DocumentService.listByEntity({
-      orgId: req.auth.orgId, actor: actorOf(req),
-      entityType: req.query.entity_type, entityId: req.query.entity_id,
-    });
+    const data = req.query.project_id
+      ? await DocumentService.listByProject({
+          orgId: req.auth.orgId, actor: actorOf(req), projectId: req.query.project_id,
+        })
+      : await DocumentService.listByEntity({
+          orgId: req.auth.orgId, actor: actorOf(req),
+          entityType: req.query.entity_type, entityId: req.query.entity_id,
+        });
     return res.json({ success: true, data });
   } catch (err) { return sendError(res, err); }
 });

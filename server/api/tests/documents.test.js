@@ -232,6 +232,26 @@ const PDF = Buffer.concat([Buffer.from('%PDF-1.7\n', 'ascii'), crypto.randomByte
   ok('GET /documents?entity_type=task lists it back',
     (taskDocList.json.data.documents || []).some((d) => d.document_id === taskDoc.json.data.document_id));
 
+  // ── GET /documents?project_id= — the repository view (unblocks Portal's Documents
+  // repository UI): every entity_type on this project in one call, not one at a time ──
+  const repo = await call('GET', `/documents?project_id=${projId}`, undefined, pm);
+  ok('repository view 200s', repo.status === 200, JSON.stringify(repo.json));
+  const repoIds = (repo.json.data.documents || []).map((d) => d.document_id);
+  ok('repository view spans multiple entity_types (inspection_item photo + task drawing both present)',
+    repoIds.includes(lying.json.data.document_id) && repoIds.includes(taskDoc.json.data.document_id), JSON.stringify(repoIds));
+  ok('the soft-deleted doc1 (deleted in §7 above) is excluded, same as any other list', !repoIds.includes(doc1));
+
+  const repoBuilder = await call('GET', `/documents?project_id=${projId}`, undefined, builderTok);
+  ok('an engaged builder sees the repository view too (documents.read covers project-wide, not just their own uploads)',
+    repoBuilder.status === 200 && (repoBuilder.json.data.documents || []).length > 0, JSON.stringify(repoBuilder.json));
+
+  const noProjectId = await call('GET', '/documents', undefined, pm);
+  ok('neither project_id nor entity_type/entity_id given falls through to the original 400', noProjectId.status === 400, JSON.stringify(noProjectId.json));
+
+  const unknownProject = await call('GET', '/documents?project_id=00000000-0000-4000-8000-000000000000', undefined, pm);
+  ok('an unknown project_id 404s (non-disclosure, same convention as every /projects/:id/X sub-resource)',
+    unknownProject.status === 404, JSON.stringify(unknownProject.json));
+
   const reg2 = await call('POST', '/auth/register', {
     organisation: { name: `Other ${s}` },
     user: { full_name: 'Other PM', email: `other${s}@x.com`, password: 'hunter2hunter2' },
@@ -245,6 +265,9 @@ const PDF = Buffer.concat([Buffer.from('%PDF-1.7\n', 'ascii'), crypto.randomByte
   const xList = await call('GET', `/documents?entity_type=inspection_item&entity_id=${itemId}`, undefined, other);
   ok('CROSS-ORG: another org sees none of this entity\'s documents',
     (xList.json.data?.documents || []).length === 0, JSON.stringify(xList.json.data));
+  const xRepo = await call('GET', `/documents?project_id=${projId}`, undefined, other);
+  ok('CROSS-ORG: another org gets 404 on this project\'s repository view, not an empty list',
+    xRepo.status === 404, JSON.stringify(xRepo.json));
 
   // ── Unit: mime sniffing ──
   ok('unit: sniffs PNG/JPEG/PDF from magic numbers, ignoring a wrong filename',

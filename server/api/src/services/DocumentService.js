@@ -237,6 +237,47 @@ async function listByEntity({ orgId, actor, entityType, entityId }) {
   return { documents: visible.map((r) => ({ ...r, size_bytes: Number(r.size_bytes) })) };
 }
 
+/**
+ * GET /documents?project_id= — the Documents repository view (unblocks Portal's
+ * Documents repository UI): every document attached to a project, across every
+ * entity_type, not just one entity's own list. Same permission shape as
+ * listByEntity (projects.read | documents.read, OR you uploaded it) — this is
+ * the same store, just queried a different way, not a looser read.
+ *
+ * Unlike listByEntity (which never checks the entity's project exists — it just
+ * narrows by scope), this DOES confirm the project itself is a real, org-owned
+ * row first: a whole-project listing is exactly the shape of every other
+ * /projects/:id/X sub-resource (§9.4 non-disclosure), where an unknown/foreign
+ * project_id 404s rather than silently returning zero rows.
+ */
+async function listByProject({ orgId, actor, projectId }) {
+  if (!projectId) throw new ServiceError('VALIDATION_ERROR', 'project_id is required', 400);
+  const [[project]] = await pool.query(
+    'SELECT id FROM projects WHERE id = ? AND org_id = ? AND is_deleted = 0 LIMIT 1', [projectId, orgId]
+  );
+  if (!project) throw new ServiceError('NOT_FOUND', 'Project not found', 404);
+
+  const scope = projectScope({ role: actor.role, userId: actor.userId },
+    { projectColumn: 'project_id', alias: 'd' });
+  const narrow = scope.sql ? ` AND (d.uploaded_by = ? OR ${scope.sql.replace(/^\s*AND\s+/, '')})` : '';
+  const narrowParams = scope.sql ? [actor.userId, ...scope.params] : [];
+
+  const [rows] = await pool.query(
+    `SELECT d.id AS document_id, d.kind, d.entity_type, d.entity_id, d.mime_type, d.size_bytes,
+            d.sha256, d.original_filename, d.client_ref, d.created_at, d.uploaded_by,
+            u.full_name AS uploaded_by_name
+       FROM documents d
+       LEFT JOIN users u ON u.id = d.uploaded_by
+      WHERE d.org_id = ? AND d.project_id = ? AND d.is_deleted = 0${narrow}
+      ORDER BY d.created_at DESC, d.id DESC`,
+    [orgId, projectId, ...narrowParams]
+  );
+
+  const reader = canReadDocs(actor);
+  const visible = rows.filter((r) => reader || r.uploaded_by === actor.userId);
+  return { documents: visible.map((r) => ({ ...r, size_bytes: Number(r.size_bytes) })) };
+}
+
 /** GET /documents/:id — the row + storage key for streaming. */
 async function getForStream({ orgId, actor, id }) {
   const [[doc]] = await pool.query(
@@ -283,6 +324,6 @@ async function softDelete({ orgId, actor, id }) {
 }
 
 module.exports = {
-  upload, listByEntity, getForStream, softDelete,
+  upload, listByEntity, listByProject, getForStream, softDelete,
   sniffMime, ENTITY_TYPES, KINDS, DEFAULT_KIND,
 };

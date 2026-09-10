@@ -561,6 +561,43 @@ router.get(
   }
 );
 
+// ── PATCH /projects/:id/defects/:defectId  Portal management ────────────────────
+// A second door onto the same row the App reaches via /sync/push — same
+// quality.write gate, same writable-column set (InspectionService.js header).
+router.patch(
+  '/:id/defects/:defectId',
+  canWriteQuality,
+  [
+    body('location').optional({ nullable: true }).isString(),
+    body('trade').optional({ nullable: true }).isString(),
+    body('description').optional({ nullable: true }).isString(),
+    body('assigned_to').optional({ nullable: true }).isString(),
+    body('assigned_to_name').optional({ nullable: true }).isString(),
+    body('due_date').optional({ nullable: true }).isISO8601(),
+    body('severity').optional().isIn(['low', 'medium', 'high']),
+    body('status').optional().isIn(['open', 'in_progress', 'closed']),
+    body('photo_id').optional({ nullable: true }).isString(),
+    body('photo_after_id').optional({ nullable: true }).isString(),
+  ],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await InspectionService.updateDefect({
+        orgId: req.auth.orgId, projectId: req.params.id,
+        actor: { role: req.auth.role, userId: req.auth.userId },
+        defectId: req.params.defectId, fields: req.body,
+      });
+      await audit(req, 'defect.update', {
+        entity: 'defects', entityId: req.params.defectId,
+        detail: { project_id: req.params.id, fields: Object.keys(req.body) },
+      });
+      return res.json({ success: true, data: result });
+    } catch (err) {
+      return sendError(res, err);
+    }
+  }
+);
+
 // ── GET /projects/:id/certificates  the cert register (+expiry) ─────────────────
 router.get('/:id/certificates', canReadProjects, async (req, res) => {
   try {

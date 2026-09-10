@@ -13,16 +13,21 @@
 // non-member gets 404, not 403).
 //
 // `inspection_items`, `defects` and `certificates` bodies ride /sync/push (offline,
-// QualityOpsService governs that path) — there are no bespoke REST writers for them
-// in v1, same posture as P5 (§11.7).
+// QualityOpsService governs that path). `defects` also gained a bespoke REST writer
+// (updateDefect, Portal management) — a second door onto the same row, same
+// `quality.write` gate and writable-column set as the sync path, not a looser one.
+// `inspection_items`/`certificates` still have no REST writer, same posture as P5
+// (§11.7).
 
 const { v4: uuidv4 } = require('uuid');
 const pool = require('../db/pool');
 const { ServiceError } = require('./errors');
+const access = require('../lib/access');
 const ProjectService = require('./ProjectService');
 const StageProgressionService = require('./StageProgressionService');
 const JobAwardService = require('./JobAwardService');
 const AttestationService = require('./AttestationService');
+const QualityOpsService = require('./QualityOpsService');
 
 /** Non-disclosure scope check shared by every action here (mirrors StageProgressionService). */
 async function assertReachable({ orgId, projectId, actor }) {
@@ -167,6 +172,58 @@ async function listDefects({ orgId, projectId, actor, status }) {
   return { defects: rows };
 }
 
+const DEFECT_WRITABLE_FIELDS = [
+  'location', 'trade', 'description', 'assigned_to', 'assigned_to_name',
+  'due_date', 'severity', 'status', 'photo_id', 'photo_after_id',
+];
+
+/**
+ * PATCH /projects/:id/defects/:defectId — the Portal's own writer (unblocks
+ * Defects Portal management; the App reaches the same row via /sync/push,
+ * QualityOpsService-governed, unchanged). Same writable-column set and same
+ * `quality.write` gate as that sync path (registry.js's `defects` entry) —
+ * this is a second DOOR onto the row, not a looser one. `raised_by`/
+ * `raised_at`/`closed_at`/`closed_by`/id/org/project stay server-owned;
+ * closing provenance is stamped by calling QualityOpsService.afterPush
+ * directly rather than re-implementing its COALESCE-guarded stamp here.
+ */
+async function updateDefect({ orgId, projectId, actor, defectId, fields }) {
+  const keys = Object.keys(fields || {}).filter((k) => fields[k] !== undefined);
+  if (keys.length === 0) throw new ServiceError('NO_FIELDS', 'Nothing to update', 400);
+  const badKeys = keys.filter((k) => !DEFECT_WRITABLE_FIELDS.includes(k));
+  if (badKeys.length) {
+    throw new ServiceError('VALIDATION_ERROR', `Cannot set: ${badKeys.join(', ')}`, 422);
+  }
+  if (!access.hasPermission(actor.role, 'quality.write')) {
+    throw new ServiceError('FORBIDDEN', 'Requires permission: quality.write', 403);
+  }
+  if (fields.status !== undefined && !['open', 'in_progress', 'closed'].includes(fields.status)) {
+    throw new ServiceError('VALIDATION_ERROR', 'status must be one of open, in_progress, closed', 422);
+  }
+  if (fields.severity !== undefined && !['low', 'medium', 'high'].includes(fields.severity)) {
+    throw new ServiceError('VALIDATION_ERROR', 'severity must be one of low, medium, high', 422);
+  }
+  // Non-disclosure scope, same as every other action here — a non-member gets
+  // 404 before ever learning the defect exists.
+  await assertReachable({ orgId, projectId, actor });
+  const [[defect]] = await pool.query(
+    'SELECT id FROM defects WHERE id = ? AND project_id = ? AND org_id = ? AND is_deleted = 0 LIMIT 1',
+    [defectId, projectId, orgId]
+  );
+  if (!defect) throw new ServiceError('NOT_FOUND', 'Defect not found', 404);
+
+  const setSql = keys.map((k) => `\`${k}\` = ?`).join(', ');
+  await pool.query(
+    `UPDATE defects SET ${setSql}, server_updated_at = NOW(3) WHERE id = ? AND org_id = ?`,
+    [...keys.map((k) => fields[k]), defectId, orgId]
+  );
+  await QualityOpsService.afterPush({
+    wireName: 'defects', operation: 'update', id: defectId,
+    safe: fields, actor: { orgId, userId: actor.userId },
+  });
+  return { id: defectId, ...Object.fromEntries(keys.map((k) => [k, fields[k]])) };
+}
+
 /** GET /projects/:id/certificates — the register + expiry (portal review). */
 async function listCertificates({ orgId, projectId, actor }) {
   await assertReachable({ orgId, projectId, actor });
@@ -180,4 +237,4 @@ async function listCertificates({ orgId, projectId, actor }) {
   return { certificates: rows };
 }
 
-module.exports = { create, complete, listInspections, listDefects, listCertificates };
+module.exports = { create, complete, listInspections, listDefects, updateDefect, listCertificates };
