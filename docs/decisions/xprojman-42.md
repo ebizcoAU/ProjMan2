@@ -361,3 +361,113 @@ No change to §2/§3 as already confirmed — this reconciliation sharpens the
 account-tree design (overhead buckets) without altering it.
 
 — Server Agent (`projman2-server-agent`)
+
+---
+
+## §9 §2 UI built + Forecast built — Portal Agent (2026-09-11)
+
+**§2 — Chart of accounts settings UI, built against `402488b`.** New
+`ChartOfAccountsCard` on `/finance/settings` (`financeApi` added to
+`lib/api.js`): tree list (indented by depth, type badge, active/inactive
+dim + toggle) plus an add-account form (code/name/parent select/type,
+type auto-inherited when a parent is picked, matching `createAccount`'s
+own server-side rule). Renders unconditionally and surfaces a `finance.
+manage` 403 via the existing `PortalError` pattern, same convention as
+`RateCardCard`/`CostCentresCard` below it on the same page — no client-side
+role gate. Verified the `GET /finance/accounts` response shape live
+against `:5100` (real seeded template, `accType`/`isActive`/`parentId`/
+`children` all match what the card expects) before wiring it up.
+
+**§3 (P&L/Balance Sheet/Expenses/Sales) still not buildable — confirmed
+from `routes/finance.js`'s own header, not assumed:** "`org_journal` table
++ the posting-trigger decision above. Nothing here is buildable before §2
+exists" — §2 existing is the *precondition* for §3, not §3 itself; there's
+still no journal to read. Those four nav items stay `mock: true`. Whoever
+picks up §3 next: the posting-trigger open question (automatic per-write
+vs. manual "post to ledger") is the one real design decision blocking it,
+per §3's own text above — recommend resolving that before the
+`org_journal` table gets cut, not after.
+
+**Forecast figure — built, Portal-side only, no schema/endpoint change
+needed.** Owner's decision: budget-weighted %-complete (resolves the open
+question this section itself raised). `stages` already carries
+`estimated_amount`/`actual_amount`/`status` per row (`ProjectService`'s
+`SELECT *` on `project_stages`, already reaching the Cost Plan page via
+`projectsApi.detail`) — nothing new to fetch. Added to
+`cost-plan/page.js`:
+
+```
+pctComplete = Σ(estimated_amount of status='complete' stages) / Σ(estimated_amount, all stages)
+forecast    = Σ(actual_amount, all stages) + Σ(estimated_amount, all stages) × (1 − pctComplete)
+```
+
+This differs from the circular naive version by only assuming the
+NOT-YET-EARNED budget share (`estimated × (1 − %complete)`) remains to be
+spent, instead of `estimated − actual` — a stage that's both over-budget
+and complete no longer masks itself by "still has budget left." New KPI
+tile on the Cost Plan page: "Forecast at completion (N% done)", red/green
+against the total estimate. `npm run build` clean; not yet browser-
+verified against a real project with stages populated (this org's test
+account currently has zero projects) — the computation reuses the exact
+`num()`/`total()` helpers the page's existing (already-live) Variance KPI
+uses, so the risk surface is the new arithmetic only, not data plumbing.
+
+---
+
+## §10 §3 BUILT (owner clarified AUTO posting) — Server Agent (2026-09-11)
+
+Owner clarified: automatic posting over manual, matching this doc's own §6
+recommendation. Built against `402488b`, committed `87dc980`.
+
+**`org_journal`** (migration v044) — org-scoped mirror of `fin_journal`,
+same no-cached-balance shape. `GET /finance/reports/{pnl,balance-sheet,
+expenses,sales}` all live (money.read; Expenses/Sales are flat leaf-level
+transaction lists per this doc's own "just two account-type filters over
+the same journal" framing, not separate data models).
+
+**Posting wired into exactly two write paths, both unambiguous:**
+1. `ClaimService.pay` — debit Subcontractor Labour (5020) / credit Cash &
+   Bank (1000). A real cash event.
+2. A supplier invoice reaching `matched`/`approved` — debit the task's
+   `cost_centres.linked_account_id` (§2/§4 point 2 — this is what that link
+   was built for), falling back to Materials Cost (5100) when no task/
+   cost-centre link exists. Credit Accounts Payable (2000).
+
+**Deliberately NOT posted on a `purchase_orders` status change**, departing
+from this doc's literal "purchase_orders/supplier_invoices status changes,
+at minimum" wording — a PO is a commitment/encumbrance, already tracked via
+`committed_amount`; it isn't a real expense in either cash or accrual terms
+until the supplier invoice lands. Posting on PO-issue would have booked a
+cost that hasn't actually happened yet. `task_quotes` (§3's own earlier
+build, xprojman-39 §3) follows the same reasoning — approving a quote
+raises a PO, which still doesn't post; only the eventual invoice does.
+
+**Revenue posting is a real, flagged gap, not attempted here.** No
+unambiguous client-billing/revenue write path exists in this schema yet —
+`progress_claims` is Builder-bills-PM (a cost to the paying org, not
+revenue), and no PM-bills-client flow is built. `/reports/sales` correctly
+returns empty until that gap is closed — same "honest absence" posture as
+`GOOGLE_MAPS_API_KEY` (xprojman-40).
+
+Both posting hooks are fire-and-forget (`AttestationService.emit`'s
+posture — non-fatal, never blocks the write that actually happened) and
+idempotent on `(org_id, ref_type, ref_id)`, so a re-transition into an
+already-posted status (e.g. `matched` → `approved`, both in `INV_ACTUAL`)
+never double-posts.
+
+**Caught and fixed a real double-entry bug before it shipped**, found by
+the new test's own `balanced` assertion, not by inspection: the Retained
+Earnings injection (copied from `FinanceService.balanceSheet`'s pattern)
+assumed it sat as a CHILD of another equity root — true for eBizco's own
+single-root books, false for `org_accounts`' seeded template, where
+Retained Earnings (3100) is a sibling top-level root next to Owner's Equity
+(3000). Balance sheets were silently never balancing (equity stuck at 0,
+assets/liabilities alone never reconciling) until this was found and fixed
+against a real posted scenario.
+
+17 new checks (`org-finance-journal.test.js`), full suite (32 files)
+re-run clean. Migration applied to both DBs.
+
+— Server Agent (`projman2-server-agent`)
+
+— Portal Agent (`projman2-portal-agent`)
