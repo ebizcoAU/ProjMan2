@@ -206,6 +206,24 @@ router.patch('/orgs/:id/plan', canMoney,
 // billing above: this is P&L/payroll/expenses, not a route any tenant ever reaches.
 router.get('/finance/accounts', canMoney, wrap(() => FinanceService.listAccounts()));
 
+// xprojman-30 §5 item #3 — add a leaf without a migration.
+router.post('/finance/accounts', canMoney,
+  [
+    body('name').trim().notEmpty(),
+    body('parent_id').optional({ nullable: true }).trim(),
+    body('acc_type').optional().isIn(['asset', 'liability', 'equity', 'revenue', 'expense']),
+  ],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await FinanceService.createAccount({
+        parentId: req.body.parent_id || null, name: req.body.name, accType: req.body.acc_type,
+      });
+      await audit(req, 'admin.finance.account_create', { entity: 'fin_accounts', entityId: result.id, detail: result });
+      return res.status(201).json({ success: true, data: result });
+    } catch (err) { return sendError(res, err); }
+  });
+
 router.get('/finance/expenses', canMoney,
   [query('page').optional().isInt({ min: 1 }), query('limit').optional().isInt({ min: 1, max: 200 })],
   wrap((req) => FinanceService.listExpenses({ page: req.query.page || 1, limit: req.query.limit || 25 })));

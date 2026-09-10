@@ -292,12 +292,15 @@ async function getOrg(orgId) {
 }
 
 // ── Hourly traffic (Overview chart) ───────────────────────────────────────────
-// ProjMan2 has no MQTT broker or any other push/signalling layer — dropped from Nexus
-// on purpose (see api/README.md "No MQTT broker"). App/Portal/Dashboard/VeriTrade all
-// stay current via periodic polling (/sync/pull, and each surface's own data fetches).
-// "Traffic" here is therefore new SESSION STARTS per hour (sessions.issued_at) — the
-// honest signal for how busy the platform actually is, given there's no broker to show
-// a connection count for. Zero-filled so a quiet hour renders as 0, not a gap.
+// MQTT signalling was reintroduced (xprojman-30 Module B) as a fire-and-forget
+// "something changed, pull now" nudge over eBizco's existing shared Mosquitto
+// broker — it shortens the wait on the next poll, it doesn't replace polling,
+// and it carries no payload worth counting as "traffic". App/Portal/Dashboard/
+// VeriTrade still stay current primarily via periodic polling (/sync/pull, and
+// each surface's own data fetches). "Traffic" here is therefore new SESSION
+// STARTS per hour (sessions.issued_at) — still the right signal for how busy
+// the platform actually is; an MQTT nudge count wouldn't mean the same thing.
+// Zero-filled so a quiet hour renders as 0, not a gap.
 async function hourlyTraffic({ hours = 24 }) {
   const h = Math.min(168, Math.max(1, Number(hours) || 24));
   // Zero-filled entirely in SQL via a recursive CTE, deliberately — building the hour

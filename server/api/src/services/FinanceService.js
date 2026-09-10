@@ -36,6 +36,45 @@ async function listAccounts() {
   return { accounts: rows };
 }
 
+// Operator-editable chart of accounts (xprojman-30 §5 item #3 — flagged
+// "not built" at the time, adds a leaf without a migration). No `code`
+// column on fin_accounts (unlike org_accounts, xprojman-42) — `name` is the
+// only identity a caller supplies. Same acc_type-follows-parent rule as
+// OrgFinanceService.createAccount, for the identical reason: a mismatched
+// type under one root would mix debit-natural and credit-natural balances
+// in buildAccountTree's rollup, which is meaningless.
+async function createAccount({ parentId, name, accType }) {
+  if (!name || !String(name).trim()) throw new ServiceError('VALIDATION_ERROR', 'name is required', 400);
+
+  let resolvedType = accType;
+  let siblingScope = 'parent_id IS NULL';
+  let siblingParams = [];
+  if (parentId) {
+    const [[parent]] = await pool.query('SELECT id, acc_type FROM fin_accounts WHERE id = ? AND is_active = 1 LIMIT 1', [parentId]);
+    if (!parent) throw new ServiceError('VALIDATION_ERROR', 'parent_id not found', 422);
+    if (accType && accType !== parent.acc_type) {
+      throw new ServiceError('VALIDATION_ERROR', 'acc_type must match the parent account', 422);
+    }
+    resolvedType = parent.acc_type;
+    siblingScope = 'parent_id = ?';
+    siblingParams = [parentId];
+  }
+  if (!resolvedType) throw new ServiceError('VALIDATION_ERROR', 'acc_type is required for a root account', 400);
+  if (!['asset', 'liability', 'equity', 'revenue', 'expense'].includes(resolvedType)) {
+    throw new ServiceError('VALIDATION_ERROR', 'acc_type must be one of asset, liability, equity, revenue, expense', 422);
+  }
+
+  const [[{ maxSeq }]] = await pool.query(
+    `SELECT COALESCE(MAX(seq), 0) AS maxSeq FROM fin_accounts WHERE ${siblingScope}`, siblingParams
+  );
+  const id = uuidv4();
+  await pool.query(
+    `INSERT INTO fin_accounts (id, parent_id, seq, acc_type, name) VALUES (?, ?, ?, ?, ?)`,
+    [id, parentId || null, maxSeq + 1, resolvedType, name.trim()]
+  );
+  return { id, parentId: parentId || null, accType: resolvedType, name: name.trim() };
+}
+
 // ── Expenses (office/operating costs) ─────────────────────────────────────────
 async function listExpenses({ page = 1, limit = 25 }) {
   const [[{ total }]] = await pool.query('SELECT COUNT(*) AS total FROM fin_expenses WHERE is_deleted = 0');
@@ -427,7 +466,7 @@ async function balanceSheet({ asOf }) {
 
 module.exports = {
   ACCOUNTS,
-  listAccounts, listExpenses, createExpense,
+  listAccounts, createAccount, listExpenses, createExpense,
   listStaff, createStaff, listPayroll, createPayrollRun, markPayrollPaid,
   postSubscriptionRevenue, profitAndLoss, balanceSheet,
 };

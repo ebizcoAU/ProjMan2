@@ -152,6 +152,54 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok('GST/PAYG summary present identically on the exclusive-mode response too',
     Math.abs(excl.j.data.gst.collected - gst.collected) < 0.01 && Math.abs(excl.j.data.gst.paid - gst.paid) < 0.01);
 
+  // ── 5. Operator-editable chart of accounts (xprojman-30 §5 item #3) ──
+  const newRoot = await call('POST', '/admin/finance/accounts', { name: `Test Root ${s}`, acc_type: 'expense' }, pm);
+  ok('new root account created', newRoot.status === 201 && newRoot.j.data.accType === 'expense', JSON.stringify(newRoot.j));
+  const newChild = await call('POST', '/admin/finance/accounts', { name: `Test Child ${s}`, parent_id: newRoot.j.data.id }, pm);
+  ok('child with no acc_type inherits the parent\'s', newChild.status === 201 && newChild.j.data.accType === 'expense', JSON.stringify(newChild.j));
+  const mismatch = await call('POST', '/admin/finance/accounts', { name: 'Bad Mix', parent_id: newRoot.j.data.id, acc_type: 'revenue' }, pm);
+  ok('a child acc_type mismatched with its parent is refused (422)', mismatch.status === 422, JSON.stringify(mismatch.j));
+  const noType = await call('POST', '/admin/finance/accounts', { name: 'No Type Root' }, pm);
+  ok('a root account with no acc_type is refused (400)', noType.status === 400);
+  const treeAfter = await call('GET', '/admin/finance/accounts', undefined, pm);
+  ok('the new leaf now appears in the chart', !!treeAfter.j.data.accounts.find((a) => a.id === newChild.j.data.id));
+
+  // ── 6. Staff roster + hourly payroll (existing coverage only exercised salary) ──
+  const staffList0 = await call('GET', '/admin/finance/staff', undefined, pm);
+  ok('staff list includes the salaried staffer created above', staffList0.j.data.staff.some((st) => st.id === staff.j.data.id), JSON.stringify(staffList0.j));
+  const noNameStaff = await call('POST', '/admin/finance/staff', { pay_type: 'hourly', rate: 50 }, pm);
+  ok('creating staff with no full_name is refused (422, route-level notEmpty gate)', noNameStaff.status === 422, JSON.stringify(noNameStaff.j));
+
+  const hourlyStaff = await call('POST', '/admin/finance/staff', { full_name: `Hourly Staffer ${s}`, pay_type: 'hourly', rate: 40 }, pm);
+  const hourlyRun = await call('POST', '/admin/finance/payroll', {
+    staff_id: hourlyStaff.j.data.id, period_start: today, period_end: today,
+    items: [{ work_date: today, hours: 8, rate_factor: 1 }, { work_date: today, hours: 2, rate_factor: 1.5 }],
+  }, pm);
+  ok('hourly payroll run computes gross from hours x rate x rateFactor (8x40 + 2x1.5x40 = 440)',
+    hourlyRun.status === 201 && Math.abs(hourlyRun.j.data.grossAmount - 440) < 0.01, JSON.stringify(hourlyRun.j));
+
+  const unknownStaffRun = await call('POST', '/admin/finance/payroll', { staff_id: uuidv4(), period_start: today, period_end: today }, pm);
+  ok('a payroll run against an unknown staff_id is refused (422)', unknownStaffRun.status === 422);
+
+  const payrollList = await call('GET', '/admin/finance/payroll', undefined, pm);
+  ok('payroll list includes both runs created this test', payrollList.j.data.payroll.some((p) => p.id === run.j.data.id) && payrollList.j.data.payroll.some((p) => p.id === hourlyRun.j.data.id));
+
+  const doublePay = await call('POST', `/admin/finance/payroll/${run.j.data.id}/pay`, undefined, pm);
+  ok('paying an already-paid run is refused (409)', doublePay.status === 409, JSON.stringify(doublePay.j));
+  const unknownPay = await call('POST', `/admin/finance/payroll/${uuidv4()}/pay`, undefined, pm);
+  ok('paying an unknown payroll run is refused (404)', unknownPay.status === 404);
+
+  // ── 7. Expense validation paths (happy path already covered in §2 above) ──
+  const badAccountExpense = await call('POST', '/admin/finance/expenses',
+    { account_id: uuidv4(), description: 'ghost account', amount: 10, incurred_at: today }, pm);
+  ok('an expense against an unknown account_id is refused (422)', badAccountExpense.status === 422);
+  const revenueAccountExpense = await call('POST', '/admin/finance/expenses',
+    { account_id: byName('Subscription Revenue').id, description: 'wrong type', amount: 10, incurred_at: today }, pm);
+  ok('an expense against a non-expense account is refused (422)', revenueAccountExpense.status === 422, JSON.stringify(revenueAccountExpense.j));
+  const negativeExpense = await call('POST', '/admin/finance/expenses',
+    { account_id: bankFee.id, description: 'negative', amount: -5, incurred_at: today }, pm);
+  ok('a non-positive expense amount is refused (422)', negativeExpense.status === 422);
+
   console.log(`\n${pass} passed, ${fail} failed`);
   await pool.end();
   process.exit(fail ? 1 : 0);
