@@ -102,23 +102,19 @@ export const CONSOLE_NAV = [
   // Expenses, Sales, plus a Settings page for chart-of-accounts/cost-centre
   // setup. NOT the same thing as FinanceService.js/fin_accounts (that's
   // eBizco's OWN single set of books, mounted under the Dashboard's /admin/*,
-  // deliberately has no org_id per migration_v031's own comment) — this needs
-  // its own org-scoped tables, spec'd separately (see docs/decisions). Cost
-  // Centres moved here from Organisation → Settings (xprojman-39 §2) since
-  // they exist specifically to link a cost to an account — Finance is the
-  // right home now that this group exists, Organisation wasn't.
+  // deliberately has no org_id per migration_v031's own comment) — this has
+  // its own org-scoped tables (org_accounts/org_journal, xprojman-42 §2/§3,
+  // BUILT 2026-09-11). Cost Centres moved here from Organisation → Settings
+  // (xprojman-39 §2) since they exist specifically to link a cost to an
+  // account — Finance is the right home now that this group exists.
   {
     group: 'FINANCE',
     items: [
       { k: 'finance-settings', href: '/finance/settings', label: 'Settings' },
-      { k: 'finance-pl',       href: '/finance/settings', label: 'Profit & Loss', mock: true,
-        tooltip: 'Coming: per-project and org-wide P&L' },
-      { k: 'finance-bs',       href: '/finance/settings', label: 'Balance Sheet', mock: true,
-        tooltip: 'Coming: assets/liabilities/equity as of a date' },
-      { k: 'finance-expenses', href: '/finance/settings', label: 'Expenses', mock: true,
-        tooltip: 'Coming: org-wide expense tracking, chart-of-accounts coded' },
-      { k: 'finance-sales',    href: '/finance/settings', label: 'Sales', mock: true,
-        tooltip: 'Coming: revenue by project, chart-of-accounts coded' },
+      { k: 'finance-pl',       href: '/finance/pnl', label: 'Profit & Loss' },
+      { k: 'finance-bs',       href: '/finance/balance-sheet', label: 'Balance Sheet' },
+      { k: 'finance-expenses', href: '/finance/expenses', label: 'Expenses' },
+      { k: 'finance-sales',    href: '/finance/sales', label: 'Sales' },
     ],
   },
 ];

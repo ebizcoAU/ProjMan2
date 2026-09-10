@@ -119,6 +119,18 @@ export default function CostPlanPage() {
   const variance = (st) => num(st.actual_amount) - num(st.estimated_amount);
   const totalVariance = total('actual_amount') - total('estimated_amount');
 
+  // Forecast at completion (owner decision 2026-09-11, per xprojman-42 §8's open
+  // weighting question): budget-weighted %-complete, not a simple stage count — a
+  // $2M stage marked complete should move the figure more than a $2k one. The naive
+  // `actual + (estimated − actual)` Server flagged as circular always collapses back
+  // to the original estimate; this instead only assumes the REMAINING (not-yet-earned)
+  // budget share is still to be spent; forecast = actual + estimated × (1 − %complete).
+  const totalEstimated = total('estimated_amount');
+  const completeEstimated = stages.filter((st) => st.status === 'complete').reduce((s, st) => s + num(st.estimated_amount), 0);
+  const pctComplete = totalEstimated > 0 ? completeEstimated / totalEstimated : 0;
+  const forecast = total('actual_amount') + totalEstimated * (1 - pctComplete);
+  const forecastVariance = forecast - totalEstimated;
+
   return (
     <div style={{ padding: 20, maxWidth: 1100 }}>
       <div style={{ fontFamily: 'var(--fh)', fontSize: 22, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>
@@ -137,6 +149,10 @@ export default function CostPlanPage() {
             <PortalKpi label="Variance (actual−est)" value={money(totalVariance)}
               color={totalVariance > 0 ? 'var(--red)' : 'var(--green)'} />
             {grandTotal != null && <PortalKpi label="Grand total (+labour)" value={money(grandTotal)} color="var(--brand)" />}
+            {totalEstimated > 0 && (
+              <PortalKpi label={`Forecast at completion (${Math.round(pctComplete * 100)}% done)`} value={money(forecast)}
+                color={forecastVariance > 0 ? 'var(--red)' : forecastVariance < 0 ? 'var(--green)' : 'var(--text)'} />
+            )}
           </div>
 
           {labour?.tasksMissingCostCentre?.length > 0 && (

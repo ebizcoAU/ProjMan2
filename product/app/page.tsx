@@ -220,7 +220,7 @@ export default function HomePage() {
         <div className="container-page">
           <Reveal className="mx-auto max-w-2xl text-center">
             <span className="eyebrow">Trusted across the industry</span>
-            <h2 className="h2 mt-4">What project teams say once it's one system</h2>
+            <h2 className="h2 mt-4">What project teams say once it&apos;s one system</h2>
           </Reveal>
           <div className="mt-12">
             <Testimonials />

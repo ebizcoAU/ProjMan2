@@ -7,13 +7,15 @@
 // before building anything here): that's eBizco's own internal SaaS
 // bookkeeping, mounted under the Dashboard's /admin/* routes, with deliberately
 // NO org_id (migration_v031's own comment) — a single set of books for
-// running ProjMan2 as a business, not a per-tenant feature. A real chart-of-
-// accounts / P&L / Balance Sheet / rollover (year-end account initialization)
-// for each construction-company tenant is a separate, NOT YET BUILT subsystem
-// — this page is only the two pieces that already exist (xprojman-39 §1/§2),
-// relocated to their correct home. The other FINANCE nav items (P&L, Balance
-// Sheet, Expenses, Sales) are `mock: true` in PortalNav.js until that's spec'd
-// and built — see docs/decisions for the write-up requesting it.
+// running ProjMan2 as a business, not a per-tenant feature.
+//
+// Chart of accounts (xprojman-42 §2, migration v042) landed 2026-09-11 —
+// OrgFinanceService/`/finance/accounts`, seeded lazily with a standard-AU
+// template on first read. This card is that §2 UI. The other FINANCE nav
+// items (P&L, Balance Sheet, Expenses, Sales) stay `mock: true` in
+// PortalNav.js — those are §3 (org_journal + an automatic-posting-trigger
+// decision, per routes/finance.js's own header), still not built; §2 landing
+// is the foundation §3 needs, not §3 itself.
 'use client';
 
 import { useState } from 'react';
@@ -21,7 +23,136 @@ import { PortalCard }    from '@/components/portal/PortalCard';
 import { PortalEmpty }   from '@/components/portal/PortalEmpty';
 import { PortalError }   from '@/components/portal/PortalError';
 import { usePortalData } from '@/components/portal/usePortalData';
-import { organisationApi, costCentresApi } from '@/lib/api';
+import { organisationApi, costCentresApi, financeApi } from '@/lib/api';
+
+const ACC_TYPES = ['asset', 'liability', 'equity', 'revenue', 'expense'];
+const ACC_TYPE_COLOR = {
+  asset: 'var(--brand)', liability: 'var(--amber)', equity: 'var(--dim)',
+  revenue: 'var(--green)', expense: 'var(--red)',
+};
+
+// Flattens the tree into `{ id, code, name, accType, depth }` rows, parent
+// before children, for both the display list and the "parent account" select.
+function flatten(nodes, depth = 0, out = []) {
+  for (const n of nodes) {
+    out.push({ ...n, depth });
+    if (n.children?.length) flatten(n.children, depth + 1, out);
+  }
+  return out;
+}
+
+// Chart of accounts (xprojman-42 §2) — a parent/child tree, seeded from a
+// standard-AU template on first read (OrgFinanceService.ensureSeeded), then
+// editable. Structural edits (add/rename/activate/re-parent) are
+// `finance.manage` server-side — this card renders regardless of role and
+// surfaces a 403 via PortalError if the signed-in user lacks it, same
+// convention as RateCardCard/CostCentresCard below.
+function ChartOfAccountsCard() {
+  const { data, loading, error, refetch } = usePortalData(() => financeApi.accounts());
+  const [form, setForm] = useState({ code: '', name: '', parentId: '', accType: 'expense' });
+  const [busy, setBusy] = useState(false);
+  const [formErr, setFormErr] = useState(null);
+  const [rowBusy, setRowBusy] = useState(null);
+  const [rowErr, setRowErr] = useState(null);
+
+  const roots = data?.data?.accounts || [];
+  const rows = flatten(roots);
+
+  const add = async (e) => {
+    e.preventDefault();
+    if (!form.code.trim() || !form.name.trim()) return;
+    setBusy(true); setFormErr(null);
+    try {
+      await financeApi.createAccount({
+        code: form.code.trim(), name: form.name.trim(),
+        parent_id: form.parentId || null,
+        acc_type: form.parentId ? undefined : form.accType,
+      });
+      setForm({ code: '', name: '', parentId: '', accType: 'expense' });
+      await refetch();
+    } catch (err) {
+      setFormErr(err?.response?.data?.message || err.message || 'Could not add account');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleActive = async (row) => {
+    setRowBusy(row.id); setRowErr(null);
+    try {
+      await financeApi.patchAccount(row.id, { is_active: !row.isActive });
+      await refetch();
+    } catch (err) {
+      setRowErr(err?.response?.data?.message || err.message || 'Could not update account');
+    } finally {
+      setRowBusy(null);
+    }
+  };
+
+  return (
+    <PortalCard title="Chart of accounts">
+      {loading ? <PortalEmpty message="Loading…" /> : error ? <PortalError message={error} /> : (
+        <>
+          {rows.length === 0 ? <PortalEmpty message="No accounts yet." /> : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 14 }}>
+              {rows.map((r) => (
+                <div key={r.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 10, fontSize: 13.5,
+                  padding: '5px 0', paddingLeft: r.depth * 22,
+                  borderBottom: '1px solid var(--s4)', opacity: r.isActive ? 1 : 0.5,
+                }}>
+                  <span style={{ fontFamily: 'var(--fm)', color: 'var(--brand)', fontWeight: 700, width: 60 }}>{r.code}</span>
+                  <span style={{ flex: 1 }}>{r.name}</span>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em',
+                    color: ACC_TYPE_COLOR[r.accType] || 'var(--muted)',
+                  }}>{r.accType}</span>
+                  <button type="button" className="btn" style={{ padding: '3px 8px', fontSize: 11.5 }}
+                    disabled={rowBusy === r.id} onClick={() => toggleActive(r)}>
+                    {rowBusy === r.id ? '…' : r.isActive ? 'Deactivate' : 'Activate'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {rowErr && <div style={{ marginBottom: 10 }}><PortalError message={rowErr} /></div>}
+
+          <form onSubmit={add} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: 11.5, color: 'var(--muted)', marginBottom: 3 }}>Code</label>
+              <input className="input" placeholder="e.g. 5350" style={{ width: 100 }}
+                value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))} />
+            </div>
+            <div style={{ flex: 1, minWidth: 160 }}>
+              <label style={{ display: 'block', fontSize: 11.5, color: 'var(--muted)', marginBottom: 3 }}>Name</label>
+              <input className="input" placeholder="Account name" style={{ width: '100%' }}
+                value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: 11.5, color: 'var(--muted)', marginBottom: 3 }}>Parent</label>
+              <select className="input" style={{ width: 180 }}
+                value={form.parentId} onChange={(e) => setForm((f) => ({ ...f, parentId: e.target.value }))}>
+                <option value="">— None (root) —</option>
+                {rows.map((r) => <option key={r.id} value={r.id}>{'—'.repeat(r.depth)} {r.code} {r.name}</option>)}
+              </select>
+            </div>
+            {!form.parentId && (
+              <div>
+                <label style={{ display: 'block', fontSize: 11.5, color: 'var(--muted)', marginBottom: 3 }}>Type</label>
+                <select className="input" style={{ width: 120 }}
+                  value={form.accType} onChange={(e) => setForm((f) => ({ ...f, accType: e.target.value }))}>
+                  {ACC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+            )}
+            <button className="btn btn-primary" disabled={busy}>{busy ? 'Adding…' : '+ Add account'}</button>
+          </form>
+          {formErr && <div style={{ marginTop: 10 }}><PortalError message={formErr} /></div>}
+        </>
+      )}
+    </PortalCard>
+  );
+}
 
 const SKILL_LABEL = { expert: 'Expert', professional: 'Professional', std: 'Std', free: 'Free' };
 
@@ -145,12 +276,15 @@ export default function FinanceSettingsPage() {
       <div style={{ marginBottom: 16 }}>
         <h1 style={{ fontFamily: 'var(--fh)', fontWeight: 800, fontSize: 22, color: 'var(--text)', margin: 0 }}>Finance settings</h1>
         <div style={{ fontSize: 13.5, color: 'var(--dim)', marginTop: 4, maxWidth: '62ch' }}>
-          Cost rates and cost centres, used for task costing on the Cost Plan.
-          Chart-of-accounts setup and year-end rollover aren&rsquo;t built yet —
-          see the P&amp;L/Balance Sheet/Expenses/Sales items in the sidebar.
+          Chart of accounts, cost rates, and cost centres. See the P&amp;L/
+          Balance Sheet/Expenses/Sales items in the sidebar for the journal
+          reports. Year-end rollover (closing a financial year) isn&rsquo;t
+          built yet.
         </div>
       </div>
 
+      <ChartOfAccountsCard />
+      <div style={{ height: 16 }} />
       <RateCardCard />
       <div style={{ height: 16 }} />
       <CostCentresCard />

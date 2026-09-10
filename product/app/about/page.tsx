@@ -125,7 +125,7 @@ export default function AboutPage() {
             <span className="eyebrow">Research foundation</span>
             <h2 className="h2 mt-4">A socio-technical framework, not just an app</h2>
             <p className="lede mt-4">
-              ProjMan's design draws on established research into how people and systems build
+              ProjMan&apos;s design draws on established research into how people and systems build
               trust together.
             </p>
           </Reveal>
@@ -151,7 +151,7 @@ export default function AboutPage() {
             <p className="mt-3 text-navy-600">
               ProjMan is developed and operated by {company.legalName}, an Australian software
               development company delivering web, mobile, automation, and embedded systems since{" "}
-              {company.tradingSince}. That engineering track record underpins ProjMan's approach
+              {company.tradingSince}. That engineering track record underpins ProjMan&apos;s approach
               to immutable evidence and verified identity.
             </p>
             <p className="mt-4 text-sm text-navy-400">

@@ -53,7 +53,7 @@ export function ContactForm() {
   if (status === "success") {
     return (
       <div className="rounded-2xl border border-success/30 bg-success-light p-8 text-center">
-        <h3 className="h3">Thanks — we've got your message.</h3>
+        <h3 className="h3">Thanks — we&apos;ve got your message.</h3>
         <p className="mt-2 text-navy-600">
           A member of the ProjMan team will be in touch within one business day.
         </p>

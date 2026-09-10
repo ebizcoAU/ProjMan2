@@ -83,6 +83,14 @@ async function refreshAccessToken() {
   return refreshPromise;
 }
 
+// Builds a `?a=b&c=d` query string, dropping null/undefined/'' values — for
+// endpoints with several optional filters (financeApi's report date ranges).
+function qs(params) {
+  const entries = Object.entries(params).filter(([, v]) => v != null && v !== '');
+  if (entries.length === 0) return '';
+  return `?${new URLSearchParams(entries).toString()}`;
+}
+
 // ── Core fetch ────────────────────────────────────────────────────────────────
 // Always returns { data: <parsed json> } to match the axios response shape.
 // Throws on non-2xx with err.response = { data, status } like axios does.
@@ -273,6 +281,22 @@ export const organisationApi = {
 export const costCentresApi = {
   list:   ()       => request('GET',  '/cost-centres'),
   create: (body)   => request('POST', '/cost-centres', body),
+};
+
+// Per-org chart of accounts (xprojman-42 §2, migration v042) — NOT the same
+// as `/admin/finance` (eBizco's own single-tenant books). Read: money.read.
+// Write (create/rename/re-parent/activate): finance.manage.
+// Reports (xprojman-42 §3, migration v044) — org_journal-backed, money.read.
+// pnl/expenses/sales default to the current month server-side when from/to
+// are omitted; balanceSheet defaults to today when asOf is omitted.
+export const financeApi = {
+  accounts:       ()               => request('GET',   '/finance/accounts'),
+  createAccount:  (body)           => request('POST',  '/finance/accounts', body),
+  patchAccount:   (id, body)       => request('PATCH', `/finance/accounts/${id}`, body),
+  pnl:            (from, to)       => request('GET', `/finance/reports/pnl${qs({ from, to })}`),
+  balanceSheet:   (asOf)           => request('GET', `/finance/reports/balance-sheet${qs({ as_of: asOf })}`),
+  expenses:       (from, to)       => request('GET', `/finance/reports/expenses${qs({ from, to })}`),
+  sales:          (from, to)       => request('GET', `/finance/reports/sales${qs({ from, to })}`),
 };
 
 export const projectsApi = {
