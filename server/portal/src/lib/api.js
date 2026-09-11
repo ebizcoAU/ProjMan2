@@ -413,12 +413,18 @@ export const stageTemplatesApi = {
 export const documentsApi = {
   list: (entityType, entityId) =>
     request('GET', `/documents?entity_type=${encodeURIComponent(entityType)}&entity_id=${encodeURIComponent(entityId)}`),
+  // Repository view (xprojman-28 §2, DocumentService.listByProject) — every
+  // document on a project, every entity_type, for the Documents tab.
+  listByProject: (projectId) => request('GET', `/documents?project_id=${encodeURIComponent(projectId)}`),
+  // entityType/entityId are optional server-side (DocumentService.upload) — an
+  // office-side "attach a surveyor's cert" style upload with no owning entity
+  // resolves to kind 'general' and is a real, supported shape, not a workaround.
   upload: ({ file, entityType, entityId, projectId, kind }) => {
     const fd = new FormData();
     fd.append('file', file);
     fd.append('client_ref', crypto.randomUUID());
-    fd.append('entity_type', entityType);
-    fd.append('entity_id', entityId);
+    if (entityType) fd.append('entity_type', entityType);
+    if (entityId) fd.append('entity_id', entityId);
     if (projectId) fd.append('project_id', projectId);
     if (kind) fd.append('kind', kind);
     fd.append('original_filename', file.name);
@@ -428,7 +434,6 @@ export const documentsApi = {
   fetchBlob: (id) => fetchAuthedBlob(`/documents/${id}`),
   // Soft-delete (DocumentService.softDelete) — quality.write or documents.write,
   // not uploader-only. Server already had this; the client just never exposed it.
-  remove: (id) => request('DELETE', `/documents/${id}`),
   remove: (id) => request('DELETE', `/documents/${id}`),
 };
 

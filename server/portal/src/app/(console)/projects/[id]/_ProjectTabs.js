@@ -11,6 +11,7 @@ export function ProjectTabs({ id, seesMoney }) {
     ...(seesMoney ? [{ href: `/projects/${id}/claims`, label: 'Claims' }] : []),
     { href: `/projects/${id}/quality`, label: 'Quality' },
     { href: `/projects/${id}/field`, label: 'Field' },
+    { href: `/projects/${id}/documents`, label: 'Documents' },
   ];
   return (
     <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--b1)', marginBottom: 16 }}>
