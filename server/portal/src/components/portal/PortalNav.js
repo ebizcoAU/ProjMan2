@@ -121,10 +121,10 @@ export const CONSOLE_NAV = [
 
 // ── Nav — Builder console (portaldesignspec §2: `(builder)/*` = Builder,
 // scope `assigned` on his own engagement; §4.3 for the module list) ───────────
-// Only Job Award response has a real page today; the rest of §4.3 (Programme/
-// Line-of-Balance editing, Progress Claims submit, Panel management,
-// Documents) are separate, not-yet-built line items in group-01.md §5 — listed
-// here as "soon" so the shell is navigable and truthful about what's live.
+// Job Award response and Programme/Line-of-Balance editing have real pages now
+// (xprojman-28 §4.3); the rest of §4.3 (Progress Claims submit, Panel
+// management, Documents) are separate, not-yet-built line items — listed here
+// as "soon" so the shell is navigable and truthful about what's live.
 export const BUILDER_NAV = [
   {
     group: null,
@@ -136,8 +136,7 @@ export const BUILDER_NAV = [
     group: 'WORK',
     items: [
       { k: 'job-awards', href: '/builder/job-awards', label: 'Job Invitations' },
-      { k: 'programme',  href: '/builder/dashboard', label: 'Programme', mock: true,
-        tooltip: 'Coming: your Line-of-Balance schedule (Builder-authored, portaldesignspec §3.2)' },
+      { k: 'programme',  href: '/builder/programme', label: 'Programme' },
       { k: 'claims',     href: '/builder/dashboard', label: 'Progress Claims', mock: true,
         tooltip: 'Coming: submit progress claims against the head contract' },
     ],
