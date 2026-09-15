@@ -244,9 +244,19 @@ export const recoveryApi = {
 // Job Awards — the Builder's identity-level invitation inbox (xprojman-12). Not
 // project-scoped: an invitee can't reach the project until they accept, so the list is
 // GET /job-awards/pending; accept/decline is the project-scoped respond endpoint.
+// `create`/`list` are the send side (xprojman-44 Module B) — project-scoped, panel.manage,
+// requires a prior Introduction (server-enforced, not duplicated client-side).
 export const jobAwardsApi = {
   pending: ()                        => request('GET',  '/job-awards/pending'),
   respond: (projectId, jaId, accept) => request('POST', `/projects/${projectId}/job-awards/${jaId}/respond`, { accept }),
+  list:    (projectId)               => request('GET',  `/projects/${projectId}/job-awards`),
+  create:  (projectId, body)         => request('POST', `/projects/${projectId}/job-awards`, body),
+};
+
+// Introductions — the caller's own contact book (xprojman-44 Module A: Panel is a
+// role-filtered read over this, nothing more; Introduction itself happens on the App).
+export const introductionsApi = {
+  contacts: () => request('GET', '/introductions'),
 };
 
 export const devicesApi = {

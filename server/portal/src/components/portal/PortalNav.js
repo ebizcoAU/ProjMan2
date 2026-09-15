@@ -63,6 +63,7 @@ export const CONSOLE_NAV = [
     group: 'PROJECTS',
     items: [
       { k: 'projects',  href: '/projects', label: 'Projects' },
+      { k: 'panel',     href: '/panel',    label: 'Panel' },
       { k: 'customers', href: '/projects', label: 'Customers', mock: true,
         tooltip: 'Coming: customer list and contacts (API is live at /customers)' },
       { k: 'programme', href: '/projects', label: 'Programme', mock: true,
@@ -121,10 +122,11 @@ export const CONSOLE_NAV = [
 
 // ── Nav — Builder console (portaldesignspec §2: `(builder)/*` = Builder,
 // scope `assigned` on his own engagement; §4.3 for the module list) ───────────
-// Job Award response and Programme/Line-of-Balance editing have real pages now
-// (xprojman-28 §4.3); the rest of §4.3 (Progress Claims submit, Panel
-// management, Documents) are separate, not-yet-built line items — listed here
-// as "soon" so the shell is navigable and truthful about what's live.
+// Job Award response, Programme/Line-of-Balance editing, and Panel management
+// have real pages now (xprojman-28 §4.3, xprojman-44 Module A/B); the rest of
+// §4.3 (Progress Claims submit, Documents) are separate, not-yet-built line
+// items — listed here as "soon" so the shell is navigable and truthful about
+// what's live.
 export const BUILDER_NAV = [
   {
     group: null,
@@ -144,8 +146,7 @@ export const BUILDER_NAV = [
   {
     group: 'CREW',
     items: [
-      { k: 'users',      href: '/builder/dashboard', label: 'Panel', mock: true,
-        tooltip: "Coming: manage your own Tradie/Foreperson panel" },
+      { k: 'users',      href: '/builder/panel', label: 'Panel' },
       { k: 'site-diary', href: '/builder/dashboard', label: 'Documents', mock: true,
         tooltip: 'Coming: documents your crew produces' },
     ],
