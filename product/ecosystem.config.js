@@ -10,6 +10,8 @@ module.exports = {
       args: "start",
       env: {
         NODE_ENV: "production",
+        // ISPConfig reverse-proxies projman.ebizco.com.au -> http://localhost:6032
+        PORT: 6032,
       },
       instances: 1,
       autorestart: true,
