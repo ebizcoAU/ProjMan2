@@ -627,6 +627,7 @@ router.post(
     body('role_offered').isIn(['builder', 'tradie', 'foreperson', 'subcontractor']),
     body('builder_engagement_type').optional({ nullable: true })
       .isIn(['employee', 'independent_fixed', 'independent_cost_plus']),
+    body('trade_offered').optional({ nullable: true }).isString(),
   ],
   async (req, res) => {
     if (validation(req, res)) return;
@@ -636,6 +637,7 @@ router.post(
         actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
         toUserId: req.body.to_user_id, roleOffered: req.body.role_offered,
         builderEngagementType: req.body.builder_engagement_type,
+        tradeOffered: req.body.trade_offered,
       });
       await audit(req, 'job_award.create', {
         entity: 'job_awards', entityId: result.id,
@@ -705,6 +707,39 @@ router.post(
     } catch (err) {
       return sendError(res, err);
     }
+  }
+);
+
+// ── Subcontractor engagement (xprojman-44 Module C) ─────────────────────────────
+// GET  /:id/subcontractor-engagements               Builder's own line-level list
+// POST /:id/subcontractor-engagements/:engId/consent records signed pass-through consent
+router.get('/:id/subcontractor-engagements', async (req, res) => {
+  try {
+    const data = await JobAwardService.listSubcontractorEngagements({
+      orgId: req.auth.orgId, projectId: req.params.id,
+      actor: { role: req.auth.role, userId: req.auth.userId },
+    });
+    return res.json({ success: true, data });
+  } catch (err) { return sendError(res, err); }
+});
+
+router.post(
+  '/:id/subcontractor-engagements/:engId/consent',
+  [body('document_id').trim().notEmpty().withMessage('document_id is required')],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await JobAwardService.recordSubcontractorConsent({
+        orgId: req.auth.orgId, projectId: req.params.id, engagementId: req.params.engId,
+        actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+        documentId: req.body.document_id,
+      });
+      await audit(req, 'subcontractor_engagement.consent', {
+        entity: 'subcontractor_engagements', entityId: req.params.engId,
+        detail: { project_id: req.params.id, document_id: req.body.document_id },
+      });
+      return res.json({ success: true, data: result });
+    } catch (err) { return sendError(res, err); }
   }
 );
 

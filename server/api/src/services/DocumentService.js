@@ -31,7 +31,7 @@ const { projectScope } = require('../lib/scope');
 // drawings/reports reuse this exact mechanism rather than a new store. `task_quote` added
 // v043 (xprojman-39 §3) — the external quote document a task_quotes row attaches, same
 // polymorphic pattern, no new document mechanism.
-const ENTITY_TYPES = ['inspection_item', 'defect', 'certificate', 'site_diary', 'delivery', 'task', 'task_quote'];
+const ENTITY_TYPES = ['inspection_item', 'defect', 'certificate', 'site_diary', 'delivery', 'task', 'task_quote', 'subcontractor_engagement'];
 const KINDS = ['inspection_photo', 'defect_photo', 'certificate', 'site_diary_photo',
                'delivery_docket', 'task_document', 'task_quote', 'general'];
 // Convenience only: when the client names an entity_type but no kind, this is the kind it meant.
@@ -44,6 +44,7 @@ const DEFAULT_KIND = {
   delivery: 'delivery_docket',
   task: 'task_document',
   task_quote: 'task_quote',
+  subcontractor_engagement: 'general',
 };
 
 // The document read capability: `projects.read` (every role with a project-detail surface) OR the

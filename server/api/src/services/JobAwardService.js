@@ -27,7 +27,7 @@ const ENGAGEMENT_TYPES = ['employee', 'independent_fixed', 'independent_cost_plu
  * between PM and the invitee — the cold-stranger constraint, enforced here, not
  * just documented.
  */
-async function create({ orgId, projectId, actor, toUserId, roleOffered, builderEngagementType }) {
+async function create({ orgId, projectId, actor, toUserId, roleOffered, builderEngagementType, tradeOffered }) {
   if (!access.hasPermission(actor.role, 'panel.manage')) {
     throw new ServiceError('FORBIDDEN', 'Requires permission: panel.manage', 403);
   }
@@ -37,6 +37,10 @@ async function create({ orgId, projectId, actor, toUserId, roleOffered, builderE
   if (roleOffered === 'builder' && !ENGAGEMENT_TYPES.includes(builderEngagementType)) {
     throw new ServiceError('VALIDATION_ERROR',
       `builder_engagement_type is required for role_offered='builder' and must be one of ${ENGAGEMENT_TYPES.join(', ')}`, 400);
+  }
+  if (roleOffered === 'subcontractor' && !(tradeOffered && String(tradeOffered).trim())) {
+    throw new ServiceError('VALIDATION_ERROR',
+      "trade_offered is required for role_offered='subcontractor'", 400);
   }
   // Appointer ≠ appointed (xprojman-08 §3, owner 2026-07-30). One identity = one
   // fixed role, so a PM can never also be the Builder — no self-award. This was
@@ -62,10 +66,11 @@ async function create({ orgId, projectId, actor, toUserId, roleOffered, builderE
 
   await pool.query(
     `INSERT INTO job_awards
-       (id, org_id, project_id, from_user_id, to_user_id, role_offered, document_hash, builder_engagement_type)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, org_id, project_id, from_user_id, to_user_id, role_offered, document_hash, builder_engagement_type, trade_offered)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [id, orgId, projectId, actor.userId, toUserId, roleOffered, documentHash,
-     roleOffered === 'builder' ? builderEngagementType : null]
+     roleOffered === 'builder' ? builderEngagementType : null,
+     roleOffered === 'subcontractor' ? tradeOffered : null]
   );
   return { id, status: 'sent', document_hash: documentHash };
 }
@@ -107,6 +112,17 @@ async function respond({ orgId, projectId, jobAwardId, actor, accept, surface })
 
   if (accept) {
     await MembershipService.addMember({ orgId, projectId, userId: actor.userId, addedBy: award.from_user_id });
+    // xprojman-44 Module C: the actual writer subcontractor_engagements (migration_v014)
+    // never had. Consent defaults FALSE per that table's own column default — never
+    // auto-true just because the award was accepted.
+    if (award.role_offered === 'subcontractor') {
+      await pool.query(
+        `INSERT INTO subcontractor_engagements
+           (id, org_id, project_id, job_award_id, subcontractor_user_id, trade)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [uuidv4(), orgId, projectId, jobAwardId, actor.userId, award.trade_offered]
+      );
+    }
   }
   return { id: jobAwardId, status };
 }
@@ -189,4 +205,67 @@ async function acceptedBuilderEngagement({ orgId, projectId }) {
   return row || null;
 }
 
-module.exports = { create, list, pending, respond, recordDeposit, acceptedBuilderEngagement };
+/**
+ * GET /projects/:id/subcontractor-engagements — the Builder's OWN line-level list
+ * (xprojman-44 Module C), distinct from PM's `ProcurementService.subcontractorRegister`
+ * (aggregate-only by design, §1.4). Scoped to engagements whose job_award was SENT by
+ * this caller — never another Builder's, no separate permission needed since
+ * `panel.manage` already gates who could have sent the award in the first place.
+ */
+async function listSubcontractorEngagements({ orgId, projectId, actor }) {
+  await ProjectService.assertProjectReachable(orgId, projectId, { role: actor.role, userId: actor.userId });
+  const [rows] = await pool.query(
+    `SELECT se.* FROM subcontractor_engagements se
+       JOIN job_awards ja ON ja.id = se.job_award_id
+      WHERE se.project_id = ? AND se.org_id = ? AND ja.from_user_id = ?
+      ORDER BY se.created_at DESC`,
+    [projectId, orgId, actor.userId]
+  );
+  return { subcontractor_engagements: rows };
+}
+
+/**
+ * POST /projects/:id/subcontractor-engagements/:engId/consent — records the
+ * subcontractor's signed pass-through-consent clause (xprojman-44 Module C §3), a
+ * separate explicit action from the engagement's creation since the consent document
+ * has its own timing. Only the Builder who sent the underlying award may record it,
+ * against a document already uploaded through the generic Documents pipeline
+ * (entity_type='subcontractor_engagement'). Idempotent-refusal, not overwrite — same
+ * posture as `recordDeposit`, an evidentiary record shouldn't be silently replaced.
+ */
+async function recordSubcontractorConsent({ orgId, projectId, engagementId, actor, documentId }) {
+  const [[engagement]] = await pool.query(
+    `SELECT se.*, ja.from_user_id AS builder_user_id
+       FROM subcontractor_engagements se
+       JOIN job_awards ja ON ja.id = se.job_award_id
+      WHERE se.id = ? AND se.project_id = ? AND se.org_id = ? LIMIT 1`,
+    [engagementId, projectId, orgId]
+  );
+  if (!engagement) throw new ServiceError('NOT_FOUND', 'Subcontractor engagement not found', 404);
+  if (String(engagement.builder_user_id) !== String(actor.userId)) {
+    throw new ServiceError('FORBIDDEN', 'Only the Builder who engaged this subcontractor may record consent', 403);
+  }
+  if (engagement.consent_document_id) {
+    throw new ServiceError('ALREADY_RECORDED', 'Consent is already recorded against this engagement', 409);
+  }
+  const [[doc]] = await pool.query(
+    `SELECT id FROM documents
+      WHERE id = ? AND org_id = ? AND entity_type = 'subcontractor_engagement' AND entity_id = ? AND is_deleted = 0
+      LIMIT 1`,
+    [documentId, orgId, engagementId]
+  );
+  if (!doc) {
+    throw new ServiceError('VALIDATION_ERROR',
+      'document_id must reference a document already uploaded for this engagement (entity_type=subcontractor_engagement)', 400);
+  }
+  await pool.query(
+    `UPDATE subcontractor_engagements SET consent_document_id = ?, consent_recorded_at = NOW() WHERE id = ?`,
+    [documentId, engagementId]
+  );
+  return { id: engagementId, consent_document_id: documentId };
+}
+
+module.exports = {
+  create, list, pending, respond, recordDeposit, acceptedBuilderEngagement,
+  listSubcontractorEngagements, recordSubcontractorConsent,
+};
