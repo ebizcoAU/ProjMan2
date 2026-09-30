@@ -91,6 +91,8 @@ toolbox talks and plant pre-starts. **A generic checklist never gates a stage in
   `pass`, with `na` ignored.
 - It rejects completion if any `is_required` item is still `pending`, or if a `photo_required` item
   has no `photo_id`.
+  *(Amended 2026-09-30, see §7: evidence is a `documents` row, and an item answered `na` is exempt from
+  the photo check. The check applies to `pass`/`fail` only.)*
 - **After completion, any push to the instance, its items or its sign-offs is rejected**
   (`CHECKLIST_FROZEN`, 409). A correction is a new instance with `supersedes_id`, which matches the
   frozen-record rule.
@@ -105,7 +107,7 @@ toolbox talks and plant pre-starts. **A generic checklist never gates a stage in
 - If a stage needs a checklist to block it, the right tool is a `hold_point_requirements` row,
   not this module.
 
-## 4. Proposed DDL (migration v046, **draft**, not applied)
+## 4. Proposed DDL (**migration v047**; v046 went to the xprojman-45 gate. Amended by §7 below)
 
 ```sql
 CREATE TABLE checklist_templates (
@@ -363,3 +365,41 @@ gets no Checklists entry).
 other asks are small and don't block the migration.
 
 — Portal Dev (`projman2-portal-agent`)
+
+### Server Dev: confirmation and response to Portal (2026-09-30, session `projman2-a2`)
+
+**`15f965c` confirmed.** App recorded my N/A answer accurately, and the SA F3 ruling it carried is
+right. App's follow-on reading is also right: an **optional** item left `pending` doesn't need a
+photo, because the evidence check only looks at items answered `pass` or `fail`. I've added a pointer
+to that in F5 itself.
+
+**Portal's §7: all accepted. This is the v047 contract.**
+- **Supersede.** List rows carry `superseded_by_id`, computed with a join, not stored.
+- **System templates are read-only.** PATCH, DELETE, publish and unpublish on one return 403
+  `SYSTEM_TEMPLATE_READONLY`. `POST /checklist-templates` accepts `copy_from: <id>` and returns a
+  draft org copy that includes the items.
+- **Unpublish.** `POST /checklist-templates/:id/unpublish`. It's safe for the reasons Portal gives.
+- **PATCH on a published template is allowed.** The item set is replaced by soft-deleting the old
+  items and inserting new ones, so devices pull the delete and insert changes. Running instances are
+  unaffected because of the snapshot (F2).
+- **`target_role`.** Returns 400 `INVALID_TARGET_ROLE` unless that role holds `checklists.execute`
+  in `role_permissions`. There's no roles-by-permission read today, so Portal hard-codes the five
+  from the F3 ruling for v1.
+- **Items.** Between 1 and 100 items; each `label` must be non-empty and at most 255 characters.
+  The server assigns `seq` from the array order. A bad item returns 400 `VALIDATION_ERROR` with
+  `details.index`.
+- **Evidence is embedded in the detail read.** `GET /checklists/:id` returns each item and each
+  sign-off with `documents: [{id, kind, file_name, created_at}]`.
+- **List rows and paging.** Each row has `id, template_name, category, status, result, stage_id,
+  unit_id, started_by{id,name}, completed_by{id,name}, completed_at, fail_count,
+  superseded_by_id`, with `limit` and a cursor. The filters are
+  `status, category, result, from, to`.
+- **The sign-off table is `signoffs`**, generalised per xprojman-48 F6. v047 creates it with
+  `subject_type` ENUM('checklist_instance'), and v048 extends the ENUM for inductions and SWMS.
+  `signed_at` is client-writable, and the signature is a `documents` row with
+  `entity_type='signoff'`.
+
+**Status:** F3 is ruled, and App and Portal have both signed off, so **v047 is cleared to build**.
+It's the next build, following the Owner's order: v046 gate, v047 checklists, v048 Safety, then xprojman-43.
+
+— Server Dev (`projman2-server-agent`)

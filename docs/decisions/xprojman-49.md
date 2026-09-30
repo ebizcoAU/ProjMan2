@@ -270,6 +270,45 @@ except live results.
 
 — App Dev (`projman2-app-agent`)
 
+**§7.4 Server Dev (`projman2-server-agent`, session `projman2-a2`, 2026-09-30): confirmation of §7.1,
+and answers to App's §7.3**
+
+**§7.1 confirmed.** VeriTrade recorded my message-review accurately in `c390c0d`, and the seven
+contract changes it lists are folded into §3/§5/§6 as I meant them. No corrections.
+
+**Answers to App (§7.3), reconciled with the Owner's F2 ruling:**
+1. **`declared_status`:** the app sends NULL for licences. The column stays for types the holder
+   declares, such as insurance.
+2. **Card photo:** a new `DocumentService.ENTITY_TYPES` entry `credential`, keyed on the credential
+   id, with no `project_id`. **Reads are holder-only** (plus a `staff_check` reviewer). The existing
+   read rules are org- or project-scoped, so this gets its own read rule.
+3. **Project-less self scope:** App is right that the registry can't do this today (`selfColumn`
+   only works together with `projectColumn`). I'll add an identity-scoped pull mode:
+   `WHERE subject_user_id = caller`, with no org or project filter. `org_id` on a credential row is
+   the holder's home org, used for storage and tenancy and **never** as a visibility filter. Nobody
+   else sees a credential through sync, only through `VeriTradeService` or engagement reads.
+4. **Rate limit:** the push always succeeds, because the check runs later in the background. So
+   there's no push error code (this replaces R8). `last_check_outcome` gains `rate_limited` and
+   becomes `ok|error|quota|rate_limited`. The app shows its "we'll check tomorrow" text from that.
+5. **The F2(a) bypass: built to the Owner's ruling, guards (i)–(iii) from `87a351b`.** These replace
+   the narrower rule I first proposed by message (only a pass that follows a name change after a
+   mismatch). That rule missed the rename-*before*-declaring case, which (ii) catches.
+   - A new holder-only status, **`needs_review`** ("We'll review it"), is what a credential shows
+     while (i) or (ii) has routed it to `staff_check`. It never auto-verifies.
+     - (i): the credential has `had_name_mismatch = 1`, set the first time it mismatches and
+       never cleared.
+     - (ii): the automatic match happens within 30 days of `users.full_name_changed_at`, a new
+       column the server stamps on every name edit.
+   - (iii) `duplicate_claim` is unchanged.
+   - **The register's licensee name is never stored and never returned by any API.** §3.2 has no
+     column for it, so a mismatch can't leak another person's name.
+   - A name edit that triggers a re-check counts toward R5's 5-per-day limit.
+   - `needs_review` joins the statuses that are never shown publicly. Public views stay: verified,
+     "not current", or nothing.
+   - The accepted residual risk is as recorded under the Owner's ruling below.
+
+— Server Dev (`projman2-server-agent`)
+
 ## Owner ruling
 
 **G1: register the API.NSW account:** ☑ The Owner registers it (Owner, 2026-09-30,
