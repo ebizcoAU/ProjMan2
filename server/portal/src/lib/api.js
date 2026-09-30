@@ -402,11 +402,15 @@ export const commercialApi = {
   payClaim:     (id, claimId, reference) => request('POST', `/projects/${id}/progress-claims/${claimId}/pay`, { reference }),
 };
 
-// Quality (P6a) — review reads only; writes ride /sync/push from the field app.
+// Quality (P6a) — review reads; field capture rides /sync/push from the app.
+// patchDefect is the one office-side write (PATCH /projects/:id/defects/:defectId,
+// dbaa649): same quality.write gate and writable columns as the sync path. There is
+// no REST create — defects are raised on site.
 export const qualityApi = {
   inspections:  (id)             => request('GET', `/projects/${id}/inspections`),
   defects:      (id, status)     => request('GET', `/projects/${id}/defects${status ? `?status=${status}` : ''}`),
   certificates: (id)             => request('GET', `/projects/${id}/certificates`),
+  patchDefect:  (id, defectId, body) => request('PATCH', `/projects/${id}/defects/${defectId}`, body),
 };
 
 // Field / Team (DIRECTIVE 1 Steps A + D2) — the office watches what the app pushes
