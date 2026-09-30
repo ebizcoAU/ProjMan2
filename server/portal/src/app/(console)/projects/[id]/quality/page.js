@@ -17,6 +17,7 @@ import { usePortalData } from '@/components/portal/usePortalData';
 import { usePortalDialog } from '@/components/portal/PortalDialog';
 import { projectsApi, qualityApi, authApi } from '@/lib/api';
 import { ProjectTabs } from '../_ProjectTabs';
+import { ChecklistReview } from '@/components/portal/ChecklistReview';
 
 const RESULT_BADGE = { pending: 'badge-pending', pass: 'badge-active', fail: 'badge-revoked', na: 'badge-muted' };
 const DEFECT_BADGE = { open: 'badge-pending', in_progress: 'badge-pending', closed: 'badge-active' };
@@ -117,6 +118,7 @@ export default function QualityPage() {
   const [editId, setEditId] = useState(null);
   const perms = usePortalData(() => authApi.permissions());
   const canManageDefects = (perms.data?.data?.permissions || []).includes('quality.write');
+  const canReviewChecklists = (perms.data?.data?.permissions || []).includes('checklists.manage');
 
   const proj = project.data?.data?.project;
   const stages = project.data?.data?.stages || [];
@@ -194,6 +196,15 @@ export default function QualityPage() {
           <div style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)' }}>Click a row to view its checklist items.</div>
         )}
       </PortalCard>
+
+      {canReviewChecklists && (
+        <>
+          <div style={{ height: 16 }} />
+          <PortalCard title="Checklists — toolbox talks, pre-starts, internal QA">
+            <ChecklistReview projectId={id} stageById={stageById} />
+          </PortalCard>
+        </>
+      )}
 
       <div style={{ height: 16 }} />
 

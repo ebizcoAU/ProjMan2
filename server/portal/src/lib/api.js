@@ -413,6 +413,21 @@ export const qualityApi = {
   patchDefect:  (id, defectId, body) => request('PATCH', `/projects/${id}/defects/${defectId}`, body),
 };
 
+// Checklists (xprojman-46, v047). Templates are org-wide: author them here, the App
+// runs them offline. System templates (is_system=1) are read-only; copy_from makes
+// an editable draft. Review reads are checklists.manage; the detail read embeds each
+// item's and sign-off's documents (photos, signatures).
+export const checklistsApi = {
+  templates:      ()            => request('GET',    '/checklist-templates'),
+  createTemplate: (body)        => request('POST',   '/checklist-templates', body),
+  updateTemplate: (tid, body)   => request('PATCH',  `/checklist-templates/${tid}`, body),
+  deleteTemplate: (tid)         => request('DELETE', `/checklist-templates/${tid}`),
+  publish:        (tid)         => request('POST',   `/checklist-templates/${tid}/publish`),
+  unpublish:      (tid)         => request('POST',   `/checklist-templates/${tid}/unpublish`),
+  forProject:     (id, params)  => request('GET',    `/projects/${id}/checklists${qs(params || {})}`),
+  instance:       (cid)         => request('GET',    `/checklists/${cid}`),
+};
+
 // Field / Team (DIRECTIVE 1 Steps A + D2) — the office watches what the app pushes
 // (stage progress, task tick/verify, hold-point checklists) and drives the two
 // server-mediated actions: verify a ticked task, satisfy a hold-point requirement.

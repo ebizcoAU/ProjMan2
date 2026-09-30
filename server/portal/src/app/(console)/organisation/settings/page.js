@@ -9,6 +9,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { PortalCard }    from '@/components/portal/PortalCard';
 import { PortalKpi }     from '@/components/portal/PortalKpi';
 import { PortalEmpty }   from '@/components/portal/PortalEmpty';
@@ -89,6 +90,15 @@ export default function SettingsPage() {
           </div>
           {saveError && <div style={{ gridColumn: '1 / -1' }}><PortalError message={saveError} /></div>}
         </form>
+      </PortalCard>
+
+      <div style={{ height: 16 }} />
+
+      <PortalCard title="Checklist templates">
+        <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 10 }}>
+          Toolbox talks, plant pre-starts and internal QA checklists your crews run in the App.
+        </div>
+        <Link href="/organisation/checklists" className="btn btn-ghost">Manage checklist templates</Link>
       </PortalCard>
     </div>
   );
