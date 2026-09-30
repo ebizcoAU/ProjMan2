@@ -413,6 +413,23 @@ export const qualityApi = {
   patchDefect:  (id, defectId, body) => request('PATCH', `/projects/${id}/defects/${defectId}`, body),
 };
 
+// Safety/OHS (xprojman-48 as amended by Server's §8 response, v048). Screens import
+// `safetyApi` from '@/lib/safety', which chooses between these real routes and an
+// in-memory mock with the same response shapes until v048 is live.
+export const safetyApiReal = {
+  events:        (id, params)       => request('GET',   `/projects/${id}/safety-events${qs(params || {})}`),
+  event:         (eid)              => request('GET',   `/safety-events/${eid}`),
+  patchEvent:    (eid, body)        => request('PATCH', `/safety-events/${eid}`, body),
+  closeEvent:    (eid, closeNote)   => request('POST',  `/safety-events/${eid}/close`, { close_note: closeNote }),
+  setNotifiable: (eid, body)        => request('PATCH', `/safety-events/${eid}/notifiable`, body),
+  addAction:     (eid, body)        => request('POST',  `/safety-events/${eid}/actions`, body),
+  patchAction:   (aid, body)        => request('PATCH', `/safety-actions/${aid}`, body),
+  summary:       (params)           => request('GET',   `/safety/summary${qs(params || {})}`),
+  inductions:    (id, status)       => request('GET',   `/projects/${id}/site-inductions${qs({ status })}`),
+  swmsSignoffs:  (id, docId)        => request('GET',   `/projects/${id}/signoffs${qs({ subject_type: 'swms', subject_id: docId })}`),
+  registerDocs:  (id, kinds)        => request('GET',   `/documents${qs({ project_id: id, kind: kinds.join(',') })}`),
+};
+
 // Checklists (xprojman-46, v047). Templates are org-wide: author them here, the App
 // runs them offline. System templates (is_system=1) are read-only; copy_from makes
 // an editable draft. Review reads are checklists.manage; the detail read embeds each

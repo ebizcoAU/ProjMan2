@@ -77,8 +77,7 @@ export const CONSOLE_NAV = [
         tooltip: 'Coming: daily diary entries captured by the field app' },
       { k: 'attendance', href: '/projects', label: 'Attendance', mock: true,
         tooltip: 'Coming: site attendance, inductions, trades on site' },
-      { k: 'safety',     href: '/projects', label: 'Safety', mock: true,
-        tooltip: 'Coming: hazards, incidents, toolbox talks' },
+      { k: 'safety',     href: '/safety', label: 'Safety' },
     ],
   },
   {
@@ -139,6 +138,7 @@ export const BUILDER_NAV = [
     items: [
       { k: 'job-awards', href: '/builder/job-awards', label: 'Job Invitations' },
       { k: 'programme',  href: '/builder/programme', label: 'Programme' },
+      { k: 'safety',     href: '/builder/safety', label: 'Safety' },
       { k: 'claims',     href: '/builder/dashboard', label: 'Progress Claims', mock: true,
         tooltip: 'Coming: submit progress claims against the head contract' },
     ],

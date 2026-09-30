@@ -12,6 +12,7 @@ export function ProjectTabs({ id, seesMoney }) {
     ...(seesMoney ? [{ href: `/projects/${id}/claims`, label: 'Claims' }] : []),
     { href: `/projects/${id}/quality`, label: 'Quality' },
     { href: `/projects/${id}/field`, label: 'Field' },
+    { href: `/projects/${id}/safety`, label: 'Safety' },
     { href: `/projects/${id}/documents`, label: 'Documents' },
   ];
   return (
