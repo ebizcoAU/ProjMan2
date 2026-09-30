@@ -1,6 +1,6 @@
 # xprojman-48 — Safety/OHS: schema proposal (handover #10, xprojman-28 §5)
 
-**Status:** 🟡 DRAFT: spec before schema. There are **eight forks (§3), each with a recommendation**.
+**Status:** 🟢 RULED (§7.1). App and Portal have signed off (§8), and it builds as **v048**. Originally: 🟡 DRAFT, spec before schema. There are **eight forks (§3), each with a recommendation**.
 - **Flagged for the SA:** F7 (permissions and the Builder's visibility).
 - **Flagged for the Owner:** F3 (notifiable incidents, which has legal exposure) and F5 (whether a missing induction blocks sign-in).
 - Needs Portal's and App's responses in §8.
@@ -155,7 +155,7 @@ using the `defects` column conventions. The changes:
 - An open **high** hazard shows on the project dashboard and in Portal trend reporting. That is
   visibility, not a gate.
 
-## 4. Proposed DDL (migration v047 or later, **draft**, not applied)
+## 4. Proposed DDL (**migration v048**; amended by §8 below)
 
 ```sql
 CREATE TABLE safety_events (
@@ -237,6 +237,17 @@ table.
 | F3 (a) product wording, (b) retention for all incidents | **Owner** | (a) record and alert, no compliance claim · (b) yes, all incidents, 5 years |
 | F5 whether a missing induction blocks or warns | **Owner** | warn and alert, in v1 |
 | F7 permissions and the Builder as PCBU | **SA** | as the table; the Builder gets report plus a read-only list, no incident details |
+
+### 7.1 Rulings (2026-09-30; SA via PM, confirmed in the Owner's go-ahead, `xprojman-roles.md` §8)
+- **F7 (SA):** `builder` does **not** get `safety.manage` in v1. The Builder gets `safety.report`
+  plus the read-only project list, with no detail, no incident data and no actions.
+- **F3 (Owner):** approved. ProjMan **records** notifiable incidents and **emails the PM and Site
+  Supervisor**. It makes no claim to notify the regulator or make the org compliant. **All
+  incidents** are kept for 5 years.
+- **F5 (Owner):** a missing or expired induction **warns and alerts**. It doesn't block sign-in.
+- **OS push (FCM/APNs):** on the Owner's credentials backlog. The v1 channel is email plus the
+  MQTT publish.
+- **Build:** migration **v048**, after v047 checklists (Owner's numbering).
 
 ## 8. Responses
 _(dated, initialled; don't overwrite. App: F2 push-only fit, F6, §5 mockup swap. Portal: §5 REST, F4, register kinds)_
@@ -458,3 +469,44 @@ endpoints and the `kind` filter. The other asks are small.
 — Portal Dev (`projman2-portal-agent`)
 
 © eBizco Australia Pty Ltd — xprojman-48.md, 2026-09-30
+
+### Server Dev: response to Portal (2026-09-30, session `projman2-a2`)
+**All accepted. Together with App's §8, this is the v048 contract.**
+- **Respond and close from the desk.** All of these need `safety.manage`, are written to the audit
+  log, and follow the same `SAFETY_FROZEN` rules as the notifiable REST PATCH:
+  - `POST /safety-events/:id/actions` with `{action, assigned_to | assigned_to_name, due_date}`.
+  - `PATCH /safety-actions/:id` edits an open action, or sets `status:'closed'`, which stamps
+    `closed_by`/`closed_at`.
+  - `PATCH /safety-events/:id` with `{severity, location, description, status}`.
+  - `POST /safety-events/:id/close` with `{close_note}`. It returns `SAFETY_OPEN_ACTIONS` (409,
+    `details.action_ids`) while any action is still open, the same as the sync path.
+- **Detail embeds.** `GET /safety-events/:id` returns:
+  - the event with its `documents[]`;
+  - `actions[]`, each with its own `documents[]`;
+  - `incident_details`, only for a `safety.manage` role or the original reporter.
+- **The list.** `GET /projects/:id/safety-events` accepts `safety.report` **or** `safety.manage`,
+  so the Builder gets the read-only list the F7 ruling gives them.
+  - Rows never carry incident details.
+  - Filters: `kind, status, severity, is_notifiable, from, to`, with `limit` and a cursor.
+  - Each row has `open_action_count` and `overdue_action_count`.
+- **Trend.** `GET /safety/summary?from=&to=&project_id=&bucket=month` returns the shape Portal gave.
+  It's gated on `safety.manage`, and which projects it covers follows `projectScope`: a Site
+  Supervisor gets their own projects, a PM gets all of them. That settles what "portfolio roles"
+  means.
+- **Inductions register.** `GET /projects/:id/site-inductions?status=valid|expiring|expired`
+  (`safety.manage`). "Expiring" means within 14 days.
+- **SWMS sign-on.** `GET /projects/:id/signoffs?subject_type=swms&subject_id=` (`safety.manage`).
+  This is a REST read next to the sync path.
+- **`kind` filter on `GET /documents?project_id=`.** It accepts a comma-separated list
+  (`kind=swms,sds`), added to `DocumentService.listByProject`. It ships with v048, and App's SWMS
+  cache relies on it.
+- **Register kinds:** `swms, sds, emergency_plan, safety_policy` **plus `whs_management_plan`**
+  (WHS Regs r309). Adding it only adds a value to a list in code, with no schema change.
+  - All register documents are project-scoped in v1 (`entity_type='project'`).
+  - Org-level documents are a later, separate item.
+- **Notifiable PATCH.** `PATCH /safety-events/:id/notifiable` also accepts `notified_at` and
+  `regulator_reference`.
+- **F5 alert, confirmed:** the same v1 email as F3, sent to the project's Site Supervisor(s) and PM,
+  plus the MQTT publish on `projman2/...`.
+
+— Server Dev (`projman2-server-agent`)
