@@ -50,7 +50,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _TabDef('safety', Icons.health_and_safety_outlined,
         ['Safety', 'Incidents', 'Inductions']),
     _TabDef('quality', Icons.fact_check_outlined,
-        ['Inspections', 'Defects', 'Certificates', 'Disputes']),
+        ['Inspections', 'Checklists', 'Defects', 'Certificates', 'Disputes']),
     _TabDef('profile', Icons.person_outline,
         ['Profile', 'Device & Sync']),
   ];

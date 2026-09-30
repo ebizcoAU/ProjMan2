@@ -5,14 +5,15 @@ import '../../config/providers.dart';
 import '../../models/domain.dart';
 import '../../services/project_service.dart';
 import '../quality/quality_inspections_view.dart';
+import '../quality/quality_checklists_view.dart';
 import '../quality/quality_defects_view.dart';
 import '../quality/quality_certificates_view.dart';
 import '../quality/disputes_queue_view.dart';
 
 /// Quality — inspections · defects · certificates (P6a, appspec §5.5,
 /// servdesignspec §12). Project-scoped, same pattern as [SiteTab]: pick a job,
-/// then work Inspections · Defects · Certificates (the header cycles the
-/// three via [subPage]). This is the Inspector's only tab (appspec §5.5) —
+/// then work Inspections · Checklists · Defects · Certificates · Disputes
+/// (the header cycles them via [subPage]). This is the Inspector's only tab (appspec §5.5) —
 /// enforcement is by permission (`quality.write`/`quality.validate` via
 /// `PermissionsService`), this shell is just the shared shape.
 class QualityTab extends ConsumerStatefulWidget {
@@ -76,12 +77,14 @@ class _QualityTabState extends ConsumerState<QualityTab> {
   }
 
   Widget _subPage(Project p) {
-    switch (widget.subPage % 4) {
+    switch (widget.subPage % 5) {
       case 1:
-        return QualityDefectsView(project: p);
+        return QualityChecklistsView(project: p);
       case 2:
-        return QualityCertificatesView(project: p);
+        return QualityDefectsView(project: p);
       case 3:
+        return QualityCertificatesView(project: p);
+      case 4:
         return DisputesQueueView(project: p);
       default:
         return QualityInspectionsView(project: p);
