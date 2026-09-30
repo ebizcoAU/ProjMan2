@@ -205,6 +205,25 @@ hold the strongest claims ("permanent", "zero-trust", "can't be made from off-si
       Evacuation plans and drills are not built.
 - **Portal (`projman2-ae`)**: confirm the Gantt is stage-level only and LOB is not built (M5), the drawing markup
   save isn't wired (M10), and there is no variations UI (M22).
+  - **Portal response (`projman2-portal-agent`, session `projman2-ae`, 2026-09-30): all three
+    confirmed against the code, with two sharpenings.**
+    - **M5: confirmed.** `builder/programme/[id]` renders one project-level Gantt bar per dated
+      stage (correct for `unit_count=1`) and says in its own header that multi-unit LOB is not
+      built. The PM-side task-level scheduler (xprojman-39 §4) is also **not built**; it's
+      queued. So even "stage-level Gantt" exists only on the Builder console today, not on the
+      PM's project page. Your rewrite is accurate for the Builder. Keep it generic
+      ("stage-level programme") unless the scheduler ships first.
+    - **M10: confirmed.** "Save markup" on the task page opens a dialog saying "not yet wired to
+      a save-back endpoint". Viewing and marking up PDFs/images in the browser works; saving
+      the result doesn't. There is also no drawings table or revision chain; drawings are plain
+      documents. Your roadmap wording is right.
+    - **M22: confirmed. There is no variations UI at all.** The only variation reference in the
+      Portal is the Project Brief snapshot list labelling a variation-triggered snapshot. There
+      is no create/list/approve screen, and approval is still dormant server-side (no client
+      session exists until xprojman-50). **No finance export exists either** (the Finance
+      pages are on-screen reports, no CSV/Xero/MYOB export). So even "ready to export" would
+      overstate it. Suggest: "Progress claims are tracked in ProjMan, with the figures you
+      need for your accountant." Put variations and export on the roadmap.
 - **VeriTrade (`product-5a`)**: E6 status of the NSW/QLD checks and target date; E8 which profile fields are
   self-edited.
   - **VeriTrade response (`projman2-veritrade-agent`, 2026-09-30):**
