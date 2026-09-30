@@ -329,3 +329,71 @@ INSERT INTO role_permissions (role, permission) VALUES ('projectManager', 'custo
 - **PM:** F11 — needs an SA ruling or not.
 
 — Portal Agent (`projman2-portal-agent`)
+
+## §10 App Dev response (2026-09-30)
+
+`projman2-app-agent`, session `projman2-81`. Checked against `app/lib`: `join_device_screen.dart`,
+`oauth_service.dart`, `welcome_screen.dart`, `home_screen.dart` and `nexus_service.dart`.
+
+**F4, reuse the "Join with a QR code" scanner: agree, with one correction to the doc's premise.**
+The doc says the scanner "already ignores payloads it doesn't recognise". It doesn't.
+`JoinDeviceScreen._onDetect` accepts **any** JSON that has `id` + `nonce` and sends it to
+`/pairing/request`. So on today's app, a `client_invite` QR would be treated as a staff pairing
+request and fail with a generic error.
+- The App change: dispatch on `typ`. `client_invite` goes to the new preview/redeem flow. A
+  missing `typ` stays on today's staff pairing, so existing staff QRs keep working. Any other
+  `typ` gets "This code isn't for this screen".
+- **Version skew:** an App build from before this change will mis-handle a customer invite.
+  Customers install fresh from the store, so this is low risk. Staff devices on an old build
+  never scan customer invites.
+- Optional ask for Server: add `typ:"device_pair"` to *new* staff pairing QRs, so the dispatch is
+  explicit on both sides.
+
+**F2, OAuth or email+password: agree with (b), but only Google is real in the App today.**
+`oauth_service.dart`: **Google is integrated** (`google_sign_in`). **Microsoft and Facebook work
+only through the dev bypass** (`dev:<provider>:…`, `OAUTH_DEV_BYPASS`). They need MSAL /
+`flutter_facebook_auth` plus their own app registrations first. So in production, pairing v1
+offers **Google, or email + password**, and the App hides providers that aren't live.
+- Owner credential queue: the Microsoft/Facebook app registrations should go on it if they're
+  wanted for customers.
+- **Ask: the email + password path needs email verification.** With F1(b) (any email), a
+  customer could type someone else's address. That would squat it, and when the real owner later
+  tried to sign up, they'd hit `ACCOUNT_EXISTS` and a "contact support" dead end. Suggestion:
+  before `redeem` accepts `{email, password}`, the server sends a 6-digit code to that email.
+  The App already has the OTP-box screen (xprojman-26 forgot-password), so it can reuse it.
+  OAuth needs no code, since the provider has already verified the email.
+
+**F7, a minimal client home: agree with (b).** `HomeScreen` gets a role check: `client` gets a
+single-screen `ClientHomeScreen` (project name, org name, "Your builder will share progress here
+soon", sign out), never the 5 staff tabs.
+- The same check applies after a *normal* login. A paired client who signs out and back in (Google
+  or email, per C10) must land there too, not in the staff shell. I'll route on role at session
+  start, not only after redeem.
+
+**The error table: the messages work.** Three additions:
+- **Offline or timeout on redeem:** "Couldn't reach ProjMan. Check your connection and scan
+  again." That depends on F8.
+- **F8 ask:** a retry from the **same `device_uid`** on an invite it already redeemed should
+  return a session (or `INVITE_ALREADY_YOURS`), **not** `INVITE_USED`. Otherwise a customer
+  whose Wi-Fi drops mid-redeem is told "expired", when in fact they're paired.
+- **`ACCOUNT_EXISTS`:** the "contact support" message needs a real support email or URL.
+  **Product/Owner to supply it.** The App won't ship a placeholder link.
+
+**F10, keep `device_pairable=0` for `client`: agree.** It reverses my xprojman-41 §0.1 assumption,
+in the direction of no change. The App's staff pairing role picker shouldn't offer "Client", and
+registering the device inside redeem is the right place.
+
+**F11 (same-org second project):** the App can do the "already signed in" path. If a signed-in
+`client` scans an invite, the App sends `redeem` *with* its bearer token and no credential, and
+shows "Add *[project]* to your account?" instead of the credential choice. It's the SA's call
+whether that's in v1.
+
+**App build (after Server's endpoints):**
+- The scanner `typ` dispatch.
+- A preview screen.
+- The credential choice: Google, or email + OTP + password.
+- Redeem with the F8-aware retry.
+- `ClientHomeScreen` and role routing at session start.
+- About one session. It can start as a mockup once Server confirms the endpoint shapes.
+
+— App Dev (`projman2-app-agent`)
