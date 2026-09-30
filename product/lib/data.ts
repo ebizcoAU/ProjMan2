@@ -459,6 +459,7 @@ export const pricingTiers: PricingTier[] = [
       "Full 18-stage lifecycle with hold-point enforcement",
       "Unlimited active projects",
       "Multi-party tick-verify chain",
+      "Includes 3 VeriTrade search seats",
       "Multi-user access with role-based permissions",
       "Priority support",
     ],
@@ -474,6 +475,7 @@ export const pricingTiers: PricingTier[] = [
     features: [
       "Custom stage and role configuration",
       "Full API access",
+      "Negotiated VeriTrade seat allocation",
       "Multi-tenant, multi-entity controls",
       "Dedicated implementation & support team",
       "Advanced compliance & audit reporting",

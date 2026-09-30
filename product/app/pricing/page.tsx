@@ -19,7 +19,7 @@ const faqItems = [
   },
   {
     q: "How does VeriTrade pricing work?",
-    a: "VeriTrade is free forever for tradespeople and workers on the supply side. Builders and recruiters on the demand side pay for search and direct engagement.",
+    a: "VeriTrade is free forever for tradespeople and workers on the supply side. Builders and recruiters pay for search and direct engagement through search seats. Professional includes 3 VeriTrade search seats for your organisation, Enterprise seat allocations are negotiated, and firms not on ProjMan can buy standalone seats. Contact us for details.",
   },
   {
     q: "Can I switch plans later?",

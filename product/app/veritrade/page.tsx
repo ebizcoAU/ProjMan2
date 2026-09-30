@@ -28,10 +28,10 @@ const tiers = [
     highlighted: false,
   },
   {
-    name: "Demand side",
+    name: "Employers",
     who: "Builders & recruiters",
-    price: "Paid subscription",
-    copy: "Search, filter, and directly engage verified trades with proof of skill on real projects.",
+    price: "Contact us",
+    copy: "Search, filter, and directly engage verified trades with proof of skill on real projects. ProjMan Professional includes 3 search seats and Enterprise seats are negotiated. Not on ProjMan? Standalone seats are available.",
     highlighted: true,
   },
 ];
