@@ -183,7 +183,74 @@ received by message and recorded here by the VeriTrade Dev (Server's doc edits w
 `server/veritrade/` as long as the new fields are additive (§6). Contract §3 is agreed between Server
 and VeriTrade; it still needs App's response and the Owner's G1/F3/F4.
 
-*(App response goes here.)*
+**§7.3 App Dev response (`projman2-app-agent`, session `projman2-81`, 2026-09-30)**
+
+I checked this against `app/lib`, `appdesignspecification.md` §4.3/§4.4, xprojman-47 C.2, and
+`server/api/src/sync/registry.js` and `DocumentService.js`.
+
+**Does the form fit the credentials screens? Yes. It is the first slice of them, because there are
+none yet.** The app has no credential UI today (appspec §4.4 "Profile → My Tickets": ❌ not built).
+I'll build My Tickets as the generic credentials list, and declaring a licence is one type in it.
+The White Card (xprojman-48 §6) and insurances (§4.3) use the same store and the same screen later.
+Form: type = Licence → state (all 8, NSW first) → licence number → optional expiry → optional card
+photo.
+- **`declared_status`: the app won't ask for it** and sends NULL. A holder saying their own licence
+  is "current" adds nothing next to the register check, and it invites confusion with the badge.
+  Keep the column for other types (e.g. an insurance the holder uploads) if Server wants it.
+- **Other states:** the row is still saved and shows "Automatic check not available for {state}
+  yet" (`not_available`). It's never shown as an error.
+- **Card photo:** it goes through the offline document queue with a new
+  `DocumentService.ENTITY_TYPES` entry, `credential`, keyed by the credential's id and with no
+  `project_id`. `upload()` already treats `projectId` as optional, so this is a one-line Server
+  add. As §3.1 says, it's never used as proof.
+
+**Offline and sync fit: yes, with one registry gap.**
+- The holder can declare offline. The row is created locally, then pushed. Until the server's
+  `pending` comes back on pull, the app shows "Waiting to check with the NSW register". The app
+  never pushes any §3.2 column, and it displays whatever the pull returns.
+- **The registry gap, for Server:** `selfColumn` is documented as working only **with
+  `projectColumn`** (`registry.js`: "with projectColumn, the row-owner column for `self` scope").
+  `credentials` has no project; it's identity-scoped and portable across Builders (appspec §4.4).
+  So "pulls only their own (`selfColumn subject_user_id`)" needs a **project-less self scope**
+  that the registry doesn't have today. Please confirm that's in the Server estimate, and also
+  what `org_id` means on a row that should follow the person, not the org.
+- **Edits and quota (R5):** the app pushes only on an explicit Save, never per keystroke. Changing
+  the number resets the local badge to "Waiting to check". After a 6th re-check in a day, the app
+  shows "Too many changes today, we'll check tomorrow" if the server tells it so. Please give it a
+  stable code, e.g. `CHECK_RATE_LIMITED`, or have `last_check_outcome` carry it.
+- **Getting the result:** the app has no OS push notifications (xprojman-48 §8), so the holder
+  sees the result on their next pull (app open or pull-to-refresh), not as an alert. That's fine
+  for "within minutes".
+
+**Holder view (P5).** The app maps each status to what the holder sees:
+- `verified`: "Verified on the NSW register · checked {date}".
+- `pending` / stale per R3: "Check pending".
+- `expired` / `cancelled` / `suspended`: "The NSW register shows this licence as not current". The
+  holder may see the register's reason, since it's their own record (spec §8, "no hidden dossier").
+- `not_found`: "No NSW licence found with that number. Check the number".
+- `name_mismatch`: "The name on this licence doesn't match your profile name".
+- `duplicate_claim`: "This licence is already verified on another account. We'll review it".
+- `last_check_outcome = error / quota`: the holder keeps the last status and its date, and is never
+  shown an error.
+
+**⚠ F2(a) can be beaten from the app. Flag for the Owner/SA with F2.** The name check compares with
+`users.full_name`, which the holder can edit, and R5 re-runs the check when `full_name` changes. So
+this sequence works: type someone else's number → get `name_mismatch` → change your profile name to
+theirs → get `verified`. It's worse if the mismatch message shows the register's name, which also
+gives out another person's name. The app side of the mitigation:
+- (1) **The app will never show the register's licensee name** on a mismatch. Please make sure no
+  API response carries it to the holder.
+- (2) **Suggested server rule:** if a credential only reaches `verified` after a `full_name` change
+  made *after* its `name_mismatch`, it goes to `staff_check` instead of auto-verifying. Or freeze
+  `full_name` edits while any credential is verified.
+
+Either way, the badge claim stays "Licence verified", never identity, as §4 F2 already says.
+
+**F1, F3(a), F4, F5: agree**, with F3/F4 for the Owner. **Build:** App builds My Tickets
+mockup-first once the `credentials` contract is signed off. Nothing for the app is blocked by G1
+except live results.
+
+— App Dev (`projman2-app-agent`)
 
 ## Owner ruling
 
