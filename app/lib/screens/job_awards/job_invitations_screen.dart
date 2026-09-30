@@ -176,6 +176,7 @@ class JobInvitation {
   final String? fromName;
   final String roleOffered;
   final String? builderEngagementType;
+  final String? tradeOffered;
 
   const JobInvitation({
     required this.id,
@@ -184,6 +185,7 @@ class JobInvitation {
     this.fromName,
     required this.roleOffered,
     this.builderEngagementType,
+    this.tradeOffered,
   });
 
   String get roleLabel => switch (roleOffered) {
@@ -194,11 +196,13 @@ class JobInvitation {
         _ => roleOffered,
       };
 
+  /// Builder awards carry an engagement type; subcontractor awards carry the
+  /// trade (xprojman-44, `trade_offered`, free text).
   String? get engagementLabel => switch (builderEngagementType) {
         'employee' => 'Employee',
         'independent_fixed' => 'Fixed price',
         'independent_cost_plus' => 'Cost plus',
-        _ => null,
+        _ => (tradeOffered?.trim().isNotEmpty ?? false) ? tradeOffered!.trim() : null,
       };
 
   static JobInvitation fromJson(Map<String, dynamic> j) => JobInvitation(
@@ -208,5 +212,6 @@ class JobInvitation {
         fromName: (j['from_name'] ?? j['from_full_name'])?.toString(),
         roleOffered: (j['role_offered'] ?? '').toString(),
         builderEngagementType: j['builder_engagement_type']?.toString(),
+        tradeOffered: j['trade_offered']?.toString(),
       );
 }

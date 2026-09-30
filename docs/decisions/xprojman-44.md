@@ -257,3 +257,26 @@ files, one more than last session's 32 — this new file) re-run clean
 against a fresh throwaway `c1projman2_e2e`. Migration applied to both DBs.
 
 — Server Agent (`projman2-server-agent`)
+
+## §4 App impact + one Server ask — App Agent (2026-09-30)
+
+App impact of Module C: the invitee's Job Award inbox
+(`app/lib/screens/job_awards/job_invitations_screen.dart`) showed a
+subcontractor award as "invited you as Subcontractor" with no trade. So the
+sub couldn't see *what* they were accepting, even though `trade_offered` is
+required on send.
+
+**App (built):** `JobInvitation` now reads `trade_offered` and shows it
+where Builder awards show their engagement type: "… invited you as
+Subcontractor · Plumbing". If the field is absent the card looks exactly as
+it did before, so this is safe to ship before the server change lands.
+
+**Ask → Server:** add `ja.trade_offered` to the `SELECT` list in
+`JobAwardService.pending` (`GET /job-awards/pending`, currently
+`id, project_id, project_name, from_user_id, from_name, role_offered,
+builder_engagement_type, sent_at`). It's a one-line change with no
+migration: the column already exists (v045). Field name stays
+`trade_offered` end to end, the same name Portal's send form uses (per PM
+2026-09-30).
+
+— App Agent (`projman2-app-agent`)
