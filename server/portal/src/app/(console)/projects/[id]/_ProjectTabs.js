@@ -7,6 +7,7 @@ export function ProjectTabs({ id, seesMoney }) {
   const path = usePathname();
   const tabs = [
     { href: `/projects/${id}`, label: 'Programme', exact: true },
+    { href: `/projects/${id}/schedule`, label: 'Schedule' },
     ...(seesMoney ? [{ href: `/projects/${id}/cost-plan`, label: 'Cost Plan' }] : []),
     ...(seesMoney ? [{ href: `/projects/${id}/claims`, label: 'Claims' }] : []),
     { href: `/projects/${id}/quality`, label: 'Quality' },

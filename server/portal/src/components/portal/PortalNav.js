@@ -67,7 +67,7 @@ export const CONSOLE_NAV = [
       { k: 'customers', href: '/projects', label: 'Customers', mock: true,
         tooltip: 'Coming: customer list and contacts (API is live at /customers)' },
       { k: 'programme', href: '/projects', label: 'Programme', mock: true,
-        tooltip: 'Coming: Gantt view of stages and tasks' },
+        tooltip: 'Per project for now: open a project, then its Schedule tab (Gantt). A cross-project view is coming.' },
     ],
   },
   {
