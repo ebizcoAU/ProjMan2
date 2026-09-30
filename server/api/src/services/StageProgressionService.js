@@ -20,6 +20,8 @@ const ComplianceService = require('./ComplianceService');
 const HoldPointService = require('./HoldPointService');
 
 const STATUSES = ['not_started', 'in_progress', 'blocked', 'complete', 'skipped'];
+// S9.10 — the first stage that needs a Builder attached (xprojman-45 Option B).
+const BUILDER_GATE_FROM_SEQ = 10;
 
 /** Load a stage in the caller's org, or 404 (non-disclosure — same as elsewhere). */
 async function loadStage(orgId, projectId, stageId) {
@@ -75,6 +77,25 @@ async function checkTransition({ actor, stage, toStatus }) {
     if (prev && prev.is_hold_point && !prev.is_validated) {
       throw new ServiceError('STAGE_GATE_PREV',
         'The previous stage is a hold point and must be validated before this one can start', 409);
+    }
+  }
+
+  // 2b. Builder gate (xprojman-45 Option B, SA ruling 2026-09-30) — S9.10: the
+  //     Builder's stages (seq >= 10) cannot START or COMPLETE until the project has
+  //     an accepted builder Job Award. Only a transition OUT of not_started/blocked
+  //     is gated, so rows that were already under way before this rule are left alone.
+  if ((toStatus === 'in_progress' || toStatus === 'complete')
+      && stage.seq >= BUILDER_GATE_FROM_SEQ
+      && stage.status !== 'in_progress' && stage.status !== 'complete') {
+    const [[award]] = await pool.query(
+      `SELECT 1 FROM job_awards
+        WHERE project_id = ? AND org_id = ? AND role_offered = 'builder' AND status = 'accepted'
+        LIMIT 1`,
+      [stage.project_id, actor.orgId]
+    );
+    if (!award) {
+      throw new ServiceError('BUILDER_NOT_ATTACHED',
+        'Stages 10–18 cannot start until a Builder has accepted the Job Award (S9.7)', 409);
     }
   }
 

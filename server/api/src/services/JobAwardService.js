@@ -112,6 +112,15 @@ async function respond({ orgId, projectId, jobAwardId, actor, accept, surface })
 
   if (accept) {
     await MembershipService.addMember({ orgId, projectId, userId: actor.userId, addedBy: award.from_user_id });
+    // S9.10 activation (xprojman-45 Option B): the first accepted builder award is when
+    // the programme goes live. First one wins; StageProgressionService gates on the award.
+    if (award.role_offered === 'builder') {
+      await pool.query(
+        `UPDATE projects SET programme_activated_at = COALESCE(programme_activated_at, NOW())
+          WHERE id = ? AND org_id = ?`,
+        [projectId, orgId]
+      );
+    }
     // xprojman-44 Module C: the actual writer subcontractor_engagements (migration_v014)
     // never had. Consent defaults FALSE per that table's own column default — never
     // auto-true just because the award was accepted.

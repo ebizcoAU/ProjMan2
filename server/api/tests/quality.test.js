@@ -72,6 +72,18 @@ async function pull(tok, table) {
   const projId = proj.json.data.id;
   await call('POST', `/projects/${projId}/programme`, { template_id: wa18.id }, pm);
 
+  // xprojman-45 Option B (v046): Stages 10–18 can't start until a Builder has accepted
+  // the Job Award. Attach one up front so this suite exercises its own gates, not that one.
+  await call('POST', '/organisation/users', {
+    email: `gate-bob${s}@x.com`, full_name: 'Gate Builder', role: 'builder', password: 'hunter2hunter2',
+  }, pm);
+  const gateBuilderTok = (await call('POST', '/auth/login', { email: `gate-bob${s}@x.com`, password: 'hunter2hunter2' })).json.data.accessToken;
+  const gateIntro = await call('POST', '/introductions/code', {}, gateBuilderTok);
+  const gateBuilderUser = (await call('POST', '/introductions/scan', { code: gateIntro.json.data.code }, pm)).json.data.contact.user_id;
+  const gateAward = await call('POST', `/projects/${projId}/job-awards`,
+    { to_user_id: gateBuilderUser, role_offered: 'builder', builder_engagement_type: 'independent_fixed' }, pm);
+  await call('POST', `/projects/${projId}/job-awards/${gateAward.json.data.id}/respond`, { accept: true }, gateBuilderTok);
+
   const detail = await call('GET', `/projects/${projId}`, undefined, pm);
   const stages = detail.json.data.stages;
   const bySeq = (n) => stages.find((st) => st.seq === n);

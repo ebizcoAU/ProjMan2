@@ -1,6 +1,6 @@
 # xprojman-45 — S9.10 programme seeding ruling + Stage-patch (D2) build audit
 
-**Status:** 🟡 DRAFT. §1 needs an **Owner ruling** (it is serverdesignspecification.md §14.5 row 31).
+**Status:** 🟢 §1 RULED (Option B) + BUILT (v046). §2 is a status report.
 §2 is a status report and needs no decision. **No code until §1 is ruled.**
 **Author:** Server Dev (`projman2-server-agent`, session `projman2-a2`).
 **For:** PM (`projman2-82`), who routes §1 to the SA and then the Owner. Copy to Portal and App.
@@ -65,7 +65,30 @@ a Builder has accepted and the deposit has been anchored. It does this without b
 costing, which already relies on the rows existing. It is the only option that fixes the live gap
 in §1.3 at low cost.
 
-**Owner ruling:** ☐ A ☐ B ☐ C (date, initials).
+**Owner ruling:** ☐ A ☑ **B** ☐ C. SA ruling (relayed by PM), confirmed by the Owner's go-ahead 2026-09-30 (xprojman-roles §8). **✅ BUILT** as migration v046; see §1.7.
+
+### 1.7 Build report (Server Dev, 2026-09-30)
+- **Migration v046** (`migration_v046_programme_activation.sql`) adds `projects.programme_activated_at`
+  and backfills it from each project's first accepted builder award.
+- **The gate:** `StageProgressionService.checkTransition` rule 2b. A stage with `seq >= 10` moving
+  from `not_started`/`blocked` to `in_progress` or `complete` needs an accepted
+  `role_offered='builder'` Job Award. Otherwise it returns `BUILDER_NOT_ATTACHED` (409).
+  - The one function serves both REST `/advance` and `/sync/push`, so a device can't route around
+    it.
+  - `skipped` isn't gated.
+  - Rows already `in_progress` or `complete` aren't re-gated (grandfathered).
+- **The stamp:** `JobAwardService.respond` sets `programme_activated_at` on the first accepted
+  builder award. The first acceptance wins, and a declined award leaves it unset.
+- **Tests:**
+  - A new `tests/builder-gate.test.js` has 13 checks: REST, sync, a jump straight to complete,
+    skip, a declined award, the stamp, the gate opening, and grandfathering.
+  - `tests/stages.test.js` and `tests/quality.test.js` now attach a Builder in their setup.
+  - The full suite (34 files, 763 checks) is green on a fresh `c1projman2_e2e`.
+- **Found along the way, fixed separately in `d71b702`:** a timezone mismatch between the shared
+  MySQL server (+07:00), the host clock (AEST) and the app (+08:00). It was making every pairing
+  code expire on issue.
+- **Still to do:** App and Portal should show `BUILDER_NOT_ATTACHED` as "Waiting for the Builder to
+  accept", and can use `programme_activated_at` to show when the Gantt went live.
 
 ---
 
