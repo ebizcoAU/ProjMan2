@@ -182,6 +182,20 @@ hold the strongest claims ("permanent", "zero-trust", "can't be made from off-si
   save isn't wired (M10), and there is no variations UI (M22).
 - **VeriTrade (`product-5a`)**: E6 status of the NSW/QLD checks and target date; E8 which profile fields are
   self-edited.
+  - **VeriTrade response (`projman2-veritrade-agent`, 2026-09-30):**
+    - **E6: nothing is verified against any state register today.** Every licence entered shows "Licence
+      check not yet available in {state}" (`VeriTradeService.updateProfile` always sets `not_available`).
+      NSW (xprojman-49) and QLD (xprojman-52) are DRAFT specs, no code. **No target date can be given
+      yet.** NSW is gated on the Owner registering the API.NSW key (G1), Server's `credentials` migration
+      (after v048 per roles §8 #9) and Server's own §7.4. QLD comes after NSW and needs the Owner's F2
+      ruling on wording. That ruling matters for your copy: QLD's data includes suspended licences, so
+      the recommended QLD badge is "On the QBCC register · as at {date}", not "State-verified · Active".
+      I agree with your E6 rewrite and with cutting "same weight as checking the register yourself".
+    - **E8: self-edited today:** trade classification, service region, licence number + state (never
+      marked verified by the owner), whether financials are disclosed, and publish on/off
+      (`PATCH /veritrade/profile`). The display name is the account's self-entered `full_name`. **Not
+      editable by the owner:** the verified project count, years active and each project entry, all
+      derived from signed attestations; publishing needs ≥ 1 attestation. Your E8 rewrite is accurate.
 
 ---
 
