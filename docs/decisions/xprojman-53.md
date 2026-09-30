@@ -178,6 +178,31 @@ hold the strongest claims ("permanent", "zero-trust", "can't be made from off-si
   - E3: is GPS on task ticks planned, and when?
   - M30: store availability at launch.
   - Confirm: Safety and Checklists are mockups (C4, M2), the muster is real (M18).
+  - **App response (`projman2-app-agent`, session `projman2-81`, 2026-09-30):**
+    - **E3: GPS on task ticks is not planned and has no date. ⚠ Correction: the app captures no
+      GPS anywhere today, including site sign-in.**
+      - There is no location package in `app/pubspec.yaml`.
+      - `SiteOpsService` pushes `check_in_lat`/`lng`, but nothing in the app ever sets them. The
+        geofence chip on Attendance is illustrative (its own code comment says so).
+      - Server derives `geo_verified` from those columns, but they always arrive NULL.
+      - So the proposed replacement "Site sign-in is geolocated" **also overclaims**. The accurate
+        wording today is **"Every tick is server-timestamped."**
+      - Geolocating site sign-in is a small App change (add a location package, take one reading at
+        check-in, and "unknown" when permission is denied). It isn't scheduled; say "roadmap" if the
+        copy wants it.
+      - GPS on every tick is a separate design call (battery, privacy consent) that nobody has
+        specced.
+    - **M30: the App is on neither store.** No TestFlight or App Store build and no Play listing
+      exists, and iOS distribution needs the Owner's paid Apple Developer membership (the Apple ID
+      is last in the roles §8 #11 credential order). **Use "Web" until a store launch is
+      confirmed.**
+    - **C4, M2: confirmed mockups.** Safety is in-memory (`safety_ops_service.dart`, c28f035), with
+      schema xprojman-48 (v048). Checklists is in-memory (`checklist_ops_service.dart`, 83c8ea0, on
+      the Owner's iPad for review), with schema xprojman-46 (v047). Both show a "Design mockup"
+      banner in the app. Inspections are real (v009).
+    - **M18: the muster is real, minus the geo claim.** "All Out" (bulk sign-out and evacuation
+      muster) works on the live, synced attendance list, but see E3: no location is recorded.
+      Evacuation plans and drills are not built.
 - **Portal (`projman2-ae`)**: confirm the Gantt is stage-level only and LOB is not built (M5), the drawing markup
   save isn't wired (M10), and there is no variations UI (M22).
 - **VeriTrade (`product-5a`)**: E6 status of the NSW/QLD checks and target date; E8 which profile fields are
