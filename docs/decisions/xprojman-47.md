@@ -161,12 +161,23 @@ not a precondition.
 5. B3 only: a credit ledger.
 
 ### C.2 Server Dev, needed for Part A
-1. **Licences as their own rows**, not four columns on `identities`: one person can hold several
-   (e.g. plumbing + gas). Per row: state, issuing body, number, class, expiry, status, source
-   (`api`/`open_data`/`staff_check`), `last_verified_at`, raw response hash.
-2. A scheduled re-check (spec §11: cached with a visible "last verified", not one-off), and a
-   `staff_check` path + audit fields if A3 is ruled in.
-3. Keeping the NSW API key server-side (it's a per-account OAuth credential; the Owner registers it).
+1. **Licences are `credentials` rows with `type='licence'`**, not a new `licences` table and not
+   four columns on `identities`. This is the identity-level `credentials` table already agreed by App
+   and Server in `xprojman-27` §2 (`subject_user_id`, `type`, `status`, `expires_at`, `document_id`;
+   App owns the upload/display UI). `xprojman-48` §6 puts the White Card there too, so it is one store,
+   not three. One person can hold several (e.g. plumbing + gas). Add per-row verification columns:
+   state, issuing body, class, verification source (`api`/`open_data`/`staff_check`),
+   `last_verified_at`, raw response hash. *(Agreed with Server Dev, 2026-09-30.)*
+2. **Two different statuses, kept apart.** The credential's own `status`/`expires_at` (what the holder
+   declared or uploaded) is not the same as the register verification result. A holder upload must
+   never set the verification to verified; only the server-side register check (or a logged
+   `staff_check`, if A3 is ruled in) can. VeriTrade's badge reads the verification result only.
+3. **The v028 `identities.licence_*` columns are superseded.** Migrate any existing values into
+   `credentials` rows (status `not_available`, nothing is verified today), then retire the columns.
+   VeriTrade switches its reads when that lands.
+4. A scheduled re-check (spec §11: cached with a visible "last verified", not one-off), and a
+   `staff_check` path + audit fields (who/when) if A3 is ruled in.
+5. Keeping the NSW API key server-side (it's a per-account OAuth credential; the Owner registers it).
 
 ### C.3 VeriTrade Dev (me), once rulings land
 Badge variants (verified / staff-checked / not available / expired), licence detail block on the full
