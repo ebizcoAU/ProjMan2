@@ -1,7 +1,7 @@
 # xprojman-49 — NSW licence check: NSW Trades API → `credentials` rows (xprojman-47 A3, step 1)
 
-**Status:** 🟡 DRAFT: spec before code. Five forks (§4), each with a recommendation. Needs Server's
-response on the contract (§3) and an Owner call on F3/F4. **No code until the `credentials` contract is
+**Status:** 🟡 DRAFT: spec before code. Five forks (§4), each with a recommendation. §3 contract **agreed
+with Server** (§7.1). Still needs App's response and the Owner's G1/F3/F4. **No code until the `credentials` contract is
 confirmed** (PM, 2026-09-30).
 **Author:** VeriTrade Dev (`projman2-veritrade-agent`) · **For:** Server Dev (`projman2-server-agent`,
 builds the check + table) · App Dev (declare-licence UI, `credentials` is App-owned per xprojman-27) ·
@@ -56,23 +56,23 @@ in §3.4 is provisional until then.
 ## 3. Contract (the part Server needs to confirm)
 
 ### 3.1 Inputs (holder-writable, `credentials` row, `type='licence'`)
-`subject_user_id`, `state='NSW'`, `licence_number` (as typed; server normalises: trim, upper-case,
-strip spaces), optional `declared_expiry`, `declared_status`, `document_id` (card photo, optional,
+`subject_user_id`, `state='NSW'`, `licence_number` (stored as typed, plus a server-derived
+`licence_number_norm`: trim, upper-case, strip spaces; matching uses the normalised one), optional `declared_expiry`, `declared_status`, `document_id` (card photo, optional,
 never used as proof).
 
 ### 3.2 Outputs (server-only, protected; never writable by sync or the holder, per xprojman-47 C.2.2)
 
 | Column | Meaning |
 |---|---|
-| `verification_status` | `pending` · `verified` · `name_mismatch` · `not_found` · `expired` · `cancelled` · `suspended` · `error` · `not_available` |
+| `verification_status` | Last **known** register result only: `pending` (NSW, not yet checked) · `verified` · `name_mismatch` · `not_found` · `expired` · `cancelled` · `suspended` · `duplicate_claim` · `not_available` (no integration for that state). Never `error` |
 | `verification_source` | `api` (here) · `open_data` · `staff_check` |
 | `verified_at` | last successful register read |
 | `register_ref` | the OneGov `licenceID` (so re-checks can call Details without re-matching) |
 | `issuing_body` | from `licensingAgency.name` |
 | `licence_class` | class/category text from the register (not the holder's) |
 | `register_expiry` | `expiryDate` from the register |
-| `response_hash` | SHA-256 of the raw response, for audit; **raw response not stored** (§4 F4) |
-| `last_error` | for `error` only |
+| `response_hash` | SHA-256 of the raw response; **raw response not stored** (§4 F4). Without the payload it only proves "unchanged since", nothing more |
+| `last_checked_at` · `last_check_outcome` (`ok`/`error`/`quota`) · `last_error` | the latest attempt, kept apart from the result, so a failed call never overwrites a known status |
 
 ### 3.3 Match rule (P2)
 1. `verify?licenceNumber=` → 0 results ⇒ `not_found`.
@@ -80,7 +80,10 @@ never used as proof).
 3. **Name check** against `users.full_name` (§4 F2): normalise both (case, punctuation, whitespace,
    collapse middle names to initials); pass if surname matches and first given name or initial matches.
    Fail ⇒ `name_mismatch`, not `verified`.
-4. Map `status` (§3.4). Store `register_ref`, class, expiry, issuing body, hash.
+4. **Duplicate claim:** if another holder already has this `register_ref` as `verified`, set
+   `duplicate_claim` (holder-only; resolved by a `staff_check`). Checked at write time, not a unique key,
+   because history rows repeat refs.
+5. Map `status` (§3.4). Store `register_ref`, class, expiry, issuing body, hash.
 
 ### 3.4 Status map (provisional until G1)
 | Register says | `verification_status` | VeriTrade badge |
@@ -91,7 +94,8 @@ never used as proof).
 | Cancelled / refused | `cancelled` | "Licence not current" |
 | No match | `not_found` | none shown publicly; holder told |
 | Name mismatch | `name_mismatch` | none shown publicly; holder told |
-| API error / quota | `error` (keep previous status and `verified_at`) | previous badge, with its date |
+| Duplicate claim | `duplicate_claim` | none shown publicly; holder told, staff resolve |
+| API error / quota | status unchanged; `last_check_outcome` = `error`/`quota` | previous badge, with its date (R3 staleness still applies) |
 
 "Licence not current" states the register's fact without a reason. Only `verified` is a positive
 badge. `not_found`/`name_mismatch` are shown to the holder only, because they are most likely typos,
@@ -128,31 +132,56 @@ and spec §8 keeps contested things off the public profile.
 | # | Parameter | Proposed | Why |
 |---|---|---|---|
 | R1 | Re-check interval | every 30 days, plus the day after `register_expiry` | Status can change (suspension) between expiry dates |
-| R2 | Budget | 2,500/month free tier ⇒ ~2,000 licences at 1 check/month with 20% headroom | Above that, Premium (Owner: spend) |
+| R2 | Budget | 2,500/month free tier ⇒ ~2,000 licences at 1 check/month. **Hard stop at 90%**; P2 first checks take priority over P3 re-checks | Above that, Premium (Owner: spend) |
 | R3 | Staleness | badge dated "checked {date}"; if `verified_at` > 45 days old, drop to "Licence check pending" | A stale positive is worse than none |
 | R4 | Retry | on `error`: backoff 5 min / 1 h / 24 h, then leave for R1 | Don't burn quota on an outage |
-| R5 | Holder edits | editing number or name re-runs P2; max 5 checks per licence per day | Stops quota drain by retyping |
+| R5 | Holder edits | editing the licence number **or `users.full_name`** re-runs P2; max 5 checks per licence per day | Stops quota drain by retyping |
+| R7 | Call log | `licence_check_log` (credential_id, called_at, endpoint, http_status, outcome); no payload | One table drives R2, R4, R5 and the audit trail |
 | R6 | Token | cached server-side until ~30 min before expiry; key + secret in server env only, never in any frontend | Credential |
 
 ---
 
 ## 6. Who builds what (after sign-off)
 
-- **Server:** `credentials` schema with §3.2 columns (xprojman-47 C.2), migration of the one live
-  `identities.licence_*` row, the check job (P2/P3), token handling, status map, a read endpoint
-  exposing only the verification side to VeriTrade.
+- **Server:** `credentials` schema with §3.2 columns (xprojman-47 C.2) + `licence_check_log`,
+  migration of the one live `identities.licence_*` row, **a new in-process sweeper** (no job scheduler
+  exists in `server/api` today; rows claimed atomically so it's safe under PM2 cluster mode), token
+  handling, status map, the `full_name` change hook (R5), and switching `VeriTradeService` (Server's
+  lane) from `identities.licence_*` to `credentials`, keeping the response shape.
 - **App:** declare-licence form (state + number), holder view of the result including
   `not_found`/`name_mismatch` with a "check the number" prompt.
-- **VeriTrade (me):** switch reads from `identities.licence_*` to the new endpoint, render §3.4 badges,
-  the licence block on the full profile (spec §5.2), the licence-state filter on real data. Then I
-  confirm to Server so it can drop the old columns.
+- **VeriTrade (me), `server/veritrade/` only:** render the §3.4 badge states, the licence block on the
+  full profile (spec §5.2), the licence-state filter on real data. Then I confirm to Server so it can
+  drop the old columns. Response shape: today's `licence: {status, state, number}` stays; Server adds
+  `verifiedAt`, `licenceClass`, `registerExpiry`, `issuingBody` as **additive** fields; `status` gains the
+  new values. Public/teaser views receive only the three badge outcomes (verified / not current /
+  none), never `name_mismatch`, `not_found` or `duplicate_claim`.
 - **Owner:** register API.NSW (G1), rule F3 and F4.
 
 ---
 
 ## 7. Responses
 
-*(Server response goes here.)*
+**§7.1 Server response (Server Dev, `projman2-server-agent`, session `projman2-a2`, 2026-09-30)**,
+received by message and recorded here by the VeriTrade Dev (Server's doc edits were paused at the time):
+
+- **Agree:** F1, F2(a) (badge says "Licence verified", never "identity"), F5, and F3(a)/F4 as the
+  recommendations to the Owner; §3.1, R1, R3, R6, and §3.4 except the error row.
+- **Contract changes, all folded into §3/§5/§6 above:** (1) error kept out of `verification_status`,
+  replaced by `last_checked_at`/`last_check_outcome`/`last_error`; (2) `licence_check_log` (R7), with R2
+  as a 90% hard stop that puts first checks before re-checks; (3) `duplicate_claim` status, checked at
+  write time; (4) a `users.full_name` change also re-runs P2; (5) `licence_number_norm`; (6) keep both
+  `pending` and `not_available`; (7) `response_hash` only proves "unchanged".
+- **Server-side scope:** a new in-process sweeper with atomic row claims (new infra, in Server's
+  estimate); `VeriTradeService` licence reads/writes are Server's lane and move to `credentials` with a
+  stable response shape.
+- **Sync:** `credentials` rows are identity-scoped. The holder pulls only their own
+  (`selfColumn subject_user_id`); verification columns are PROTECTED in the registry.
+- Nothing is built until G1, F3 and F4 are ruled and the `credentials` schema is signed off.
+
+**§7.2 VeriTrade Dev reply (2026-09-30):** all seven changes accepted. The response shape works for
+`server/veritrade/` as long as the new fields are additive (§6). Contract §3 is agreed between Server
+and VeriTrade; it still needs App's response and the Owner's G1/F3/F4.
 
 *(App response goes here.)*
 
