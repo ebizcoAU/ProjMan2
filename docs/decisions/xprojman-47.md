@@ -1,6 +1,7 @@
 # xprojman-47 — VeriTrade: licence-verification state order + B2B billing model (for Owner ruling)
 
-**Status:** 📝 DRAFT, complete, awaiting Owner (routed by PM → SA → Owner). Part D answered by Product 2026-09-30. Nothing built. Doc only.
+**Status:** 🟢 RULED 2026-09-30 (A3, B2 + seat terms Owner-approved; see Owner ruling). Two minor items
+still open: the WA staff-checked badge and who sends the VIC/WA data requests. Previously: DRAFT, complete, awaiting Owner (routed by PM → SA → Owner). Part D answered by Product 2026-09-30. Nothing built. Doc only.
 **Author:** VeriTrade Dev (`projman2-veritrade-agent`) · **Requested by:** PM (2026-09-30).
 **For:** Owner (both rulings) · SA (review) · Server Dev (§C asks) · Product Manager (§B consistency check, §D).
 **Date:** 2026-09-30.
@@ -240,15 +241,17 @@ copy in `product/lib/data.ts` (pricingTiers), `product/app/veritrade/page.tsx` (
 **Part A (state order):** ☑ **A3** (SA ruling relayed by PM, 2026-09-30).
 
 **Part B (billing model):** ☑ **B2** (SA ruling relayed by PM, 2026-09-30). Publishing stays free.
-*Owner confirmation outstanding:* `xprojman-roles.md` §4 puts pricing with the Owner, so B2 stands as
-the SA's recommendation until the Owner signs off here. Owner: ______ (date) ______
+☑ **Owner-approved, 2026-09-30** (`xprojman-roles.md` §8 #6).
 
 **WA staff-checked badge (A3) acceptable?** _(pending)_
 
 **Who sends the BPC / Building and Energy data requests:** _(pending)_
 
-**If B2: seats included in Professional (a concrete N, or no number printed):** _(pending)_
+**If B2: seats included in Professional (a concrete N, or no number printed):** ☑ **3** included in
+Professional; Enterprise negotiated. Public copy: "includes 3 VeriTrade search seats". **No prices
+yet.** (Owner-approved, 2026-09-30, `xprojman-roles.md` §8 #6.)
 
-**If B2: are seats per user or a per-org pool?** (Professional is priced per user / month; see D.3) _(pending)_
+**If B2: are seats per user or a per-org pool?** (Professional is priced per user / month; see D.3)
+☑ **Per-org pool** (Owner-approved, 2026-09-30, `xprojman-roles.md` §8 #6).
 
 **OK to change the live Professional-tier line now, before the Part B ruling (D.1 interim wording)?** ☑ **Yes** (SA ruling relayed by PM, 2026-09-30). Use the minimal fix: delete data.ts:462 and trim the :457 description. Make no new claim.

@@ -1,6 +1,7 @@
 # xprojman-49 — NSW licence check: NSW Trades API → `credentials` rows (xprojman-47 A3, step 1)
 
-**Status:** 🟡 DRAFT: spec before code. Five forks (§4), each with a recommendation. §3 contract **agreed
+**Status:** 🟡 DRAFT: Owner rulings G1/F2/F3/F4 recorded 2026-09-30. **Becomes FINAL once Server writes its
+own §7.4** (reply to App §7.3), per the Owner. Spec before code. Five forks (§4), each with a recommendation. §3 contract **agreed
 with Server** (§7.1). Still needs App's response and the Owner's G1/F3/F4. **No code until the `credentials` contract is
 confirmed** (PM, 2026-09-30).
 **Author:** VeriTrade Dev (`projman2-veritrade-agent`) · **For:** Server Dev (`projman2-server-agent`,
@@ -271,11 +272,22 @@ except live results.
 
 ## Owner ruling
 
-**G1: register the API.NSW account:** _(pending)_
+**G1: register the API.NSW account:** ☑ The Owner registers it (Owner, 2026-09-30,
+`xprojman-roles.md` §8 #7). Credential order per §8 #11: after SMTP. The provisional §3.4 status map
+is re-checked against live calls once the key exists.
 
 **F2: accept name match + guard rules (i)–(iii) with the stated residual risk for v1, or require a
-stronger identity proof first?** _(pending)_
+stronger identity proof first?** ☑ **Accept (a) + the `87a351b` guards (i)–(iii) for v1** (Owner,
+2026-09-30, §8 #7).
+**Accepted residual risk (recorded per the ruling):** a person who registers in ProjMan under someone
+else's name from day one, before declaring that person's licence, and never trips guard (i) or (ii),
+will get an automatic `verified`. `duplicate_claim` only catches it if the real holder is also on
+ProjMan. Mitigations in v1: the badge says "Licence verified", never "identity verified"; staff can
+downgrade via `staff_check`. Closing it fully needs a stronger identity proof (F2c), a separate future
+identity decision.
 
-**F3: compliance history shown?** _(pending)_
+**F3: compliance history shown?** ☑ **Badge only**: compliance history is neither read nor shown in
+v1 (Owner, 2026-09-30, §8 #7).
 
-**F4: storage limits (no DOB/address/raw payload):** _(pending)_
+**F4: storage limits (no DOB/address/raw payload):** ☑ **Never store date of birth or address**
+(Owner, 2026-09-30, §8 #7). Not storing the raw payload (hash only, §3.2) stays as the agreed design.
