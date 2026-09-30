@@ -78,6 +78,7 @@ router.get('/', async (req, res) => {
     const data = req.query.project_id
       ? await DocumentService.listByProject({
           orgId: req.auth.orgId, actor: actorOf(req), projectId: req.query.project_id,
+          kinds: req.query.kind ? String(req.query.kind).split(',').map((k) => k.trim()) : undefined,
         })
       : await DocumentService.listByEntity({
           orgId: req.auth.orgId, actor: actorOf(req),

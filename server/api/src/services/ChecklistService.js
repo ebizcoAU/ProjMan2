@@ -72,7 +72,8 @@ async function assertCompletable(orgId, instanceId) {
 
 async function guardPush({ wireName, operation, id, safe, actor }) {
   if (!isChecklistOps(wireName)) return;
-  if (!canExecute(actor.role)) {
+  // signoffs carry their own per-subject permission (below); the checklist tables need execute.
+  if (wireName !== 'signoffs' && !canExecute(actor.role)) {
     throw new ServiceError('FORBIDDEN', 'Requires permission: checklists.execute', 403);
   }
 
@@ -127,22 +128,49 @@ async function guardPush({ wireName, operation, id, safe, actor }) {
     return;
   }
 
-  // signoffs — v047 knows one subject type; v048 adds site_induction + swms.
+  // signoffs — one shared table (xprojman-48 F6), validated per subject type:
+  //   checklist_instance  checklists.execute; frozen once the checklist completes
+  //   swms                safety.report; subject = a documents row kind='swms' on the project
+  //   site_induction      safety.manage; subject = a site_inductions row
   const [[existing]] = await pool.query(
     'SELECT subject_type, subject_id FROM signoffs WHERE id = ? AND org_id = ? LIMIT 1', [id, actor.orgId]);
   const subjectType = safe.subject_type || existing?.subject_type;
   const subjectId = safe.subject_id || existing?.subject_id;
-  if (subjectType !== 'checklist_instance') {
-    throw new ServiceError('VALIDATION_ERROR', 'subject_type must be checklist_instance', 400);
-  }
-  const subject = subjectId ? await loadInstance(actor.orgId, subjectId) : null;
-  if (!subject) throw new ServiceError('NOT_FOUND', 'Checklist not found', 404);
-  assertNotFrozen(subject);
-  if (!existing) {
-    if (safe.project_id && String(safe.project_id) !== String(subject.project_id)) {
-      throw new ServiceError('VALIDATION_ERROR', 'project_id does not match the checklist', 400);
+  let subjectProjectId;
+  if (subjectType === 'checklist_instance') {
+    if (!canExecute(actor.role)) throw new ServiceError('FORBIDDEN', 'Requires permission: checklists.execute', 403);
+    const subject = subjectId ? await loadInstance(actor.orgId, subjectId) : null;
+    if (!subject) throw new ServiceError('NOT_FOUND', 'Checklist not found', 404);
+    assertNotFrozen(subject);
+    subjectProjectId = subject.project_id;
+  } else if (subjectType === 'swms') {
+    if (!access.hasPermission(actor.role, 'safety.report')) {
+      throw new ServiceError('FORBIDDEN', 'Requires permission: safety.report', 403);
     }
-    safe.project_id = subject.project_id;
+    const [[doc]] = subjectId ? await pool.query(
+      `SELECT project_id FROM documents WHERE id = ? AND org_id = ? AND kind = 'swms' AND is_deleted = 0 LIMIT 1`,
+      [subjectId, actor.orgId]) : [[null]];
+    if (!doc || !doc.project_id) {
+      throw new ServiceError('VALIDATION_ERROR', 'subject_id must be a SWMS document on this project', 422);
+    }
+    subjectProjectId = doc.project_id;
+  } else if (subjectType === 'site_induction') {
+    if (!access.hasPermission(actor.role, 'safety.manage')) {
+      throw new ServiceError('FORBIDDEN', 'Requires permission: safety.manage', 403);
+    }
+    const [[ind]] = subjectId ? await pool.query(
+      'SELECT project_id FROM site_inductions WHERE id = ? AND org_id = ? AND is_deleted = 0 LIMIT 1',
+      [subjectId, actor.orgId]) : [[null]];
+    if (!ind) throw new ServiceError('NOT_FOUND', 'Site induction not found', 404);
+    subjectProjectId = ind.project_id;
+  } else {
+    throw new ServiceError('VALIDATION_ERROR', 'subject_type must be checklist_instance, swms or site_induction', 400);
+  }
+  if (!existing) {
+    if (safe.project_id && String(safe.project_id) !== String(subjectProjectId)) {
+      throw new ServiceError('VALIDATION_ERROR', 'project_id does not match the subject', 400);
+    }
+    safe.project_id = subjectProjectId;
     if (!safe.user_id && !safe.name) {
       throw new ServiceError('VALIDATION_ERROR', 'A sign-off needs user_id or name', 400);
     }

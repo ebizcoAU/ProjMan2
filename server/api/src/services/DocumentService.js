@@ -34,9 +34,12 @@ const { projectScope } = require('../lib/scope');
 // `checklist_item` + `signoff` added v047 (xprojman-46 §7 #1): checklist evidence is always a
 // documents row, never a column on the owning row.
 const ENTITY_TYPES = ['inspection_item', 'defect', 'certificate', 'site_diary', 'delivery', 'task', 'task_quote', 'subcontractor_engagement',
-                      'checklist_item', 'signoff'];
+                      'checklist_item', 'signoff',
+                      // v048 (xprojman-48): safety evidence + the project-level safety register.
+                      'safety_event', 'safety_action', 'project'];
 const KINDS = ['inspection_photo', 'defect_photo', 'certificate', 'site_diary_photo',
-               'delivery_docket', 'task_document', 'task_quote', 'general', 'checklist_photo', 'signature'];
+               'delivery_docket', 'task_document', 'task_quote', 'general', 'checklist_photo', 'signature',
+               'safety_photo', 'swms', 'sds', 'emergency_plan', 'safety_policy', 'whs_management_plan'];
 // Convenience only: when the client names an entity_type but no kind, this is the kind it meant.
 // The pairing is NOT enforced beyond this — a surface may legitimately attach a `general` file.
 const DEFAULT_KIND = {
@@ -50,6 +53,9 @@ const DEFAULT_KIND = {
   subcontractor_engagement: 'general',
   checklist_item: 'checklist_photo',
   signoff: 'signature',
+  safety_event: 'safety_photo',
+  safety_action: 'safety_photo',
+  project: 'general',
 };
 
 // The document read capability: `projects.read` (every role with a project-detail surface) OR the
@@ -259,7 +265,9 @@ async function listByEntity({ orgId, actor, entityType, entityId }) {
  * /projects/:id/X sub-resource (§9.4 non-disclosure), where an unknown/foreign
  * project_id 404s rather than silently returning zero rows.
  */
-async function listByProject({ orgId, actor, projectId }) {
+// `kinds` (optional, v048): narrow to these document kinds — the safety register loads
+// `kind=swms,sds,...` in one call, and App's offline SWMS cache uses `kind=swms`.
+async function listByProject({ orgId, actor, projectId, kinds }) {
   if (!projectId) throw new ServiceError('VALIDATION_ERROR', 'project_id is required', 400);
   const [[project]] = await pool.query(
     'SELECT id FROM projects WHERE id = ? AND org_id = ? AND is_deleted = 0 LIMIT 1', [projectId, orgId]
@@ -270,6 +278,10 @@ async function listByProject({ orgId, actor, projectId }) {
     { projectColumn: 'project_id', alias: 'd' });
   const narrow = scope.sql ? ` AND (d.uploaded_by = ? OR ${scope.sql.replace(/^\s*AND\s+/, '')})` : '';
   const narrowParams = scope.sql ? [actor.userId, ...scope.params] : [];
+  const kindList = (kinds || []).filter(Boolean);
+  const badKind = kindList.find((k) => !KINDS.includes(k));
+  if (badKind) throw new ServiceError('VALIDATION_ERROR', `kind must be one of ${KINDS.join(', ')}`, 400);
+  const kindSql = kindList.length ? ` AND d.kind IN (${kindList.map(() => '?').join(',')})` : '';
 
   const [rows] = await pool.query(
     `SELECT d.id AS document_id, d.kind, d.entity_type, d.entity_id, d.mime_type, d.size_bytes,
@@ -277,9 +289,9 @@ async function listByProject({ orgId, actor, projectId }) {
             u.full_name AS uploaded_by_name
        FROM documents d
        LEFT JOIN users u ON u.id = d.uploaded_by
-      WHERE d.org_id = ? AND d.project_id = ? AND d.is_deleted = 0${narrow}
+      WHERE d.org_id = ? AND d.project_id = ? AND d.is_deleted = 0${kindSql}${narrow}
       ORDER BY d.created_at DESC, d.id DESC`,
-    [orgId, projectId, ...narrowParams]
+    [orgId, projectId, ...kindList, ...narrowParams]
   );
 
   const reader = canReadDocs(actor);

@@ -81,8 +81,8 @@ const uuid = () => crypto.randomUUID();
 
   // ── 1. Permissions ──
   const perms = await call('GET', '/auth/permissions', undefined, tradie);
-  ok('matrix v15 and tradie holds checklists.execute',
-    perms.json.data?.matrixVersion === 15 && (perms.json.data?.permissions || []).includes('checklists.execute'),
+  ok('matrix v15+ and tradie holds checklists.execute',
+    perms.json.data?.matrixVersion >= 15 && (perms.json.data?.permissions || []).includes('checklists.execute'),
     JSON.stringify(perms.json.data?.matrixVersion));
 
   // ── 2. Templates ──

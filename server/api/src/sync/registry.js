@@ -224,8 +224,10 @@ const TABLES = {
     columns: new Set([
       'project_id', 'person_id', 'person_name', 'person_type', 'trade',
       'check_in_at', 'check_out_at', 'check_in_lat', 'check_in_lng', 'method',
-      'induction_ok', 'is_deleted', 'updated_at',
+      'is_deleted', 'updated_at',
     ]),
+    // `induction_ok` is no longer device-written: since v048 the server derives it at
+    // check-in from site_inductions (xprojman-48 F5 — warn + alert, never block).
   },
 
   // Delivery-proof evidence. `received_by` is server-stamped (PROTECTED); supplier/PO
@@ -417,6 +419,73 @@ const TABLES = {
     projectColumn: 'project_id',
     columns: new Set([
       'subject_type', 'subject_id', 'project_id', 'user_id', 'name', 'signed_at',
+      'is_deleted', 'updated_at',
+    ]),
+    unprotect: new Set(['user_id']),
+  },
+
+  // ── Safety/OHS (migration_v048, xprojman-48) ────────────────────────────────
+  // SafetyService guards every push: safety.report to raise, safety.manage to change;
+  // is_notifiable is create-only here (REST confirms/clears it); a notifiable event is
+  // append-only on sync (SAFETY_FROZEN); close needs no open actions (SAFETY_OPEN_ACTIONS).
+  // raised_by/raised_at/closed_by/closed_at are server-stamped (PROTECTED or unlisted).
+  safety_events: {
+    table: 'safety_events',
+    owner: 'app',
+    pull: true,
+    scope: 'org',
+    orgColumn: 'org_id',
+    idColumn: 'id',
+    projectColumn: 'project_id',
+    columns: new Set([
+      'project_id', 'stage_id', 'unit_id', 'kind', 'description', 'location', 'severity',
+      'status', 'occurred_at', 'lat', 'lng', 'is_notifiable', 'close_note',
+      'is_deleted', 'updated_at',
+    ]),
+    unprotect: new Set(['status']),
+  },
+  // Health information (Privacy Act sensitive): CREATE-ONLY over sync and NEVER pulled —
+  // the app deletes its copy once the parent is accepted. Read/correct via REST.
+  incident_details: {
+    table: 'incident_details',
+    owner: 'app',
+    pull: false,
+    scope: 'org',
+    orgColumn: 'org_id',
+    idColumn: 'id',
+    projectViaTable: 'safety_events',
+    projectViaColumn: 'event_id',
+    columns: new Set([
+      'event_id', 'injured_user_id', 'injured_name', 'injury_type', 'body_part',
+      'treatment', 'lost_time', 'witness_names', 'updated_at',
+    ]),
+  },
+  safety_actions: {
+    table: 'safety_actions',
+    owner: 'app',
+    pull: true,
+    scope: 'org',
+    orgColumn: 'org_id',
+    idColumn: 'id',
+    projectViaTable: 'safety_events',
+    projectViaColumn: 'event_id',
+    columns: new Set([
+      'event_id', 'action', 'assigned_to', 'assigned_to_name', 'due_date', 'status',
+      'is_deleted', 'updated_at',
+    ]),
+    unprotect: new Set(['status']),
+  },
+  // `user_id` names the INDUCTEE, so it is unprotected here; inducted_by is stamped.
+  site_inductions: {
+    table: 'site_inductions',
+    owner: 'app',
+    pull: true,
+    scope: 'org',
+    orgColumn: 'org_id',
+    idColumn: 'id',
+    projectColumn: 'project_id',
+    columns: new Set([
+      'project_id', 'user_id', 'name', 'inducted_at', 'expires_at', 'checklist_instance_id',
       'is_deleted', 'updated_at',
     ]),
     unprotect: new Set(['user_id']),

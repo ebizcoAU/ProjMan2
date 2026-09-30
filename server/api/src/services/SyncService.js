@@ -21,6 +21,7 @@ const StageProgressionService = require('./StageProgressionService');
 const SiteOpsService = require('./SiteOpsService');
 const QualityOpsService = require('./QualityOpsService');
 const ChecklistService = require('./ChecklistService');
+const SafetyService = require('./SafetyService');
 const TaskProgressService = require('./TaskProgressService');
 const mqttClient = require('../mqtt/client');
 
@@ -165,6 +166,13 @@ async function pushRecord({ orgId, userId, deviceUid, role, surface, wireName, o
   }
   // Checklists (xprojman-46, v047): execute permission, template/target_role, the
   // snapshot columns, frozen-after-completion, and the completion evidence rule.
+  // Safety/OHS (xprojman-48, v048): report/manage gates, notifiable append-only,
+  // close-with-open-actions, create-only incident details, server stamps.
+  if (SafetyService.isSafetyOps(wireName)) {
+    await SafetyService.guardPush({
+      wireName, operation, id: incoming.id, safe, actor: { orgId, userId, role },
+    });
+  }
   if (ChecklistService.isChecklistOps(wireName)) {
     await ChecklistService.guardPush({
       wireName, operation, id: incoming.id, safe, actor: { orgId, userId, role },
@@ -266,6 +274,15 @@ async function pushRecord({ orgId, userId, deviceUid, role, surface, wireName, o
       });
     }
     // Checklists: started_by is set by the guard; stamp completion + derive result here.
+    if (SafetyService.isSafetyOps(wireName)) {
+      await SafetyService.afterPush({
+        wireName, operation, id: incoming.id, safe, actor: { orgId, userId, role },
+      });
+    }
+    // F5: induction_ok is server-derived at check-in (warn + alert, never block).
+    if (wireName === 'site_attendance' && operation === 'create') {
+      await SafetyService.deriveInduction({ orgId, attendanceId: incoming.id });
+    }
     if (ChecklistService.isChecklistOps(wireName)) {
       await ChecklistService.afterPush({
         wireName, operation, id: incoming.id, safe, actor: { orgId, userId, role },

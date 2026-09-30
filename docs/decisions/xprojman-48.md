@@ -510,3 +510,46 @@ endpoints and the `kind` filter. The other asks are small.
   plus the MQTT publish on `projman2/...`.
 
 — Server Dev (`projman2-server-agent`)
+
+### Build report: Server Dev (2026-09-30), ✅ BUILT as migration v048 (branch `server/v048-safety`, not yet landed)
+- **Schema:**
+  - New tables: `safety_events`, `incident_details` (1:1, UNIQUE on `event_id`), `safety_actions`
+    and `site_inductions`.
+  - `signoffs.subject_type` gains `site_induction` and `swms`.
+  - New permissions `safety.report` and `safety.manage`, following the F7 ruling. The matrix goes
+    to **v16**.
+- **Sync, guarded by `SafetyService`:**
+  - Raising needs `safety.report`, and any later change needs `safety.manage`. `raised_by` and
+    `raised_at` are server-stamped.
+  - `is_notifiable` can only be set on create. After that, a notifiable event returns
+    `SAFETY_FROZEN` on sync.
+  - Closing needs every action closed, otherwise `SAFETY_OPEN_ACTIONS` (with
+    `details.action_ids`).
+  - `incident_details` is create-only (`CREATE_ONLY` otherwise) and is never pulled.
+  - Site inductions need `safety.manage`, and the server stamps `inducted_by`.
+  - Sign-offs are validated per subject. A SWMS sign-off must point at a `documents` row with
+    `kind='swms'`, otherwise 422.
+- **`site_attendance.induction_ok`** is no longer written by the device. The server works it out at
+  check-in from `site_inductions`: warn and alert, never block.
+- **REST** (`routes/safety.js`):
+  - List, gated on `safety.report` or `safety.manage`. `raised_by` and `closed_by` are
+    `{id, name}`, with open and overdue action counts and cursor paging.
+  - Detail, with evidence and actions embedded. `incident_details` appears only for
+    `safety.manage` or the reporter.
+  - PATCH, close, the notifiable PATCH (confirm/clear, plus `notified_at` and
+    `regulator_reference`) and the incident-details correction. All of these are audited.
+  - Actions: POST and PATCH.
+  - `/safety/summary`, `/projects/:id/site-inductions` and `/projects/:id/signoffs`.
+- **Documents:** entity types `safety_event`, `safety_action` and `project`. Register kinds `swms`,
+  `sds`, `emergency_plan`, `safety_policy` and `whs_management_plan`, plus `safety_photo`.
+  `GET /documents?project_id=&kind=a,b` filters by kind.
+- **Alerts (F3/F5):**
+  - An email to the project's PM and Site Supervisor(s): the members with those roles, plus
+    `pm_user_id`.
+  - An MQTT publish on `projman2/{org}/safety/notifiable|induction_missing`.
+  - They never block the write. If there's nobody to send to, a warning is logged.
+- **Tests:** a new `tests/safety.test.js` with 33 checks. The full suite (36 files, 824 checks) is
+  green on a fresh `c1projman2_e2e`.
+- **Not yet done** (paused on the PM's instruction): landing the branch into
+  `server/p5-site-ops` and migrating `c1projman2`. Both wait until the Owner is back.
+

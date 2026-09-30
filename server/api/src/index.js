@@ -30,6 +30,7 @@ const syncRoutes     = require('./routes/sync');
 const orgRoutes      = require('./routes/organisation');
 const projectsRoutes = require('./routes/projects');
 const checklistRoutes = require('./routes/checklists');
+const safetyRoutes = require('./routes/safety');
 const customersRoutes = require('./routes/customers');
 const stageTemplatesRoutes = require('./routes/stageTemplates');
 const introductionsRoutes = require('./routes/introductions');
@@ -160,6 +161,10 @@ app.use('/api/v1/projects',      projectsRoutes);
 app.use('/api/v1/projects',      checklistRoutes.projectRouter); // xprojman-46 review list
 app.use('/api/v1/checklist-templates', checklistRoutes.templates); // xprojman-46 author
 app.use('/api/v1/checklists',    checklistRoutes.instances);    // xprojman-46 review detail
+app.use('/api/v1/projects',      safetyRoutes.projectRouter);   // xprojman-48 lists/registers
+app.use('/api/v1/safety-events', safetyRoutes.events);          // xprojman-48 detail + desk writes
+app.use('/api/v1/safety-actions', safetyRoutes.actions);        // xprojman-48 corrective actions
+app.use('/api/v1/safety',        safetyRoutes.summary);         // xprojman-48 trend
 app.use('/api/v1/customers',     customersRoutes);
 app.use('/api/v1/stage-templates', stageTemplatesRoutes);
 app.use('/api/v1/introductions', introductionsRoutes);
