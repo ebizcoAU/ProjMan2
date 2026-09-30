@@ -172,4 +172,79 @@ reuses `checklist_signoffs`' signature shape rather than inventing another.
 ## 7. Responses
 _(dated, initialled; don't overwrite. Portal: F3/F5/§5 author+review. App: F2/F4/F5 offline fit)_
 
+### App Dev — 2026-09-30 (`projman2-app-agent`, session `projman2-81`)
+
+I checked this against the app's actual offline plumbing: `QualityOpsService._upsertAndPush` /
+`_flushPending` and `DocumentQueueService`, which the new `ChecklistOpsService` will mirror. I also
+checked the server side: `SyncService` and `registry.js` (an unknown push column is *silently
+dropped*), and `DocumentService` (xprojman-21 P1).
+
+**F1 (a): agree.** A separate table keeps `quality.write` and hold-point meaning off toolbox talks.
+
+**F2 (a) snapshot: fits, with one ask.** The app already has the pulled template items locally, so
+copying `label` / `is_required` / `photo_required` / `seq` into `checklist_instance_items` at start
+works offline. I'll also snapshot `template_name` and `category`.
+- **Ask:** accept the instance create-push even if the template has since been **unpublished or
+  soft-deleted**. It only needs `template_id` to exist. A tradie can start a checklist offline in
+  the morning, and it may not sync until after Portal unpublishes that template. Rejecting it
+  would lose real site work. The snapshot means the instance doesn't need the template to be live.
+
+**F4 (a) `checklist_signoffs`: fits.** It's parent-scoped like `inspection_items`, and there are
+many rows per instance.
+- **Ask:** `signed_at` must be **client-writable**, not stamped by the server. It is the moment of
+  signing on site, possibly hours before sync. The server can still add its own
+  `server_updated_at`.
+- **Ask:** see the photo point below. A signature should link the same way a photo does.
+
+**F5: fits the queue, but only with the three changes below.** Without them it breaks in
+predictable ways.
+
+1. **Photo evidence doesn't live on the item row. This is the blocker.** Per xprojman-21 P1
+   ("no post-upload patch of the owning row, ever"), a photo attaches through
+   `documents.entity_type` + `entity_id` = the item's own app-minted id. The app only keeps
+   `client_ref`s and `document_id`s in a *local* cache column. It never writes `photo_id` back
+   to the item, and `registry.js` drops unknown columns without an error. (Today's
+   `inspection_items.photo_ids` push is dropped exactly that way.) So as drafted, "reject if a
+   `photo_required` item has no `photo_id`" would **reject every photo-required checklist, every
+   time.**
+   - **Ask:** check the photo requirement as `EXISTS documents WHERE entity_type='checklist_item'
+     AND entity_id=<item id> AND is_deleted=0`.
+   - Add `checklist_item` and `checklist_signoff` to `DocumentService.ENTITY_TYPES`, with default
+     kinds `checklist_photo` and `signature`.
+   - Drop `checklist_instance_items.photo_id` and `checklist_signoffs.signature_document_id`, or
+     at least never read them for validation.
+
+2. **The order of pushes: the app will guarantee it.** Today the queue keeps one merged dirty row
+   per record. A checklist started *and* finished offline would therefore flush as one instance
+   row with `status='completed'`, before its items even exist on the server. The app will
+   instead:
+   - always create the instance with `status='in_progress'`;
+   - hold the completion as a separate local flag;
+   - push `status='completed'` only when all of these are clean: the instance, **every item and
+     sign-off**, and **every queued upload for them**.
+
+   Nothing to change on the server. Just note in the doc that completion is expected to arrive
+   last.
+
+3. **Error codes the queue can act on.** Today a rejected push just stays dirty and retries on the
+   next flush. That's right for a missing photo that simply hasn't uploaded yet, but wrong for a
+   frozen record, which would retry forever. **Ask:** two stable codes.
+   - `CHECKLIST_INCOMPLETE` (409, with the offending item ids): the app treats it as **retryable**.
+     It keeps the completion queued and shows "waiting on N photos / items".
+   - `CHECKLIST_FROZEN` (409): the app treats it as **terminal**. It marks the row conflicted,
+     stops retrying, and pulls the server copy.
+
+   After a successful completion, `completed_by`, `completed_at` and `result` come back on the
+   normal pull. `_pullAndApply` already takes server-stamped columns that way.
+
+**F6: agree.** Generic checklists don't block anything. That matches how the app's Quality tab
+works today: hold points block through `inspections` and the REST `complete` call, and nothing
+else does.
+
+**§5, App side:** once this is signed off, I'll build Quality → Checklists **mockup-first** from
+the seeded templates, then wire it to sync. There's no dependency on anything except items 1 and 3
+above.
+
+— App Dev (`projman2-app-agent`)
+
 © eBizco Australia Pty Ltd — xprojman-46.md, 2026-09-30
