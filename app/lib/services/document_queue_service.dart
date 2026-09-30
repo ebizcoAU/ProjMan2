@@ -47,6 +47,8 @@ class DocumentQueueService {
     'certificate': 'certificate',
     'site_diary': 'site_diary_photo',
     'delivery': 'delivery_docket',
+    'checklist_item': 'checklist_photo', // xprojman-46, server v047
+    'signoff': 'signature',
   };
 
   /// entity_type → (owning table, id column, the plural cache columns that may
@@ -59,7 +61,16 @@ class DocumentQueueService {
     'certificate': ('certificates', 'id', ['document_ids']),
     'site_diary': ('site_diary', 'id', ['photo_ids']),
     'delivery': ('deliveries', 'id', ['photo_ids']),
+    'checklist_item': ('checklist_instance_items', 'id', ['photo_ids']),
+    'signoff': ('signoffs', 'id', ['signature_ids']),
   };
+
+  /// Called with the entity type after each successful upload, so an owner
+  /// whose next step waits on evidence being server-side (the checklist
+  /// completion push, xprojman-46 §7 #2) can retry without polling.
+  final List<void Function(String entityType)> _uploadListeners = [];
+  void addUploadListener(void Function(String entityType) l) =>
+      _uploadListeners.add(l);
 
   bool _flushing = false;
   bool _started = false;
@@ -224,6 +235,9 @@ class DocumentQueueService {
       if (docId != null && docId != clientRef) {
         await _swapCacheId(row, clientRef, docId);
       }
+      for (final l in List.of(_uploadListeners)) {
+        l(row['entity_type'] as String);
+      }
       return _Outcome.uploaded;
     }
 
@@ -238,6 +252,47 @@ class DocumentQueueService {
       'last_error': '${res.status} ${res.code ?? ''} ${res.message ?? ''}'.trim(),
     }, where: 'client_ref = ?', whereArgs: [clientRef]);
     return transient ? _Outcome.retryLater : _Outcome.permanent;
+  }
+
+  /// Upload state across a set of owning rows: how many captures are still
+  /// waiting (pending/uploading/failed) and how many were refused for good
+  /// (`error`). Empty [entityIds] → nothing waiting.
+  Future<({int waiting, int failed})> uploadStateFor(
+      String entityType, List<String> entityIds) async {
+    if (entityIds.isEmpty) return (waiting: 0, failed: 0);
+    final ph = List.filled(entityIds.length, '?').join(', ');
+    final rows = await _db.rawQuery(
+        "SELECT status, COUNT(*) AS n FROM upload_queue "
+        "WHERE entity_type = ? AND entity_id IN ($ph) GROUP BY status",
+        [entityType, ...entityIds]);
+    var waiting = 0, failed = 0;
+    for (final r in rows) {
+      final n = (r['n'] as int?) ?? 0;
+      switch (r['status']) {
+        case 'pending' || 'uploading' || 'failed':
+          waiting += n;
+        case 'error':
+          failed += n;
+      }
+    }
+    return (waiting: waiting, failed: failed);
+  }
+
+  /// Drop a not-yet-uploaded capture for an owning row that is being discarded
+  /// before it ever synced (e.g. a sign-off removed before signal came back),
+  /// so the queue doesn't upload an orphan. Already-stored documents are left
+  /// alone — they're server records.
+  Future<void> discardUnsentFor(String entityType, String entityId) async {
+    final rows = await _db.query('upload_queue',
+        where: "entity_type = ? AND entity_id = ? "
+            "AND status IN ('pending','failed','error')",
+        whereArgs: [entityType, entityId]);
+    for (final r in rows) {
+      final f = File(r['local_path'] as String);
+      if (await f.exists()) await f.delete();
+      await _db.delete('upload_queue',
+          where: 'client_ref = ?', whereArgs: [r['client_ref']]);
+    }
   }
 
   // ── Display / source of truth ────────────────────────────────────────────────

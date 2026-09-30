@@ -16,7 +16,9 @@ class DatabaseManager {
   ///   v4 — disputes (appdesignspecification.md §2.7, local-only — no sync yet)
   ///   v5 — offline document/image queue: upload_queue + singular→plural cache
   ///        columns (xprojman-22/23 — one queue, five capture surfaces)
-  static const int currentVersion = 5;
+  ///   v6 — checklists: templates, instances, items, shared signoffs
+  ///        (xprojman-46, server migration_v047)
+  static const int currentVersion = 6;
 
   static Database? _instance;
 
@@ -53,6 +55,7 @@ class DatabaseManager {
       await _createQualityIndexes(txn);
       await _createDisputeIndexes(txn);
       await _createUploadQueueIndexes(txn);
+      await _createChecklistIndexes(txn);
     });
     // ignore: avoid_print
     print('✅ [DB] Created projman2.db v$version '
@@ -106,6 +109,14 @@ class DatabaseManager {
         await _createUploadQueueIndexes(txn);
       });
     }
+    if (oldVersion < 6) {
+      await db.transaction((txn) async {
+        for (final stmt in DomainSchema.v6) {
+          await txn.execute(stmt);
+        }
+        await _createChecklistIndexes(txn);
+      });
+    }
     // ignore: avoid_print
     print('ℹ️ [DB] upgrade $oldVersion → $newVersion');
   }
@@ -142,6 +153,17 @@ class DatabaseManager {
         }
       }
     });
+  }
+
+  static Future<void> _createChecklistIndexes(Transaction txn) async {
+    for (final stmt in const [
+      'CREATE INDEX IF NOT EXISTS idx_cl_inst_project ON checklist_instances(project_id)',
+      'CREATE INDEX IF NOT EXISTS idx_cl_item_instance ON checklist_instance_items(instance_id)',
+      'CREATE INDEX IF NOT EXISTS idx_cl_tpl_item_tpl ON checklist_template_items(template_id)',
+      'CREATE INDEX IF NOT EXISTS idx_signoffs_subject ON signoffs(subject_type, subject_id)',
+    ]) {
+      await txn.execute(stmt);
+    }
   }
 
   static Future<void> _createIndexes(Transaction txn) async {

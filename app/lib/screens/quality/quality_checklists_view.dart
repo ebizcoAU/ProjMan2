@@ -6,8 +6,8 @@ import '../../services/checklist_ops_service.dart';
 import 'checklist_run_screen.dart';
 
 /// Quality → Checklists (appspec §4.2, xprojman-46): internal QA, toolbox
-/// talks and plant pre-starts, run from a published template. **UI mockup
-/// only.** See [ChecklistOpsService]'s own header for why.
+/// talks and plant pre-starts, run from a published template. Synced
+/// (server v047) through [ChecklistOpsService].
 ///
 /// Hold-point checklists aren't here on purpose. Those stay on Inspections,
 /// which is the only surface that can gate a stage (xprojman-46 F6).
@@ -23,12 +23,37 @@ class _QualityChecklistsViewState extends State<QualityChecklistsView> {
   ChecklistOpsService get _svc => ChecklistOpsService.instance;
   String get _pid => widget.project.id;
   ChecklistStatus? _filter;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _svc.changes.addListener(_onChange);
+    _hydrate();
+  }
+
+  @override
+  void dispose() {
+    _svc.changes.removeListener(_onChange);
+    super.dispose();
+  }
+
+  void _onChange() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _hydrate() async {
+    setState(() => _loading = true);
+    await _svc.hydrateProject(_pid);
+    if (mounted) setState(() => _loading = false);
+  }
 
   @override
   void didUpdateWidget(covariant QualityChecklistsView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.project.id != widget.project.id) {
-      setState(() => _filter = null);
+      _filter = null;
+      _hydrate();
     }
   }
 
@@ -39,9 +64,16 @@ class _QualityChecklistsViewState extends State<QualityChecklistsView> {
       backgroundColor: Op.bg,
       body: Column(
         children: [
-          _mockBanner(),
           _filterBar(),
-          Expanded(child: list.isEmpty ? _empty() : _list(list)),
+          Expanded(
+            child: _loading && list.isEmpty
+                ? const Center(
+                    child: CircularProgressIndicator(color: Op.accent))
+                : RefreshIndicator(
+                    onRefresh: _hydrate,
+                    child: list.isEmpty ? _empty() : _list(list),
+                  ),
+          ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -52,23 +84,6 @@ class _QualityChecklistsViewState extends State<QualityChecklistsView> {
       ),
     );
   }
-
-  Widget _mockBanner() => Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        color: Op.warning.withValues(alpha: 0.12),
-        child: const Row(children: [
-          Icon(Icons.design_services_outlined, size: 14, color: Op.warningText),
-          SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              'Design mockup — not wired to a server yet. Checklists reset on restart.',
-              style: TextStyle(
-                  color: Op.warningText, fontSize: 11.5, fontWeight: FontWeight.w600),
-            ),
-          ),
-        ]),
-      );
 
   Widget _filterBar() {
     final options = <(String, ChecklistStatus?)>[
@@ -114,6 +129,10 @@ class _QualityChecklistsViewState extends State<QualityChecklistsView> {
 
   Widget _card(ChecklistInstance c) {
     final (stripe, badgeIcon, badgeText, badgeColor) = switch (c.result) {
+      _ when c.syncError != null && !c.isCompleted =>
+        (Op.danger, Icons.sync_problem, 'Not synced', Op.dangerText),
+      _ when c.completionRequested && !c.isCompleted =>
+        (Op.warning, Icons.cloud_upload_outlined, 'Completing', Op.warningText),
       ChecklistResult.pass => (Op.success, Icons.check_circle, 'Passed', Op.successText),
       ChecklistResult.fail => (Op.danger, Icons.cancel, 'Failed', Op.dangerText),
       ChecklistResult.pending =>
@@ -208,6 +227,15 @@ class _QualityChecklistsViewState extends State<QualityChecklistsView> {
                   style: TextStyle(
                       color: Op.text, fontSize: 17, fontWeight: FontWeight.w800)),
             ),
+            if (_svc.templates().isEmpty)
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 4, 20, 16),
+                child: Text(
+                  'No published checklist templates yet. They appear here once '
+                  'your PM publishes one in the Portal — pull down to refresh.',
+                  style: TextStyle(color: Op.muted, fontSize: 13),
+                ),
+              ),
             for (final t in _svc.templates())
               ListTile(
                 minVerticalPadding: 12,

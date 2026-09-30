@@ -286,6 +286,130 @@ class DomainSchema {
     )
   ''';
 
+  // ── Checklists (migration_v047, xprojman-46) ────────────────────────────────
+  // Templates are Portal-authored and PULL-ONLY here (owner `web`). The app lists
+  // published ones only; unpublished rows still arrive so an unpublish is seen.
+  static const String checklistTemplates = '''
+    CREATE TABLE IF NOT EXISTS checklist_templates (
+      id                TEXT PRIMARY KEY NOT NULL,
+      org_id            TEXT,
+      name              TEXT,
+      category          TEXT,
+      target_role       TEXT,
+      description       TEXT,
+      is_published      INTEGER DEFAULT 0,
+      is_deleted        INTEGER DEFAULT 0,
+      created_at        TEXT,
+      updated_at        INTEGER,
+      server_updated_at TEXT
+    )
+  ''';
+
+  static const String checklistTemplateItems = '''
+    CREATE TABLE IF NOT EXISTS checklist_template_items (
+      id                TEXT PRIMARY KEY NOT NULL,
+      org_id            TEXT,
+      template_id       TEXT NOT NULL,
+      seq               INTEGER DEFAULT 0,
+      label             TEXT,
+      is_required       INTEGER DEFAULT 1,
+      photo_required    INTEGER DEFAULT 0,
+      is_deleted        INTEGER DEFAULT 0,
+      created_at        TEXT,
+      updated_at        INTEGER,
+      server_updated_at TEXT
+    )
+  ''';
+
+  // An executed checklist. `template_name`/`category`/`result`/`started_by`/
+  // `completed_by`/`completed_at` are server-stamped (never pushed), stored here
+  // for display. Local-only: `completion_requested` (the user tapped Complete; the
+  // `status='completed'` push waits until items, sign-offs and uploads have all
+  // synced — xprojman-46 §7 #2), `sync_error` (last terminal/retryable code),
+  // `started_by_name` (display only; the server stores ids, not names).
+  static const String checklistInstances = '''
+    CREATE TABLE IF NOT EXISTS checklist_instances (
+      id                   TEXT PRIMARY KEY NOT NULL,
+      org_id               TEXT,
+      project_id           TEXT NOT NULL,
+      template_id          TEXT NOT NULL,
+      stage_id             TEXT,
+      unit_id              TEXT,
+      template_name        TEXT,
+      category             TEXT,
+      status               TEXT DEFAULT 'in_progress',
+      result               TEXT DEFAULT 'pending',
+      started_by           TEXT,
+      started_by_name      TEXT,
+      completed_by         TEXT,
+      completed_at         TEXT,
+      lat                  REAL,
+      lng                  REAL,
+      notes                TEXT,
+      supersedes_id        TEXT,
+      completion_requested INTEGER DEFAULT 0,
+      sync_error           TEXT,
+      device_id            TEXT,
+      is_deleted           INTEGER DEFAULT 0,
+      is_dirty             INTEGER DEFAULT 0,
+      pending_op           TEXT,
+      ever_synced          INTEGER DEFAULT 0,
+      created_at           TEXT,
+      updated_at           INTEGER,
+      server_updated_at    TEXT
+    )
+  ''';
+
+  // `photo_ids` is the local cache (client_refs → document_ids) the document
+  // queue swaps into; photo evidence itself is a `documents` row keyed by this
+  // item's id (entity_type 'checklist_item'), never a pushed column.
+  static const String checklistInstanceItems = '''
+    CREATE TABLE IF NOT EXISTS checklist_instance_items (
+      id                TEXT PRIMARY KEY NOT NULL,
+      org_id            TEXT,
+      instance_id       TEXT NOT NULL,
+      seq               INTEGER DEFAULT 0,
+      label             TEXT,
+      is_required       INTEGER DEFAULT 1,
+      photo_required    INTEGER DEFAULT 0,
+      result            TEXT DEFAULT 'pending',
+      note              TEXT,
+      photo_ids         TEXT,
+      device_id         TEXT,
+      is_deleted        INTEGER DEFAULT 0,
+      is_dirty          INTEGER DEFAULT 0,
+      pending_op        TEXT,
+      ever_synced       INTEGER DEFAULT 0,
+      created_at        TEXT,
+      updated_at        INTEGER,
+      server_updated_at TEXT
+    )
+  ''';
+
+  // Shared sign-offs (xprojman-48 F6), owned by SignoffStore. `signature_ids` is
+  // the local cache for the signature document (entity_type 'signoff').
+  static const String signoffs = '''
+    CREATE TABLE IF NOT EXISTS signoffs (
+      id                TEXT PRIMARY KEY NOT NULL,
+      org_id            TEXT,
+      subject_type      TEXT NOT NULL,
+      subject_id        TEXT NOT NULL,
+      project_id        TEXT,
+      user_id           TEXT,
+      name              TEXT,
+      signed_at         TEXT,
+      signature_ids     TEXT,
+      device_id         TEXT,
+      is_deleted        INTEGER DEFAULT 0,
+      is_dirty          INTEGER DEFAULT 0,
+      pending_op        TEXT,
+      ever_synced       INTEGER DEFAULT 0,
+      created_at        TEXT,
+      updated_at        INTEGER,
+      server_updated_at TEXT
+    )
+  ''';
+
   /// v2 upgrade step (P5, servdesignspec §11).
   static const List<String> v2 = [siteDiary, siteAttendance, deliveries];
 
@@ -304,5 +428,11 @@ class DomainSchema {
   /// handled as ALTERs there (SQLite can add but not rename a column in-place).
   static const List<String> v5 = [uploadQueue];
 
-  static const List<String> all = [...v2, ...v3, ...v4, ...v5];
+  /// v6 upgrade step (xprojman-46, server migration_v047 — checklists).
+  static const List<String> v6 = [
+    checklistTemplates, checklistTemplateItems, checklistInstances,
+    checklistInstanceItems, signoffs,
+  ];
+
+  static const List<String> all = [...v2, ...v3, ...v4, ...v5, ...v6];
 }

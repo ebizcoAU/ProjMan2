@@ -5,6 +5,7 @@ import '../../models/domain.dart';
 import '../../services/checklist_ops_service.dart';
 import '../../services/quality_ops_service.dart';
 import '../../services/signoff_store.dart';
+import '../../widgets/photo_capture.dart';
 import '../../widgets/signature_pad.dart';
 
 /// Run one checklist (appspec §4.2). Each item gets **explicit Pass / Fail /
@@ -12,7 +13,9 @@ import '../../widgets/signature_pad.dart';
 /// 2026-09-03), at ≥48dp. Photo per item, a sign-off section named for the
 /// category (attendees or operator), then Complete. Once complete, the
 /// record is frozen and read-only. A mistake is fixed by starting a
-/// correction, never by editing (xprojman-46 F5). **UI mockup only.**
+/// correction, never by editing (xprojman-46 F5). Synced (server v047):
+/// tapping Complete locks the checklist at once, and the completion itself
+/// goes up once the items, sign-offs and evidence have synced.
 class ChecklistRunScreen extends StatefulWidget {
   final Project project;
   final ChecklistInstance instance;
@@ -25,7 +28,27 @@ class ChecklistRunScreen extends StatefulWidget {
 
 class _ChecklistRunScreenState extends State<ChecklistRunScreen> {
   ChecklistOpsService get _svc => ChecklistOpsService.instance;
-  ChecklistInstance get _c => widget.instance;
+
+  /// Always the freshest copy: a background sync reloads the cache and can
+  /// replace the object (e.g. when the server stamps the result).
+  ChecklistInstance get _c =>
+      _svc.byId(widget.project.id, widget.instance.id) ?? widget.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    _svc.changes.addListener(_onChange);
+  }
+
+  @override
+  void dispose() {
+    _svc.changes.removeListener(_onChange);
+    super.dispose();
+  }
+
+  void _onChange() {
+    if (mounted) setState(() {});
+  }
 
   /// Set after a refused completion, so the offending items are highlighted
   /// until they're fixed.
@@ -46,7 +69,12 @@ class _ChecklistRunScreenState extends State<ChecklistRunScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, Spacing.listBottomInset),
         children: [
-          if (_c.isFrozen) _resultBanner(),
+          if (_c.isCompleted)
+            _resultBanner()
+          else if (_c.syncError != null)
+            _syncErrorBanner(_c.syncError!)
+          else if (_c.completionRequested)
+            _completingBanner(),
           _header(),
           const SizedBox(height: Spacing.lg),
           _sectionTitle('Items', '${_c.answered}/${_c.items.length} answered'),
@@ -58,7 +86,9 @@ class _ChecklistRunScreenState extends State<ChecklistRunScreen> {
           if (!_c.isFrozen) _addSignoffButton(),
         ],
       ),
-      bottomNavigationBar: _c.isFrozen ? _correctionBar() : _completeBar(),
+      bottomNavigationBar: _c.isCompleted
+          ? _correctionBar()
+          : (_c.isFrozen ? null : _completeBar()),
     );
   }
 
@@ -84,8 +114,7 @@ class _ChecklistRunScreenState extends State<ChecklistRunScreen> {
         Expanded(
           child: Text(
             '${pass ? 'Passed' : 'Failed'} — completed'
-            '${_c.completedByName != null ? ' by ${_c.completedByName}' : ''}'
-            '${when.isNotEmpty ? ', $when' : ''}.\n'
+            '${when.isNotEmpty ? ' $when' : ''}.\n'
             'Locked. To fix a mistake, start a correction.',
             style: TextStyle(
                 color: pass ? Op.successText : Op.dangerText,
@@ -96,6 +125,59 @@ class _ChecklistRunScreenState extends State<ChecklistRunScreen> {
       ]),
     );
   }
+
+  Widget _completingBanner() => _banner(
+        icon: Icons.cloud_upload_outlined,
+        fg: Op.warningText,
+        bg: Op.warning,
+        text: 'Completing — locked. It finishes as soon as the answers, '
+            'photos and signatures have synced. No signal needed right now.',
+      );
+
+  Widget _syncErrorBanner(String code) => _banner(
+        icon: Icons.sync_problem,
+        fg: Op.dangerText,
+        bg: Op.danger,
+        text: switch (code) {
+          'UPLOAD_FAILED' =>
+            'A photo or signature couldn\'t be uploaded, so this checklist '
+                'can\'t complete. Check Profile → Device & Sync.',
+          'CHECKLIST_INCOMPLETE' =>
+            'The server is still missing some evidence — it will retry '
+                'automatically once the uploads land.',
+          'CHECKLIST_FROZEN' =>
+            'This checklist was completed on another device. Showing the '
+                'server copy.',
+          'FORBIDDEN' =>
+            'Your role can\'t run this checklist, so it wasn\'t saved to '
+                'the server.',
+          _ => 'This checklist couldn\'t sync ($code).',
+        },
+      );
+
+  Widget _banner(
+          {required IconData icon,
+          required Color fg,
+          required Color bg,
+          required String text}) =>
+      Container(
+        margin: const EdgeInsets.only(bottom: Spacing.md),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: bg.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(Radii.lg),
+          border: Border.all(color: fg),
+        ),
+        child: Row(children: [
+          Icon(icon, color: fg),
+          const SizedBox(width: Spacing.md),
+          Expanded(
+            child: Text(text,
+                style: TextStyle(
+                    color: fg, fontSize: 13, fontWeight: FontWeight.w600)),
+          ),
+        ]),
+      );
 
   Widget _header() {
     final started = DateFormat('d MMM yyyy, h:mm a').format(_c.startedAt);
@@ -186,19 +268,23 @@ class _ChecklistRunScreenState extends State<ChecklistRunScreen> {
               child: Text(item.note!,
                   style: const TextStyle(color: Op.muted, fontSize: 13)),
             ),
-          if (!_c.isFrozen || item.photoCount > 0)
+          if (item.photoIds.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: Spacing.sm),
+              child: Wrap(spacing: 6, runSpacing: 6, children: [
+                for (final id in item.photoIds) PhotoThumb(idOrRef: id, size: 44),
+              ]),
+            ),
+          if (!_c.isFrozen)
             Row(children: [
               TextButton.icon(
-                onPressed: _c.isFrozen ? null : () => _addPhoto(item),
+                onPressed: () => _addPhoto(item),
                 icon: const Icon(Icons.add_a_photo_outlined, size: 18),
-                label: Text(item.photoCount == 0
-                    ? 'Photo'
-                    : '${item.photoCount} photo${item.photoCount == 1 ? '' : 's'}'),
+                label: Text(item.photoCount == 0 ? 'Photo' : 'Add photo'),
                 style: TextButton.styleFrom(
                     foregroundColor: Op.accent, minimumSize: const Size(48, 48)),
               ),
-              if (!_c.isFrozen)
-                TextButton.icon(
+              TextButton.icon(
                   onPressed: () => _editNote(item),
                   icon: const Icon(Icons.notes, size: 18),
                   label: Text(item.note == null ? 'Note' : 'Edit note'),
@@ -265,22 +351,23 @@ class _ChecklistRunScreenState extends State<ChecklistRunScreen> {
     ]);
   }
 
-  void _setResult(ChecklistItem item, ChecklistItemResult r) {
+  Future<void> _setResult(ChecklistItem item, ChecklistItemResult r) async {
     // Tapping the selected answer again clears it, so a mis-tap is undoable
     // without an extra "clear" control.
     final next = item.result == r ? ChecklistItemResult.pending : r;
-    if (_svc.setResult(_c, item, next)) setState(() {});
+    if (await _svc.setResult(_c, item, next) && mounted) setState(() {});
   }
 
-  void _addPhoto(ChecklistItem item) {
-    // Mock: real capture is DocumentQueueService (entity_type
-    // 'checklist_item', keyed by item.id) once the server accepts that type.
-    if (_svc.addMockPhoto(_c, item)) {
-      setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Photo added (mockup — no camera yet)'),
-          duration: Duration(seconds: 2)));
-    }
+  Future<void> _addPhoto(ChecklistItem item) async {
+    // The offline document queue (xprojman-22): capture → enqueue → cache the
+    // client_ref on the item. The evidence is a `documents` row keyed by the
+    // item's id (entity_type 'checklist_item', server v047).
+    final ref = await captureAndEnqueue(context,
+        entityType: 'checklist_item',
+        entityId: item.id,
+        projectId: widget.project.id);
+    if (ref == null) return;
+    if (await _svc.attachPhoto(_c, item, ref) && mounted) setState(() {});
   }
 
   Future<void> _editNote(ChecklistItem item) async {
@@ -304,7 +391,7 @@ class _ChecklistRunScreenState extends State<ChecklistRunScreen> {
       ),
     );
     if (saved == null) return;
-    if (_svc.setNote(_c, item, saved)) setState(() {});
+    if (await _svc.setNote(_c, item, saved) && mounted) setState(() {});
   }
 
   // ── Sign-offs ────────────────────────────────────────────────────────────
@@ -335,8 +422,10 @@ class _ChecklistRunScreenState extends State<ChecklistRunScreen> {
             IconButton(
               tooltip: 'Remove',
               icon: const Icon(Icons.close, size: 18, color: Op.muted),
-              onPressed: () {
-                if (_svc.removeSignoff(_c, s)) setState(() {});
+              onPressed: () async {
+                if (await _svc.removeSignoff(_c, s) && mounted) {
+                  setState(() {});
+                }
               },
             ),
         ]),
@@ -437,6 +526,9 @@ class _ChecklistRunScreenState extends State<ChecklistRunScreen> {
     if (!mounted) return;
     if (res.success) {
       setState(() => _showBlockers = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Checklist locked — completing as it syncs.'),
+          duration: Duration(seconds: 3)));
       return;
     }
     setState(() => _showBlockers = true);
@@ -556,7 +648,7 @@ class _SignoffSheetState extends State<_SignoffSheet> {
             ),
             const SizedBox(height: Spacing.sm),
             FilledButton(
-              onPressed: _canSave ? _save : null,
+              onPressed: _canSave && !_saving ? _save : null,
               style: FilledButton.styleFrom(
                   backgroundColor: Op.accent,
                   minimumSize: const Size.fromHeight(52)),
@@ -568,13 +660,17 @@ class _SignoffSheetState extends State<_SignoffSheet> {
     );
   }
 
-  void _save() {
-    final s = ChecklistOpsService.instance.addSignoff(
+  bool _saving = false;
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    final png = await _pad.toPng();
+    final s = await ChecklistOpsService.instance.addSignoff(
       widget.instance,
       userId: _member?.userId,
       displayName: _name,
-      signed: !_pad.isEmpty,
+      signaturePng: png,
     );
-    Navigator.pop(context, s != null);
+    if (mounted) Navigator.pop(context, s != null);
   }
 }

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import '../config/app_theme.dart';
 
@@ -5,10 +7,8 @@ import '../config/app_theme.dart';
 /// checklist sign-offs now and by site inductions and SWMS sign-on later
 /// (xprojman-48 F6).
 ///
-/// The mockup only needs to know *whether* someone signed ([isEmpty]).
-/// When the store is wired, the strokes are rendered to a PNG and queued
-/// as a `documents` row with `entity_type='signoff'`. The pad itself
-/// doesn't change.
+/// [toPng] renders the strokes to a PNG, which the caller queues as a
+/// `documents` row with `entity_type='signoff'` (kind `signature`).
 class SignaturePadController extends ChangeNotifier {
   final List<List<Offset>> _strokes = [];
 
@@ -30,6 +30,25 @@ class SignaturePadController extends ChangeNotifier {
     _strokes.clear();
     notifyListeners();
   }
+
+  /// The pad's last laid-out size, recorded by [SignaturePad] so [toPng]
+  /// renders at the size the person actually signed at.
+  Size _size = const Size(600, 160);
+
+  /// White background, dark ink, 2× for legibility. Null when empty.
+  Future<Uint8List?> toPng({double pixelRatio = 2}) async {
+    if (isEmpty) return null;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder)..scale(pixelRatio);
+    canvas.drawRect(Offset.zero & _size, Paint()..color = Colors.white);
+    _SignaturePainter(_strokes).paint(canvas, _size);
+    final image = await recorder.endRecording().toImage(
+      (_size.width * pixelRatio).ceil(),
+      (_size.height * pixelRatio).ceil(),
+    );
+    final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    return data?.buffer.asUint8List();
+  }
 }
 
 class SignaturePad extends StatelessWidget {
@@ -48,22 +67,33 @@ class SignaturePad extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(Radii.md),
-        child: GestureDetector(
-          onPanStart: (d) => controller._begin(d.localPosition),
-          onPanUpdate: (d) => controller._extend(d.localPosition),
-          child: AnimatedBuilder(
-            animation: controller,
-            builder: (_, _) => Stack(children: [
-              if (controller.isEmpty)
-                const Center(
-                  child: Text('Sign here',
-                      style: TextStyle(color: Op.muted, fontSize: 14)),
+        child: LayoutBuilder(
+          builder: (_, box) {
+            controller._size = Size(box.maxWidth, height);
+            return GestureDetector(
+              onPanStart: (d) => controller._begin(d.localPosition),
+              onPanUpdate: (d) => controller._extend(d.localPosition),
+              child: AnimatedBuilder(
+                animation: controller,
+                builder: (_, _) => Stack(
+                  children: [
+                    if (controller.isEmpty)
+                      const Center(
+                        child: Text(
+                          'Sign here',
+                          style: TextStyle(color: Op.muted, fontSize: 14),
+                        ),
+                      ),
+                    Positioned.fill(
+                      child: CustomPaint(
+                        painter: _SignaturePainter(controller.strokes),
+                      ),
+                    ),
+                  ],
                 ),
-              Positioned.fill(
-                child: CustomPaint(painter: _SignaturePainter(controller.strokes)),
               ),
-            ]),
-          ),
+            );
+          },
         ),
       ),
     );
