@@ -20,6 +20,7 @@ const MembershipService = require('./MembershipService');
 const StageProgressionService = require('./StageProgressionService');
 const SiteOpsService = require('./SiteOpsService');
 const QualityOpsService = require('./QualityOpsService');
+const ChecklistService = require('./ChecklistService');
 const TaskProgressService = require('./TaskProgressService');
 const mqttClient = require('../mqtt/client');
 
@@ -162,6 +163,13 @@ async function pushRecord({ orgId, userId, deviceUid, role, surface, wireName, o
   if (QualityOpsService.isQualityOps(wireName)) {
     await QualityOpsService.guardPush({ wireName, operation, safe, actor: { orgId, userId, role } });
   }
+  // Checklists (xprojman-46, v047): execute permission, template/target_role, the
+  // snapshot columns, frozen-after-completion, and the completion evidence rule.
+  if (ChecklistService.isChecklistOps(wireName)) {
+    await ChecklistService.guardPush({
+      wireName, operation, id: incoming.id, safe, actor: { orgId, userId, role },
+    });
+  }
   // Tick-then-verify (DIRECTIVE 1 Step A): a completion-field change on `tasks`
   // needs progress.tick, and a `self`-scope tradie may only tick their own task. A
   // no-op for every other table/field.
@@ -254,6 +262,12 @@ async function pushRecord({ orgId, userId, deviceUid, role, surface, wireName, o
     // Quality: stamp a defect's raised/closed provenance (§12.5). No-op otherwise.
     if (QualityOpsService.isQualityOps(wireName)) {
       await QualityOpsService.afterPush({
+        wireName, operation, id: incoming.id, safe, actor: { orgId, userId, role },
+      });
+    }
+    // Checklists: started_by is set by the guard; stamp completion + derive result here.
+    if (ChecklistService.isChecklistOps(wireName)) {
+      await ChecklistService.afterPush({
         wireName, operation, id: incoming.id, safe, actor: { orgId, userId, role },
       });
     }
@@ -373,7 +387,7 @@ async function pullDeltas({ orgId, userId, deviceUid, jti, sinceMs, role, scopeJ
       const [rows] = await pool.query(
         `SELECT ${joined ? 't.*' : '*'}, ROUND(UNIX_TIMESTAMP(${col('server_updated_at')}) * 1000) AS _su_ms
            FROM ${fromSql}
-          WHERE ${col(orgColumn)} = ?
+          WHERE ${entry.includeSystemRows ? `(${col(orgColumn)} = ? OR ${col(orgColumn)} IS NULL)` : `${col(orgColumn)} = ?`}
             AND ROUND(UNIX_TIMESTAMP(${col('server_updated_at')}) * 1000) >  ?
             AND ROUND(UNIX_TIMESTAMP(${col('server_updated_at')}) * 1000) <= ?
             ${scopeSql}${echoSql}`,

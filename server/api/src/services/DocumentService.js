@@ -31,9 +31,12 @@ const { projectScope } = require('../lib/scope');
 // drawings/reports reuse this exact mechanism rather than a new store. `task_quote` added
 // v043 (xprojman-39 §3) — the external quote document a task_quotes row attaches, same
 // polymorphic pattern, no new document mechanism.
-const ENTITY_TYPES = ['inspection_item', 'defect', 'certificate', 'site_diary', 'delivery', 'task', 'task_quote', 'subcontractor_engagement'];
+// `checklist_item` + `signoff` added v047 (xprojman-46 §7 #1): checklist evidence is always a
+// documents row, never a column on the owning row.
+const ENTITY_TYPES = ['inspection_item', 'defect', 'certificate', 'site_diary', 'delivery', 'task', 'task_quote', 'subcontractor_engagement',
+                      'checklist_item', 'signoff'];
 const KINDS = ['inspection_photo', 'defect_photo', 'certificate', 'site_diary_photo',
-               'delivery_docket', 'task_document', 'task_quote', 'general'];
+               'delivery_docket', 'task_document', 'task_quote', 'general', 'checklist_photo', 'signature'];
 // Convenience only: when the client names an entity_type but no kind, this is the kind it meant.
 // The pairing is NOT enforced beyond this — a surface may legitimately attach a `general` file.
 const DEFAULT_KIND = {
@@ -45,6 +48,8 @@ const DEFAULT_KIND = {
   task: 'task_document',
   task_quote: 'task_quote',
   subcontractor_engagement: 'general',
+  checklist_item: 'checklist_photo',
+  signoff: 'signature',
 };
 
 // The document read capability: `projects.read` (every role with a project-detail surface) OR the

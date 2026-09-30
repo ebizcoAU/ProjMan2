@@ -31,6 +31,8 @@
 //              not project-scoped (org-scope only, as before).
 //   selfColumn  (optional) with projectColumn, the row-owner column for `self`
 //              scope (e.g. 'assigned_to' on tasks) — a tradie sees only own rows.
+//   includeSystemRows  (optional) the pull also returns rows whose orgColumn is NULL —
+//              platform-wide system rows every tenant reads (checklist templates).
 //
 // Phase 1 synced organisations, users and devices. v003 adds the construction core
 // (customers, projects, project_stages, tasks) — PROPOSED to the app team in
@@ -339,6 +341,85 @@ const TABLES = {
       'reference', 'notes', 'status', 'is_deleted', 'updated_at',
     ]),
     unprotect: new Set(['status']),
+  },
+
+  // ── Checklists (migration_v047, xprojman-46) ────────────────────────────────
+  // Templates are authored in the Portal (REST) and pulled down read-only. They go
+  // out published AND unpublished (with `is_published`), because a device has to
+  // learn about an unpublish to hide it; the app shows published ones only.
+  // `includeSystemRows`: the org_id NULL system templates reach every org.
+  checklist_templates: {
+    table: 'checklist_templates',
+    owner: 'web',
+    pull: true,
+    scope: 'org',
+    orgColumn: 'org_id',
+    idColumn: 'id',
+    includeSystemRows: true,
+    columns: new Set([]),
+  },
+  checklist_template_items: {
+    table: 'checklist_template_items',
+    owner: 'web',
+    pull: true,
+    scope: 'org',
+    orgColumn: 'org_id',
+    idColumn: 'id',
+    includeSystemRows: true,
+    columns: new Set([]),
+  },
+
+  // An executed checklist. App-owned, offline-first. ChecklistService guards every push
+  // (checklists.execute, target_role, frozen-after-completion, completion evidence) and
+  // stamps the server-owned columns (template_name/category snapshot, started_by,
+  // completed_by/at, result), none of which is in `columns`. `status` unprotected so the
+  // app can push the completion.
+  checklist_instances: {
+    table: 'checklist_instances',
+    owner: 'app',
+    pull: true,
+    scope: 'org',
+    orgColumn: 'org_id',
+    idColumn: 'id',
+    projectColumn: 'project_id',
+    columns: new Set([
+      'project_id', 'template_id', 'stage_id', 'unit_id', 'status', 'lat', 'lng',
+      'notes', 'supersedes_id', 'is_deleted', 'updated_at',
+    ]),
+    unprotect: new Set(['status']),
+  },
+  // The snapshot items the app copies from the template at start. Scoped through the
+  // parent instance, like inspection_items -> inspections.
+  checklist_instance_items: {
+    table: 'checklist_instance_items',
+    owner: 'app',
+    pull: true,
+    scope: 'org',
+    orgColumn: 'org_id',
+    idColumn: 'id',
+    projectViaTable: 'checklist_instances',
+    projectViaColumn: 'instance_id',
+    columns: new Set([
+      'instance_id', 'seq', 'label', 'is_required', 'photo_required', 'result', 'note',
+      'is_deleted', 'updated_at',
+    ]),
+  },
+  // Shared sign-offs (xprojman-48 F6). `project_id` is denormalised because the subject
+  // is polymorphic. `user_id` is globally protected but here it names the SIGNER (an
+  // attendee), so it is unprotected; `signed_at` is the device's own time.
+  signoffs: {
+    table: 'signoffs',
+    owner: 'app',
+    pull: true,
+    scope: 'org',
+    orgColumn: 'org_id',
+    idColumn: 'id',
+    projectColumn: 'project_id',
+    columns: new Set([
+      'subject_type', 'subject_id', 'project_id', 'user_id', 'name', 'signed_at',
+      'is_deleted', 'updated_at',
+    ]),
+    unprotect: new Set(['user_id']),
   },
 };
 

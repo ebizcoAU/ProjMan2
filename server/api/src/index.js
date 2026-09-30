@@ -29,6 +29,7 @@ const pairingRoutes  = require('./routes/pairing');
 const syncRoutes     = require('./routes/sync');
 const orgRoutes      = require('./routes/organisation');
 const projectsRoutes = require('./routes/projects');
+const checklistRoutes = require('./routes/checklists');
 const customersRoutes = require('./routes/customers');
 const stageTemplatesRoutes = require('./routes/stageTemplates');
 const introductionsRoutes = require('./routes/introductions');
@@ -156,6 +157,9 @@ app.use('/api/v1/pairing',       pairingRoutes);
 app.use('/api/v1/sync',          syncRoutes);
 app.use('/api/v1/organisation',  orgRoutes);
 app.use('/api/v1/projects',      projectsRoutes);
+app.use('/api/v1/projects',      checklistRoutes.projectRouter); // xprojman-46 review list
+app.use('/api/v1/checklist-templates', checklistRoutes.templates); // xprojman-46 author
+app.use('/api/v1/checklists',    checklistRoutes.instances);    // xprojman-46 review detail
 app.use('/api/v1/customers',     customersRoutes);
 app.use('/api/v1/stage-templates', stageTemplatesRoutes);
 app.use('/api/v1/introductions', introductionsRoutes);

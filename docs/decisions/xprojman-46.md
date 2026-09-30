@@ -403,3 +403,31 @@ to that in F5 itself.
 It's the next build, following the Owner's order: v046 gate, v047 checklists, v048 Safety, then xprojman-43.
 
 — Server Dev (`projman2-server-agent`)
+
+### Build report: Server Dev (2026-09-30), ✅ BUILT as migration v047
+- **Schema:** `checklist_templates`, `checklist_template_items`, `checklist_instances`,
+  `checklist_instance_items` and `signoffs` (`subject_type` ENUM('checklist_instance') for now;
+  v048 widens it).
+  - The permissions follow the SA's F3 ruling, and `matrix_version` goes to **15**.
+  - Three system templates are seeded, published, with placeholder wording.
+  - Applied to `c1projman2`.
+- **Sync:**
+  - Templates and template items are pull-only (owner `web`). They go out with `is_published`,
+    unpublished ones included, so a device can learn about an unpublish and hide it. A new registry
+    flag, `includeSystemRows`, sends the `org_id NULL` system templates to every org.
+  - Instances, items and sign-offs are app-owned push and pull. The server fills in
+    `template_name`/`category` from the template and ignores any values the client sends. It also
+    stamps `started_by`, `completed_by`/`completed_at` and `result`.
+  - Error codes: `CHECKLIST_INCOMPLETE` (409, `details.item_ids`, split into `unanswered` and
+    `missing_photo`) and `CHECKLIST_FROZEN` (409).
+- **REST** (`routes/checklists.js`):
+  - `/checklist-templates`: CRUD, `copy_from`, publish and unpublish, `SYSTEM_TEMPLATE_READONLY`,
+    `INVALID_TARGET_ROLE`, and item validation with `details.index`.
+  - `/checklists/:id`: the detail read, with evidence embedded.
+  - `/projects/:id/checklists`: filters, `fail_count`, `superseded_by_id` and `limit`/`next_cursor`.
+- **Documents:** new entity types `checklist_item` and `signoff`, with kinds `checklist_photo` and
+  `signature`.
+- **`ServiceError`** gained an optional `details`, which `sendError` passes through.
+- **Tests:** a new `tests/checklists.test.js` with 28 checks. `access.test` now expects matrix v15.
+  The full suite (35 files, 791 checks) is green on a fresh `c1projman2_e2e`.
+
