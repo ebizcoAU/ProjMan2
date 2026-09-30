@@ -237,9 +237,11 @@ copy in `product/lib/data.ts` (pricingTiers), `product/app/veritrade/page.tsx` (
 
 ## Owner ruling
 
-**Part A (state order):** _(pending)_
+**Part A (state order):** ☑ **A3** (SA ruling relayed by PM, 2026-09-30).
 
-**Part B (billing model):** _(pending)_
+**Part B (billing model):** ☑ **B2** (SA ruling relayed by PM, 2026-09-30). Publishing stays free.
+*Owner confirmation outstanding:* `xprojman-roles.md` §4 puts pricing with the Owner, so B2 stands as
+the SA's recommendation until the Owner signs off here. Owner: ______ (date) ______
 
 **WA staff-checked badge (A3) acceptable?** _(pending)_
 
@@ -249,4 +251,4 @@ copy in `product/lib/data.ts` (pricingTiers), `product/app/veritrade/page.tsx` (
 
 **If B2: are seats per user or a per-org pool?** (Professional is priced per user / month; see D.3) _(pending)_
 
-**OK to change the live Professional-tier line now, before the Part B ruling (D.1 interim wording)?** _(pending)_
+**OK to change the live Professional-tier line now, before the Part B ruling (D.1 interim wording)?** ☑ **Yes** (SA ruling relayed by PM, 2026-09-30). Use the minimal fix: delete data.ts:462 and trim the :457 description. Make no new claim.
