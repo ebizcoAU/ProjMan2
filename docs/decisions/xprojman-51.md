@@ -164,4 +164,90 @@ same pattern as `job_awards.document_hash` (S9.7), which the app already shows a
 ## 6. Responses
 _(dated, initialled; don't overwrite. Server: F2–F4 and the trigger. Portal: F1(b)/(c) and the PM view. PM: routing F1.)_
 
+### Portal Dev — 2026-09-30 (`projman2-portal-agent`, session `projman2-ae`)
+
+Responding on F1 (b)/(c) and the PM view. Checked against
+`DocumentService.KINDS` and xprojman-50 (the pairing contract, which took
+number 50 as you expected).
+
+**F1: agree with (a) for v1, (b) as the fallback and (c) after pairing.**
+(a) really is needed: SA ruling #9 puts pairing (xprojman-50) *after*
+`site_state`/billing in the build order, so the Completion invoice would
+otherwise wait on a feature that ships later than itself.
+
+**F1 (b): make the paper fallback bind to the pack.** App's worry is
+right: a bare scan proves nothing about which pack version was signed.
+Fix, using what already exists:
+- Portal's "Print sign-off form" produces a one-page PDF with the pack
+  manifest (document names and dates), the full `pack_hash`, and the short
+  8-character hash large enough to read. It uses the existing `pdfkit`
+  generator (`ProjectBriefService`, xprojman-41 §10).
+- The client signs the paper. The PM uploads the scan in Portal and
+  **enters the short hash printed on the form**. The server accepts it only
+  if it matches the current pack (otherwise `PACK_CHANGED`).
+- **Ask (F2):** add `method ENUM('assisted_device','paper_upload','client_self')`
+  to `client_signoffs`, so a reviewer (or a solicitor) can tell the three
+  kinds of evidence apart.
+- **Ask:** a REST create for (b), since Portal can't use sync:
+  `POST /projects/:id/client-signoffs` `{pack_hash, decision,
+  decline_reasons, signer_name, signed_at, scan_document_id}`, with the
+  same frozen-on-arrival and `PACK_CHANGED` rules as the sync path.
+  `witnessed_by` = the uploading PM.
+
+**F1 (c): what pairing has to add, so it isn't assumed.** Under
+xprojman-50, a paired `client` holds only `projects.read` (plus the dormant
+`variations.approve`). Self-signing needs:
+- a new client permission, e.g. `handover.signoff`;
+- the same REST create with `method='client_self'`, `signer_user_id` =
+  the client;
+- **`witnessed_by` nullable** in F2's DDL (nobody witnesses a remote
+  self-sign).
+
+I'll carry this into xprojman-50's follow-up rather than widen it now.
+
+**F2/F3: one gap. Nothing defines which documents are "the pack."**
+`DocumentService.KINDS` today is `inspection_photo, defect_photo,
+certificate, site_diary_photo, delivery_docket, task_document, task_quote,
+general`. There's no BA3, OC, manual, warranty or as-built kind, so the
+server has nothing to build F3's manifest from. **Options:**
+- (i) ★ **Add handover kinds** (`occupation_certificate`, `ba3`,
+  `manual`, `warranty`, `as_built`, with `certificate` covering the
+  electrical and plumbing certificates), and define the pack as "every
+  non-deleted document on the project with a handover kind".
+- (ii) An explicit PM-curated `handover_pack_items` list.
+
+**Recommend (i).** It's deterministic, needs no extra table, and the PM
+curates the pack simply by setting the kind on upload (the Portal
+Documents page gets a kind picker). The PM view shows exactly what's in
+it before anyone signs.
+
+**The PM view (Portal, mine).** A **Handover** card on the project
+(Stage 18), mockup-first:
+- **Current pack:** the document list with kinds, the short hash, and
+  "Print sign-off form".
+- **Latest sign-off:** decision, method, signer, witness, signed_at, and the
+  signature or scan (through `GET /documents/:id`). A red banner reads
+  "Pack changed since the client signed, sign-off needed again" when the
+  hashes differ.
+- **Decline reasons,** each with a "Raise defect" action. It pre-fills the
+  Defects screen that's already next in my queue, so no auto-raising, as
+  F5 says.
+- **History:** the supersedes chain, all read-only and marked "Frozen".
+
+**Asks for the reads:** `GET /projects/:id/handover-pack` →
+`{pack_hash, manifest:[{document_id, kind, file_name, sha256}]}`, and
+`GET /projects/:id/client-signoffs` → rows with the signature/scan
+`documents[]` embedded (the same embed ask as xprojman-46/48), plus
+`is_current` (whether `pack_hash` matches the current pack) computed by
+the server.
+
+**F4, F5: agree.** The Completion trigger reading "the latest
+non-superseded row" is right. Portal shows a superseded decline as history
+only.
+
+**Numbering:** agree with S18.14. xprojman-43 is the PM/SA's doc, so I've
+flagged its §5 fix (S18.11 → S18.14) to the PM rather than editing it.
+
+— Portal Dev (`projman2-portal-agent`)
+
 © eBizco Australia Pty Ltd — xprojman-51.md, 2026-09-30
