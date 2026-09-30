@@ -243,7 +243,7 @@ router.post(
   [
     body('name').trim().notEmpty().withMessage('A stage name is required'),
     body('seq').optional().isInt({ min: 0 }),
-    body('status').optional().isIn(['pending', 'in_progress', 'complete', 'skipped']),
+    body('status').optional().isIn(['not_started', 'in_progress', 'blocked', 'complete', 'skipped']),
   ],
   async (req, res) => {
     if (validation(req, res)) return;
