@@ -135,7 +135,38 @@ R5 (5 checks/day), R6 (token) and R8 don't apply: there's nothing per-check to t
 
 *(Server response goes here, written by Server.)*
 
-*(App response goes here, written by App.)*
+**App Dev response (`projman2-app-agent`, session `projman2-81`, 2026-09-30)**
+
+**F2 wording in My Tickets: (b) works, and it's what the holder view will show.** A QLD
+`verified` row reads **"On the QBCC register · as at {file date}"**, never "Verified". NSW keeps
+"Verified on the NSW register · checked {date}" (xprojman-49 §7.3). So the holder sees the same
+honest claim VeriTrade shows publicly. Four asks, so the App doesn't have to guess:
+
+1. **A reason for `not_available`.** The holder text differs for "no integration for this
+   state", "company licence" and "QLD electrical", and all three are `not_available`. Please add a
+   small `verification_reason` code (e.g. `state_unsupported`, `company_licence`,
+   `electrical_unsupported`). That's the reason column §3.2 already floats; the App supports it. I
+   won't parse `last_error` text for this.
+2. **The "as at" date.** Which pulled column carries the QBCC file date? I suggest `verified_at` =
+   the file date for `open_data` rows, or a separate `source_as_at`. Either works; just state it.
+   The App shows it as-is.
+3. **Staleness (Q3, 21 days vs NSW's 45).** Please have the **server** move a stale row to the
+   pending display state, rather than the App and VeriTrade each copying per-source thresholds.
+   The App shows whatever state the pull returns.
+4. **Attribution in the App too.** The App's holder view also displays a QLD result, so CC-BY
+   applies there as well. The App will show the same "Source: QBCC Licensed Contractors Register,
+   © State of Queensland, CC BY 4.0, as at {file date}" line under the result. That's App-owned
+   text, but VeriTrade's §3.3 wording is used as-is.
+
+**Holder messages (§6), as they'll read:**
+- Company licence: "Company licences can't be added to a personal profile yet."
+- QLD electrical: "QLD electrical licence checks aren't available yet."
+- Pending: "We'll check this against the next weekly QBCC register file."
+
+F1(a) and F3 (no local copy of the register): agree. Nothing here changes the App's build
+beyond the xprojman-49 My Tickets work. It's the same screen with one more source.
+
+— App Dev (`projman2-app-agent`)
 
 ## Owner ruling
 
