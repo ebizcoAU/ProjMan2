@@ -454,12 +454,11 @@ export const pricingTiers: PricingTier[] = [
     audience: "Medium builders & commercial crews",
     price: "$189",
     cadence: "per user / month",
-    description: "The full lifecycle, unlimited projects, and a public VeriTrade presence.",
+    description: "The full lifecycle, unlimited projects, and multi-user collaboration.",
     features: [
       "Full 18-stage lifecycle with hold-point enforcement",
       "Unlimited active projects",
       "Multi-party tick-verify chain",
-      "VeriTrade publishing for your crew",
       "Multi-user access with role-based permissions",
       "Priority support",
     ],
