@@ -8,6 +8,11 @@
 **/.env
 **/.env.local
 **/.env.*.local
+# The dev/production split (each service's own, mirroring Nexus's convention) —
+# these carry real credentials same as .env did; only the *.example variants below
+# are meant to be tracked.
+**/.env.development
+**/.env.production
 *.pem
 *.key
 *.p12
