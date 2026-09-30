@@ -113,6 +113,19 @@ and spec §8 keeps contested things off the public profile.
   not stop someone with the same name. `users.full_name` is self-entered today, so the badge copy says
   "Licence verified", never "identity verified". A stronger bind is a separate identity decision, not
   this doc's.
+  **⚠ Bypass found by App (§7.3), so (a) needs guard rules.** Because `full_name` is self-editable, a
+  user can type someone else's number, get `name_mismatch`, rename themselves to match, and pass on the
+  R5 re-check. *Recommend adding to (a):*
+  (i) once a credential has had a `name_mismatch`, it can only become `verified` through a logged
+  `staff_check`, never automatically;
+  (ii) any automatic match made within 30 days of a `full_name` change goes to `staff_check` instead of
+  `verified`;
+  (iii) `duplicate_claim` (§3.3) still catches it if the real holder is also on ProjMan.
+  *Residual risk:* someone who signs up under another person's name from day one and never trips (i)
+  or (ii) still passes. Only (c), a stronger identity proof, closes that. Freezing name edits (App's
+  other idea) is rejected: it blocks legitimate changes (marriage, corrections) and doesn't touch the
+  residual case. **Owner/SA:** accept (a) with (i)–(iii) and this residual risk for v1, or require (c)
+  first.
 - **F3: Compliance history (disciplinary actions, prosecutions, public warnings, insurance claims).**
   The Details endpoint returns them. (a) Don't read or show them in v1 (recommend); (b) show a count
   with a link to the official register; (c) show them in full. Showing them is a policy and legal
@@ -136,6 +149,7 @@ and spec §8 keeps contested things off the public profile.
 | R3 | Staleness | badge dated "checked {date}"; if `verified_at` > 45 days old, drop to "Licence check pending" | A stale positive is worse than none |
 | R4 | Retry | on `error`: backoff 5 min / 1 h / 24 h, then leave for R1 | Don't burn quota on an outage |
 | R5 | Holder edits | editing the licence number **or `users.full_name`** re-runs P2; max 5 checks per licence per day | Stops quota drain by retyping |
+| R8 | Rate-limit response | proposed stable error code `LICENCE_CHECK_RATE_LIMITED` (HTTP 429) when R5 blocks a re-check (App ask, §7.3); **Server to confirm** | App needs a code to show a stable message |
 | R7 | Call log | `licence_check_log` (credential_id, called_at, endpoint, http_status, outcome); no payload | One table drives R2, R4, R5 and the audit trail |
 | R6 | Token | cached server-side until ~30 min before expiry; key + secret in server env only, never in any frontend | Credential |
 
@@ -148,6 +162,9 @@ and spec §8 keeps contested things off the public profile.
   exists in `server/api` today; rows claimed atomically so it's safe under PM2 cluster mode), token
   handling, status map, the `full_name` change hook (R5), and switching `VeriTradeService` (Server's
   lane) from `identities.licence_*` to `credentials`, keeping the response shape.
+- **Open Server ask (from App §7.3, not yet answered):** the sync registry's `selfColumn` currently
+  works only together with `projectColumn`, and `credentials` rows have no project. Server also needs
+  to say what `org_id` means on an identity-portable row. Server to answer once its pause is resolved.
 - **App:** declare-licence form (state + number), holder view of the result including
   `not_found`/`name_mismatch` with a "check the number" prompt.
 - **VeriTrade (me), `server/veritrade/` only:** render the §3.4 badge states, the licence block on the
@@ -255,6 +272,9 @@ except live results.
 ## Owner ruling
 
 **G1: register the API.NSW account:** _(pending)_
+
+**F2: accept name match + guard rules (i)–(iii) with the stated residual risk for v1, or require a
+stronger identity proof first?** _(pending)_
 
 **F3: compliance history shown?** _(pending)_
 
