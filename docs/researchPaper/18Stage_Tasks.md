@@ -618,17 +618,38 @@ S13.1–S13.10 match.
 
 ### Notes for the re-seed (Server)
 
-- **Live projects.** `tasks.code` on projects already seeded from v034
-  still has the old codes. Decide whether the migration remaps them too
-  (a straight code→code map from the tables above is enough). If they're
-  left as-is, xprojman-43/51 must never look up a task by its code.
-  Checked 2026-09-30: no server code looks up a task by a literal code
-  today (codes appear only in labels and error messages, and those
-  already use v3.4 numbers).
-- **Custom task codes.** Portal's custom-task creation gets a
-  server-assigned `Sx.N` code. Make sure its "next number" logic skips
-  letter-suffixed codes, and can't mint a code the re-seed later claims
-  (e.g. a custom `S12.10` created before the Base row exists).
+- **⚠ Correction (same day): a project task's code is not stored.**
+  `ProjectService.getProject` derives it as `CONCAT('S', project_stages.seq,
+  '.', tasks.seq)` (v038). `tasks.seq` is an INT, and it is **also the task's
+  display order**. The template's own `stage_task_templates.code`
+  (VARCHAR(10)) is never shown on a project. Three consequences:
+  1. **Rule 2 (letter suffixes) can't be expressed today.** An INT `seq`
+     can't produce `S10.1a`.
+  2. **A RENAME is a `seq` change, so it also reorders.** That's fine for
+     PDF steps (PDF order is the right order), but an EXTRA task can't sit
+     "between" two PDF steps without taking a number.
+  3. **Live projects are remapped by updating `tasks.seq`**, not a code
+     column.
+
+  **Fork for Server:**
+  - (a) ★ **Decouple code from order.** Add `tasks.code VARCHAR(10) NULL`,
+    copied from `stage_task_templates.code` at seeding. The read returns the
+    stored code when set, and falls back to the derived one (custom tasks,
+    pre-migration rows). `seq` stays pure order. Rule 2 then works as
+    written, and the re-seed is a template `code` + `seq` update plus a
+    one-off backfill of live projects.
+  - (b) **No schema change.** EXTRA tasks take integer slots after the PDF
+    steps (e.g. S10.1a becomes S10.51). It's cheap, but the codes read as
+    real PDF steps that don't exist, which is the confusion this whole
+    exercise is removing.
+  - **Recommend (a).** Checked 2026-09-30: no server code looks up a task by
+    a literal code today (codes appear only in labels and error messages,
+    and those already use v3.4 numbers), so neither option breaks a lookup.
+- **Custom task codes.** A custom task gets the next `seq` in its stage,
+  so its derived code can collide with a v3.4 step the re-seed adds later
+  (e.g. a custom task on Stage 12 before the Base row exists becomes
+  `S12.10`). Under (a), give custom tasks a stored code with a suffix
+  (`S12.9a`), or start custom `seq` at 50+. Server's call.
 - **In-text references to fix in the same pass** (the rows' own
   description text): lib S9.6's "deposit (S9.8)" → S9.9; lib S11.2's
   "slab pour (S11.12)" (the row now exists as NEW); lib S13.10's Frame
