@@ -172,9 +172,13 @@ not a precondition.
    declared or uploaded) is not the same as the register verification result. A holder upload must
    never set the verification to verified; only the server-side register check (or a logged
    `staff_check`, if A3 is ruled in) can. VeriTrade's badge reads the verification result only.
-3. **The v028 `identities.licence_*` columns are superseded.** Migrate any existing values into
-   `credentials` rows (status `not_available`, nothing is verified today), then retire the columns.
-   VeriTrade switches its reads when that lands.
+3. **The v028 `identities.licence_*` columns are superseded.** Server will migrate only rows with a
+   `licence_number` (1 of 6 live rows today), carrying the existing status across as-is, and create no
+   empty rows for the others. The columns stay until VeriTrade's reads have switched to `credentials`,
+   then a follow-up migration drops them, so there is never a window with nothing to read.
+   *(Server Dev, 2026-09-30.)* The holder writes `declared_status`/`declared_expiry`;
+   `verification_status`, `verified_at`, source and response hash are server-only (protected, never
+   writable by sync or the holder).
 4. A scheduled re-check (spec §11: cached with a visible "last verified", not one-off), and a
    `staff_check` path + audit fields (who/when) if A3 is ruled in.
 5. Keeping the NSW API key server-side (it's a per-account OAuth credential; the Owner registers it).
