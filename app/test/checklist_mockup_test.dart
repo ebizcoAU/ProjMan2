@@ -48,6 +48,24 @@ void main() {
     expect(c.result, ChecklistResult.pass);
   });
 
+  test('photo check applies to pass/fail only, not N/A (xprojman-46 §7)', () async {
+    final c = await svc.start('p-na', tpl('tpl-qa'));
+    for (final i in c.items) {
+      svc.setResult(c, i, ChecklistItemResult.na);
+    }
+    expect((await svc.complete(c)).success, isTrue);
+
+    final d = await svc.start('p-fail-photo', tpl('tpl-qa'));
+    for (final i in d.items) {
+      svc.setResult(d, i, ChecklistItemResult.pass);
+    }
+    final photoItem = d.items.firstWhere((i) => i.photoRequired);
+    svc.setResult(d, photoItem, ChecklistItemResult.fail);
+    final res = await svc.complete(d);
+    expect(res.code, 'CHECKLIST_INCOMPLETE');
+    expect(res.blockers.contains(photoItem), isTrue);
+  });
+
   test('result derives fail from any failed item, N/A ignored', () async {
     final c = await svc.start('p-derive', tpl('tpl-toolbox'));
     for (final i in c.items) {

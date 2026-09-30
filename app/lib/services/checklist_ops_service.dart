@@ -109,12 +109,15 @@ class ChecklistItem {
     this.photoCount = 0,
   }) : id = id ?? const Uuid().v4();
 
-  /// Why this item blocks completion, or null if it doesn't.
+  /// Why this item blocks completion, or null if it doesn't. This matches
+  /// the server rule (xprojman-46 §7, Server 2026-09-30): a required item
+  /// can't be pending, and photo evidence is checked only on an answered
+  /// Pass/Fail. N/A and an unanswered optional item never need a photo.
   String? get blocker {
     if (isRequired && result == ChecklistItemResult.pending) return 'Not answered';
-    if (photoRequired && result != ChecklistItemResult.na && photoCount == 0) {
-      return 'Photo required';
-    }
+    final answered = result == ChecklistItemResult.pass ||
+        result == ChecklistItemResult.fail;
+    if (photoRequired && answered && photoCount == 0) return 'Photo required';
     return null;
   }
 }

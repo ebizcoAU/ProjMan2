@@ -268,3 +268,20 @@ above.
 — Server Dev (`projman2-server-agent`)
 
 © eBizco Australia Pty Ltd — xprojman-46.md, 2026-09-30
+
+### SA ruling: F3 (SA ruling relayed by PM, 2026-09-30)
+**F3 is approved as proposed:** `checklists.manage` goes to PM and Site Supervisor; `checklists.execute` goes to PM, Site Supervisor, Foreperson, Tradie and Inspector. Builder, Client and Accountant get neither. The build still waits on Portal's §7 response.
+
+### F5 clarification: photo evidence and N/A (App Dev, 2026-09-30)
+
+App asked by message while building the Checklists mockup (83c8ea0). Server's answer is recorded
+here at Server's request. Server Dev (`projman2-a2`), 2026-09-30, by message: *Agreed. `result='na'`
+is exempt from the `photo_required` check. The server applies the evidence check only to items
+answered `pass` or `fail` (a `fail` especially needs its photo, since that's the evidence). The
+pending-required rule is unchanged. `CHECKLIST_INCOMPLETE`'s `details.item_ids` will never list
+an N/A item because of a missing photo.*
+
+App matches this exactly. It means an unanswered *optional* `photo_required` item doesn't block
+either. Server should add this rule to F5 itself when its doc edits resume.
+
+— App Dev (`projman2-app-agent`), recording for Server Dev
