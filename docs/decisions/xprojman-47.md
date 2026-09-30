@@ -1,6 +1,6 @@
 # xprojman-47 — VeriTrade: licence-verification state order + B2B billing model (for Owner ruling)
 
-**Status:** 📝 DRAFT, awaiting Owner (routed by PM → SA → Owner). Nothing built. Doc only.
+**Status:** 📝 DRAFT, complete, awaiting Owner (routed by PM → SA → Owner). Part D answered by Product 2026-09-30. Nothing built. Doc only.
 **Author:** VeriTrade Dev (`projman2-veritrade-agent`) · **Requested by:** PM (2026-09-30).
 **For:** Owner (both rulings) · SA (review) · Server Dev (§C asks) · Product Manager (§B consistency check, §D).
 **Date:** 2026-09-30.
@@ -186,7 +186,37 @@ To be confirmed before this draft is finalised:
 3. Does B2's "included seats" fit the Professional/Enterprise copy?
 4. Where does seat management live, VeriTrade or Portal? (Owner/SA call; noted for Product's copy.)
 
-*(Product response goes here.)*
+**Product response (Product Manager, `projman2-product-agent`, 2026-09-30)**, checked against the live
+copy in `product/lib/data.ts` (pricingTiers), `product/app/veritrade/page.tsx` (#pricing) and
+`product/app/pricing/page.tsx` (FAQ):
+
+1. **"VeriTrade publishing for your crew" is not deliberate. It is a live inconsistency, and I agree with
+   the reword.** The Professional card's description ("…and a public VeriTrade presence") has the same
+   problem. Both read as if the supply side needs a paid plan, which contradicts "Free forever" on
+   /veritrade and the /pricing FAQ. Proposed copy once Part B is ruled:
+   - B2: Professional feature line becomes "VeriTrade search seats included (N per plan)". The description
+     becomes "The full lifecycle, unlimited projects, and built-in access to VeriTrade's verified trades".
+   - Before any ruling, the smallest true wording I could use is "Your crew's verified work flows to their
+     free VeriTrade profiles". I'll only change it after a PM claim-check and Owner OK, because the site is live.
+2. **No demand-side price will be published until the Owner rules on Part B and sets a figure.** Today
+   /veritrade#pricing says only "Paid subscription" for the demand side. With B2, I would publish in two places:
+   - the Professional and Enterprise cards on /pricing (a feature line, from `pricingTiers`);
+   - a standalone "VeriTrade for employers" price block on /veritrade#pricing, replacing "Paid subscription",
+     with a short matching line in the /pricing FAQ.
+   With B1, there would be no card changes, only the standalone block. B3 would mean rewriting the
+   "subscription" wording on both pages.
+3. **Yes, B2 fits the current copy.** Professional gets the swap in (1). Enterprise gets a new line,
+   "Negotiated VeriTrade seat allocation". Starter gets nothing, and the site will stay silent about it
+   rather than list a negative. Two things to settle so the copy stays honest:
+   - **N must be a concrete number** if we print "N seats". Otherwise the line becomes "VeriTrade search
+     seats included".
+   - **Seat unit:** the Professional price is *per user / month*. A reader will assume every Professional
+     user can search VeriTrade. If N is a per-org pool that is smaller than the org's user count, the copy
+     has to say "per organisation". Owner to confirm per-user vs per-org.
+   - Minor: I agree with C.1 #4. The site says "Professional", so the DB `builder` enum should get the same
+     name before plans grant seats.
+4. **Seat management location** doesn't change the public copy. The marketing site won't name the screen,
+   so either answer works for Product.
 
 ---
 
@@ -199,3 +229,9 @@ To be confirmed before this draft is finalised:
 **WA staff-checked badge (A3) acceptable?** _(pending)_
 
 **Who sends the BPC / Building and Energy data requests:** _(pending)_
+
+**If B2: seats included in Professional (a concrete N, or no number printed):** _(pending)_
+
+**If B2: are seats per user or a per-org pool?** (Professional is priced per user / month; see D.3) _(pending)_
+
+**OK to change the live Professional-tier line now, before the Part B ruling (D.1 interim wording)?** _(pending)_
