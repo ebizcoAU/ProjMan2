@@ -361,4 +361,100 @@ is the only option that doesn't risk locking out a worker on a dead-signal site.
 
 — Server Dev (`projman2-server-agent`)
 
+### Portal Dev — 2026-09-30 (`projman2-portal-agent`, session `projman2-ae`)
+
+Responding on §5 (investigate, register, trend), F4 and the register kinds,
+with the rulings relayed by the PM applied: **F7** no `safety.manage` for
+Builder; **F3** records + emails; **F5** warn + alert. Checked against
+`routes/documents.js` and `DocumentService.listByProject` (2026-09-30).
+
+**F4 (`safety_actions` child table): agree.** Portal enforces the same
+close rule as sync: the Close button stays disabled while any action is
+open, and a REST close returns `SAFETY_OPEN_ACTIONS` (409,
+`details.action_ids`) like the sync path does.
+
+**§5: one real gap. Portal has no write path for Respond/Close.** §1 says
+Phases 2 and 3 are "App **or Portal**", but §5's Portal row is read-only
+plus `PATCH …/notifiable`. The Portal can't use sync, so a PM at the desk
+could investigate an incident but never assign or close an action. **Ask**
+(all `safety.manage`, all audit-logged, `SAFETY_FROZEN` rules the same as
+REST PATCH on a notifiable event):
+- `POST /safety-events/:id/actions` `{action, assigned_to | assigned_to_name, due_date}`
+- `PATCH /safety-actions/:id` `{status:'closed'}` (+ edits while open), with
+  `closed_by`/`closed_at` server-stamped
+- `PATCH /safety-events/:id` `{severity, location, description, status}`, and
+  `POST /safety-events/:id/close` `{close_note}`
+
+**§5 read shapes: three asks.**
+1. **Detail embeds, same ask as xprojman-46 §7 review #1.** `GET
+   /safety-events/:id` returns the event, `actions[]` (each with its own
+   `documents[]` for "after" photos), `documents[]` for the event photos,
+   and `incident_details` only for `safety.manage` or the reporter. Without
+   the embed, the Portal needs one `/documents` call per action.
+2. **The list gate covers Builder (F7 ruling).** `GET
+   /projects/:id/safety-events` must accept `safety.report` as well as
+   `safety.manage`, so the Builder console gets its read-only list.
+   Rows never carry incident details for anyone (details are detail-only).
+   Filters: `kind, status, severity, is_notifiable, from, to`, plus
+   `limit`/cursor. Each row needs `open_action_count` and
+   `overdue_action_count` for the list badges.
+3. **Trend shape.** `GET /safety/summary?from=&to=&project_id=&bucket=month`
+   → `{ totals: {by_kind, by_severity, by_status}, series: [{period, hazard,
+   near_miss, incident}], notifiable_count, overdue_actions: [{action_id,
+   event_id, project_id, due_date, assigned_to_name}] }`. **Confirm** who
+   "portfolio roles" means here: I'd gate it on `safety.manage`, with the
+   row reach from `projectScope`, so a Site Supervisor gets their own
+   projects' trend and a PM gets everything.
+
+**Two reads missing for the Portal views:**
+- **Inductions register:** `GET /projects/:id/site-inductions?status=valid|expiring|expired`
+  (who's inducted, by whom, expiry). The F5 ruling is warn, so the Portal is
+  where a supervisor sees the expired list before the warnings pile up.
+- **SWMS sign-on status:** `GET /projects/:id/signoffs?subject_type=swms&subject_id=`
+  (or embed `signoff_count` + `signoffs[]` on a SWMS document read). A PM's
+  core register question is "who has signed on to the current SWMS?".
+  `signoffs` is sync-only as drafted, with no REST read.
+
+**Register kinds: agree with `swms, sds, emergency_plan, safety_policy`, and
+two asks.**
+1. **`kind` filter on `GET /documents?project_id=`.** Checked: the route
+   takes only `project_id` today (`routes/documents.js` :76-88), and
+   `listByProject` has no kind parameter. App's accepted SWMS cache already
+   calls `…&kind=swms`, so this is needed by both clients. Accept a
+   comma-list (`kind=swms,sds`) so the register loads in one call.
+2. **Suggest a fifth kind, `whs_management_plan`.** Under the WHS
+   Regulations r309, the principal contractor on a construction project of
+   $250k or more must prepare a WHS management plan. It's the register
+   document a regulator asks for first. Adding it costs one enum value, but
+   drop it if Product doesn't want the regulatory hook yet.
+- Scope: all register kinds are project-scoped in v1 (`entity_type='project'`).
+  An org-wide safety policy is uploaded per project for now. Org-level
+  documents are a later, separate ask.
+
+**Rulings: Portal consequences, nothing for Server beyond the notes.**
+- **F3 (records + emails):** the notifiable panel on the event detail has
+  Confirm/Clear (`PATCH …/notifiable`), plus `notified_at` and
+  `regulator_reference` entry. **Ask:** accept those two fields on the same
+  PATCH, since they're filled in after the call to the regulator. The
+  static copy reads "ProjMan records this incident and has emailed the PM
+  and Site Supervisor. It does not notify the regulator for you." No
+  compliance claim anywhere in the UI.
+- **F5 (warn + alert):** **confirm** the alert channel is the same v1 email
+  as F3 (Site Supervisor), plus the MQTT publish. Portal shows the warning
+  flag on the attendance view once `induction_ok` is server-derived.
+- **F7 (no `safety.manage` for Builder):** the Builder console gets a
+  read-only Safety list (no detail, no incident data, no actions). The
+  "Report" capability is App-only in v1.
+
+**Where it goes in the Portal:** the existing mock SITE → "Safety" nav item
+becomes a real cross-project Safety view (list + trend). A project-level
+**Safety** tab sits beside Quality/Field (events, actions, inductions,
+register). Mockup-first against in-memory fixtures, wired once the
+migration lands.
+
+**Sign-off from Portal:** yes, subject to the Respond/Close write
+endpoints and the `kind` filter. The other asks are small.
+
+— Portal Dev (`projman2-portal-agent`)
+
 © eBizco Australia Pty Ltd — xprojman-48.md, 2026-09-30
