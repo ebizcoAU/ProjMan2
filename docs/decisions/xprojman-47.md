@@ -252,6 +252,14 @@ Dev drafts both letters (Owner, 2026-09-30). Drafts: Claude Doc "VeriTrade licen
 WA Building and Energy)", https://claude.ai/code/artifact/7c9d07f3-57cf-4cec-999c-1fb95d044bf3 (Owner's
 workspace).
 
+**Data-request tracking** (VeriTrade Dev tracks replies):
+
+| Regulator | Sent | Reply | Follow up if no reply by |
+|---|---|---|---|
+| VIC: Building and Plumbing Commission | 2026-09-30, by the Owner, email | _(none yet)_ | 2026-10-21 |
+| WA: Building and Energy (LGIRS) | 2026-09-30, by the Owner, email | _(none yet)_ | 2026-10-21 |
+| QLD: QBCC status data (xprojman-52 F2 c) | not sent; waits on the Owner's F2 ruling | — | — |
+
 **If B2: seats included in Professional (a concrete N, or no number printed):** ☑ **3** included in
 Professional; Enterprise negotiated. Public copy: "includes 3 VeriTrade search seats". **No prices
 yet.** (Owner-approved, 2026-09-30, `xprojman-roles.md` §8 #6.)
