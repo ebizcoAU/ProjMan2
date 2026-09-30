@@ -23,6 +23,14 @@ document packaging, have no PM-facing task here; some PM tasks here, e.g.
 Part 2). Cross-check against the PDF directly rather than assuming code
 parity where it matters.
 
+> **2026-09-30: superseded by the alignment rule at the end of this doc.**
+> The codes are being aligned to the v3.4 PDF: same code, same meaning.
+> Library-only tasks get a letter suffix. See **"Code alignment to Spec
+> v3.4"** below. The per-stage tables further down still show the
+> **old v034 codes** until Server's re-seed lands, and are renumbered after
+> that. Until then, use the alignment section wherever a code matters
+> (billing milestones, hold points, xprojman-43/51).
+
 ## How this is meant to be used — core + extra, not a locked list
 
 Every stage below ships a **core task list** — the tasks that apply to
@@ -48,7 +56,7 @@ make a go/no-go decision before spending serious money on design.
 
 | Code | Task | Typical Actor | PM's Reality Check | ProjMan2 System Need |
 |---|---|---|---|---|
-| S1.1 | Initial client meeting / brief capture | PM | The client's budget is always aspirational. Capture "must haves" vs "nice to haves" — this becomes the filter for Stage 5 options. In WA, clients often don't know the difference between "I want" and "the land allows." | `project_briefs.requirements` with mandatory vs optional distinction. Meeting summary should be captured as a structured note. |
+| S1.1 | Initial client meeting / brief capture | PM | The client's budget is always aspirational. Capture "must haves" vs "nice to haves" — this becomes the filter for Stage 5 options. In WA, clients often don't know the difference between "I want" and "the land allows." | The brief lives on the project itself: `projects.description` (v040) and the Edit page's Brief tab (xprojman-40). It is fixed as dated PDF snapshots in `project_brief_snapshots` (v041, "Formalize Brief", xprojman-41 §3/§9). There is no structured must-have vs nice-to-have field yet, so record that split in the description for now. A structured requirements list would be a new, separate ask. *(Corrected 2026-09-30: the `project_briefs` table this row originally named was retracted and never built.)* |
 | S1.2 | Verify land title & ownership | PM | A surprising number of projects stall here. The person who wants to build isn't always the registered owner. In WA, title searches cost ~$30 and take 1-2 days, but a missed step here can be project-ending. | Document upload with OCR extraction of owner name from title certificate. System should flag if the client's name doesn't match the registered owner. |
 | S1.3 | Order/obtain contour & feature survey | PM | External contractor (surveyor company). Contour surveys in WA can take 2-3 weeks and cost $1,500-$3,000 depending on site size and complexity. This is often the first real timeline gate. PM needs to track who was engaged and when. | Surveyor engagement should be tracked via the `consultants` table with `discipline='surveyor'`. Expected completion date, actual completion date, and document upload (survey plan) should all be tracked. The system should auto-set a follow-up reminder. |
 | S1.4 | Confirm lot/plan number and zoning | PM | Fixed cost from City Council. Zoning certificates typically cost ~$50-150 and confirm what the land can be used for. PM needs to know if the client's dream house fits the zoning. R-codes (e.g., R20, R40) dictate density. | The system should store the zoning code and R-code. A validation check: does the proposed building footprint exceed the site coverage allowance? If yes, flag immediately. |
@@ -399,5 +407,235 @@ Certificate is the final statutory document.
   not exhaustively cited — confirm current requirements per state before this
   becomes client-facing copy, same caveat the underlying Spec carries in
   Part 3.
+
+---
+
+## Code alignment to Spec v3.4 (2026-09-30, handover #9)
+
+**Author:** Portal Dev (`projman2-portal-agent`). **Re-seed:** Server Dev
+writes the migration (number assigned by Server, `xprojman-roles` §8 #9).
+**Checked:** every stage against `ProjMan_18Stage_Specification_v3.4.pdf`
+(page numbers are the PDF's own "Page N of 35"), and the v034 seed
+(`migration_v034_stage_task_templates.sql`) against this doc. v034 is an
+exact copy of this doc (139 rows, same code, name and actor on every row),
+so the drift is in both.
+
+### The rule
+
+1. **Same code, same meaning.** Where a library task *is* a PDF sub-step,
+   it takes the PDF code (**RENAME**).
+2. **Library-only tasks keep a letter suffix** on the nearest PDF step,
+   e.g. `S10.1a` (**EXTRA**). `code` is VARCHAR(10), so `S18.16a` fits.
+3. **System-only PDF steps get no task row (SYS)**, *except* those that
+   gate progress or bill (**SYS+**). A SYS+ step gets a row, so the
+   billing milestone and gate is visible on the Programme even though
+   no one ticks it.
+4. **Missing human steps get a new row (NEW).**
+
+### Summary
+
+| Stages | Status |
+|---|---|
+| 8, 14, 15, 16, 17 | ALIGNED, no change |
+| 4, 7, 11, 12, 13 | PARTIAL: see the tables |
+| 1, 2, 3, 5, 6, 9, 10, 18 | DRIFTED: see the tables |
+
+**Billing milestones** (xprojman-43 reads these, so they must be exact):
+
+| Milestone | Old library code | v3.4 code | Change |
+|---|---|---|---|
+| Deposit | S9.8 | **S9.9** | rename |
+| Base | *(none)* | **S12.10** | new SYS+ row |
+| Frame | S13.10 (in its text) | **S13.11** | new SYS+ row; drop Frame from S13.10's text |
+| Lock-up | S14.7 | S14.7 | none |
+| Fixing | S16.10 | S16.10 | none |
+| Completion | S18.12 | **S18.15** | rename |
+
+**Hold points:** codes already match for S8.5, S11.9–S11.11, S12.7–S12.9,
+S13.8–S13.10, S15.5–S15.6, S16.7 and S18.3. **The one mismatch is S10.5:**
+the library has the set-out hold point at S10.6 and fencing at S10.5 —
+swap them.
+
+**Verified by hand against the PDF text** (not only from the extract):
+S9.9 Deposit (p18), S10.5 set-out hold point and S10.6 fencing (p19),
+S12.10 Base (p21), S13.11 Frame (p22), and S18.10–S18.16 (p26–28).
+
+### Per-stage mapping
+
+Action key: RENAME, NEW, SYS, SYS+, EXTRA, as defined in the rule above.
+"lib" = the old v034 code.
+
+#### Stage 1 (p10)
+| PDF | Title | Surf | Library | Action |
+|---|---|---|---|---|
+| S1.1 | Capture client profile | Both | lib S1.1 "Initial client meeting / brief capture" | Keep S1.1. Brief capture partly overlaps. |
+| S1.2 | Site details (address, lot/plan, title ref) | Both | lib S1.4 "Confirm lot/plan number and zoning" (lot/plan part) | RENAME S1.4→S1.2 |
+| S1.3 | Declare building type / unit count | Both | — | **NEW**. This declaration drives Gantt vs Line-of-Balance. |
+| S1.4 | Upload land title | Both | lib S1.2 "Verify land title & ownership" | RENAME S1.2→S1.4 |
+| S1.5 | OCR extract (System) | Both | — | SYS |
+| S1.6 | Upload contour / survey | Both | lib S1.3 "Order/obtain contour & feature survey" | RENAME S1.3→S1.6 |
+| S1.7 | Confirm/override OCR | Both | (partly lib S1.2) | NEW, or fold into S1.4 |
+| S1.8 | Tracking ID + confirmation email (System) | — | — | SYS |
+| — | — | — | lib S1.5 "Easements, covenants…" | Move to **PDF S2.3** |
+| — | — | — | lib S1.6 "Site access for delivery/crane" | EXTRA S1.2a |
+| — | — | — | lib S1.7 "Customer emails / meeting summary" | EXTRA S1.1a |
+
+#### Stage 2 (p11)
+| PDF | Title | Surf | Library | Action |
+|---|---|---|---|---|
+| S2.1 | DBYD plus utility coords, sewer depth, overhead power | Portal | lib S2.1 DBYD, S2.2 sewer depth, S2.3 overhead power | S2.1 keep. S2.2→S2.1a, S2.3→S2.1b (EXTRA sub-items) |
+| S2.2 | Zoning code / density | Portal | lib S2.4 | RENAME S2.4→S2.2 |
+| S2.3 | Easements/covenants/design guidelines | Portal | lib **S1.5** | RENAME S1.5→S2.3 |
+| S2.4 | Hazard buffers: flood/heritage/bushfire | Portal | lib S2.5 BAL, S2.6 flood/ASS, S2.7 heritage/tree | Merge as S2.4 or split as S2.4a/b/c. S2.4 is the flag source for S12.8/S12.9/S16.7. |
+| S2.5 | AI/NLP compliance check | — | — | SYS |
+| S2.6 | PM confirms AI audit | Portal | lib S2.8 | RENAME S2.8→S2.6 |
+| S2.7 | Auto-email audit summary | — | — | SYS |
+
+#### Stage 3 (p11–12)
+| PDF | Title | Surf | Library | Action |
+|---|---|---|---|---|
+| S3.1 | PM triggers concept generation | Portal | lib S3.1 "Confirm preferred footprint/orientation" | Keep S3.1 (the input captured before triggering) |
+| S3.2 | AI footprint in setback envelope | — | lib S3.2 "Generate/review footprint" (PM/System) | Keep |
+| S3.3–3.4, 3.6 | AI overlays/elevation/rationale | — | — | SYS |
+| S3.5 | AI floor-area summary | — | lib S3.3 "Review floor area vs budget" | EXTRA S3.5a (PM review of the S3.5 output) |
+| S3.7 | PM confirm-gate | Portal | lib S3.4 | RENAME S3.4→S3.7 |
+| S3.8–3.9 | Store PDFs / email client | — | — | SYS |
+| S3.10 | PM records changes, re-triggers | Portal | lib S3.5 "Log client-requested revisions" | RENAME S3.5→S3.10 |
+| S3.11 | AI regenerates (supersedes_id) | — | — | SYS |
+
+#### Stage 4 (p13)
+| PDF | Title | Surf | Library | Action |
+|---|---|---|---|---|
+| S4.1 | Choose screening pathway | Portal | lib S4.1 | Keep |
+| S4.2/S4.3 | System packages and sends | — | lib S4.2 "Brief the Town Planner" | RENAME S4.2→S4.3 (the PM-facing view of the send) |
+| S4.4 | Response countdown (System) | — | lib S4.3 "Track response clock" | RENAME S4.3→S4.4 |
+| S4.5 | PM records outcome | Portal | lib S4.4 | RENAME S4.4→S4.5 |
+
+#### Stage 5 (p13)
+| PDF | Title | Surf | Library | Action |
+|---|---|---|---|---|
+| S5.1/S5.2 | Selector unlocks / AI 3 options | — | — | SYS |
+| S5.3 | PM confirm-gate | Portal | lib S5.1 "Review 3 style options" | RENAME S5.1→S5.3 |
+| S5.4 | Email 3 options, frozen/hashed | — | — | SYS |
+| — | — | — | lib S5.2 "Present options; record selection" | Move to **PDF S6.1**. The PDF makes this a Client Portal write in Stage 6. |
+| — | — | — | lib S5.3 "Reconcile tier vs budget" | EXTRA S5.3a |
+
+#### Stage 6 (p14–15)
+| PDF | Title | Surf | Library | Action |
+|---|---|---|---|---|
+| S6.1 | Client selects budget tier | Portal (Client) | lib **S5.2** | RENAME S5.2→S6.1 and change the actor to Client |
+| S6.2 | Route tier data to architect | Portal | lib S6.1 | RENAME S6.1→S6.2 |
+| S6.3 | Client material selection | Portal (Client) | lib S6.2 | RENAME S6.2→S6.3 |
+| S6.4 | (External) architect drafts | — | lib S6.3 "Track turnaround" | RENAME S6.3→S6.4 |
+| S6.5 | PM uploads drawings | Portal | lib S6.4 | RENAME S6.4→S6.5 |
+| S6.6 | System maps selections to 3D | — | — | SYS |
+| S6.7 | PM reviews 3D preview | Portal | lib S6.5 | RENAME S6.5→S6.7 |
+| S6.8 | Client views 3D | Portal | — | NEW (view-only). Optional. |
+| — | — | — | lib S6.6 "Resolve out-of-variance selections" | EXTRA S6.3a. The Variation rule sits in the PDF's S6.3 note. |
+
+#### Stage 7 (p15–16)
+| PDF | Title | Surf | Library | Action |
+|---|---|---|---|---|
+| S7.1 | PM release check | Portal | lib S7.1 | Keep |
+| S7.2 | System transmits to client | — | — | SYS |
+| S7.3 | Client digital sign-off (hashed) | Portal (Client) | lib S7.2 | RENAME S7.2→S7.3 |
+| S7.4/S7.5 | Compile / submit to council | — | lib S7.3 "Lodge DA" (PM/System) | RENAME S7.3→S7.5 |
+| S7.6 | Statutory countdown | — | lib S7.4 | RENAME S7.4→S7.6 |
+| S7.7 | Auto-email DA submission | — | — | SYS |
+| — | — | — | lib S7.5 "If declined: redraft via Variation" | EXTRA S7.3a. The PDF's S7.3 note routes this back to S6.2. |
+
+#### Stage 9 (p17–18), DEPOSIT
+| PDF | Title | Surf | Library | Action |
+|---|---|---|---|---|
+| S9.1 | Prepare BOQ | Portal | lib S9.1 | Keep |
+| S9.2 | Package tender docs (System) | — | — | SYS |
+| S9.3 | Issue tender to Builders | Portal | lib S9.2 | RENAME S9.2→S9.3 |
+| S9.4 | Compare tenders | Portal | lib S9.3 | RENAME S9.3→S9.4 |
+| S9.5 | Select winning Builder | Portal | lib S9.4 | RENAME S9.4→S9.5 |
+| S9.6 | Job Award invitation | Portal | lib S9.5 | RENAME S9.5→S9.6 |
+| **S9.7** | **Builder accepts/declines (in-app tap)** | **App/Portal** | lib S9.6 | **RENAME S9.6→S9.7** |
+| S9.8 | Handover of tech docs to crew (System, offline cache) | — | — | SYS+ (fires on S9.7) |
+| **S9.9** | **Lock Cost Plan: BILLING MILESTONE Deposit** | Portal | lib S9.8 | **RENAME S9.8→S9.9**. Also fix the "deposit (S9.8)" reference in lib S9.6's text (line 179). |
+| S9.10 | Seed stages 10–18 plus Builder job breakdown (System) | — | lib S9.9 "Builder confirms/overrides job breakdown" | RENAME S9.9→S9.10 |
+| — | — | — | lib S9.7 "Set builder_engagement_type" | EXTRA S9.6a (or S9.9a) |
+| — | — | — | lib S9.10 "Builder engages subcontractor panel" | EXTRA S9.10a. The PDF has this only in the Stage 9 preamble (p17). |
+
+#### Stage 10 (p19)
+| PDF | Title | Surf | Library | Action |
+|---|---|---|---|---|
+| S10.1 | Site tracking module activates (System) | — | — (lib S10.1 is "Site induction / toolbox talk", which means something different) | SYS. Re-code lib S10.1 as EXTRA S10.1a. |
+| S10.2–S10.4 | Clearing, cut/fill, amenities | App | lib S10.2–S10.4 | Keep |
+| **S10.5** | **HOLD POINT: set-out (surveyor pegs), blocks Stage 11** | App | lib **S10.6** (hold=1) | **RENAME S10.6→S10.5** |
+| S10.6 | Erect temporary fencing | App | lib **S10.5** "fencing and signage" | **RENAME S10.5→S10.6** |
+| — | — | — | lib S10.7 "SS confirms setout" | This is the S10.5 Verifier column (Site Supervisor), not a separate step. Fold into the verify on S10.5, or keep as EXTRA S10.5a. |
+
+#### Stage 11 (p20)
+S11.1–S11.11 match. **S11.9 / S11.10 / S11.11** are the three-way split of the rough-in hold point: electrician certificate, plumber certificate and Principal Certifier overall check. The PDF resolution note is on p30 #11. All three have hold=1 in the library.
+| PDF | Title | Surf | Library | Action |
+|---|---|---|---|---|
+| S11.12 | Concrete pour, gated on S11.9–11.11 | App | — | **NEW**. The library already names "slab pour (S11.12)" in S11.2's text (line 210), so the reference currently has no row behind it. |
+
+#### Stage 12 (p21), BASE
+S12.1–S12.9 match. **S12.8 and S12.9** are conditional hold points, auto-flagged from S2.4, and both are hold=1 in the library.
+| PDF | Title | Surf | Library | Action |
+|---|---|---|---|---|
+| **S12.10** | Stage advances once S12.7–12.9 are satisfied: **BILLING MILESTONE Base** | — | — (heading prose only) | **NEW / SYS+** |
+
+#### Stage 13 (p22), FRAME
+S13.1–S13.10 match.
+| PDF | Title | Surf | Library | Action |
+|---|---|---|---|---|
+| **S13.11** | Stage validated, auto-schedules Stage 14 and notifies trades: **BILLING MILESTONE Frame** | — | — (lib puts Frame in S13.10's text) | **NEW / SYS+**. Move Frame from S13.10 to S13.11. |
+
+#### Stage 18 (p26–28), COMPLETION
+| PDF | Title | Surf | Library | Action |
+|---|---|---|---|---|
+| S18.1 / S18.2 | Final inspection / Form BA3 | App | lib S18.1 / S18.2 | Keep |
+| **S18.3** | **HOLD POINT: Occupation Certificate** | App | lib S18.3 (hold=1) | Keep |
+| S18.4 | Electrical safety cert on file | — | — | SYS (document check) |
+| S18.5 | Plumbing compliance cert on file | — | — | SYS (document check) |
+| S18.6 | Practical Completion walkthrough, defect list | App (PM) / Portal (Client) | lib S18.4 | RENAME S18.4→S18.6 |
+| S18.7 | Defect rectification | App | lib S18.5 | RENAME S18.5→S18.7 |
+| S18.8 | Client handover: keys/manuals | App/Portal | lib S18.6 | RENAME S18.6→S18.8 |
+| S18.9 | Client satisfaction survey | Portal | lib S18.7 | RENAME S18.7→S18.9 |
+| **S18.10** | System cross-check: Stage 12 and 15 is_validated, **blocks S18.11** | — | — | **NEW / SYS+** (gate) |
+| **S18.11** | Depreciation draft (not lodged) | — | lib S18.8 | **RENAME S18.8→S18.11** |
+| **S18.12** | **APPROVAL GATE: Accountant/BAS Agent** (verifier "protected") | Portal | lib S18.9 (hold=0) | **RENAME S18.9→S18.12**. Decide whether this should carry a gate or protected flag. |
+| S18.13 | Auto-email handover pack | — | lib S18.10 | RENAME S18.10→S18.13 |
+| **S18.14** | **Client final digital sign-off** (protected, frozen/hashed) | Portal | lib S18.11 | **RENAME S18.11→S18.14** |
+| **S18.15** | **status='completed': BILLING MILESTONE Completion** | — | lib S18.12 | **RENAME S18.12→S18.15** |
+| **S18.16** | Attestation to every participant's Verified Work History (VeriTrade hand-off) | — | — | **NEW / SYS+** |
+
+### Open questions (decide before the re-seed)
+
+| # | Question | Recommendation | Who |
+|---|---|---|---|
+| Q1 | **S8.8:** the PDF note says "is_hold_point = true, blocks Stage 9/10" (p17), but the library seeds it `0`. | Read S8.8 as the event that *clears* the S8.5 hold point, not a second hold point. Keep `0`. | SA (spec reading) |
+| Q2 | **S18.12 accountant gate:** seeded `is_hold_point=0` on the task row. The real gate is already enforced (`HoldPointService` Stage 18 row, `tax.approve`). | Keep the task row at `0`: the gate lives in `hold_point_requirements`, and a second flag would double-count. | Server |
+| Q3 | **S2.4:** merge lib S2.5/S2.6/S2.7 (BAL, flood/ASS, heritage/tree) into one S2.4 row, or split them as S2.4a/b/c. | **Split (S2.4a/b/c).** Each triggers different later hold points (S12.8/S12.9/S16.7), and the future `site_constraints` table (xprojman-48 F1) is one row per constraint type. | Portal (me), unless someone objects |
+| Q4 | **lib S10.7** "Site Supervisor confirms setout" duplicates S10.5's verifier column. | Drop it; the S10.5 hold point's verify step *is* this. | Server/App |
+| Q5 | **SYS+ rows** (S9.8, S9.10, S12.10, S13.11, S18.10, S18.16): who ticks them? | Nobody. The server marks them complete when the event fires (same place the stage gate or billing trigger already runs). Actor = `System`. | Server |
+
+### Notes for the re-seed (Server)
+
+- **Live projects.** `tasks.code` on projects already seeded from v034
+  still has the old codes. Decide whether the migration remaps them too
+  (a straight code→code map from the tables above is enough). If they're
+  left as-is, xprojman-43/51 must never look up a task by its code.
+  Checked 2026-09-30: no server code looks up a task by a literal code
+  today (codes appear only in labels and error messages, and those
+  already use v3.4 numbers).
+- **Custom task codes.** Portal's custom-task creation gets a
+  server-assigned `Sx.N` code. Make sure its "next number" logic skips
+  letter-suffixed codes, and can't mint a code the re-seed later claims
+  (e.g. a custom `S12.10` created before the Base row exists).
+- **In-text references to fix in the same pass** (the rows' own
+  description text): lib S9.6's "deposit (S9.8)" → S9.9; lib S11.2's
+  "slab pour (S11.12)" (the row now exists as NEW); lib S13.10's Frame
+  mention → S13.11.
+- After the re-seed lands, Portal renumbers the per-stage tables in this
+  doc to match, and removes the "superseded" note at the top.
+
+— Portal Dev (`projman2-portal-agent`), 2026-09-30
 
 © eBizco Australia Pty Ltd
