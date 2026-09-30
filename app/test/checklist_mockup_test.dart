@@ -40,9 +40,12 @@ void main() {
     }
     res = await svc.complete(c);
     expect(res.code, 'CHECKLIST_INCOMPLETE');
-    expect(res.blockers.single.photoRequired, isTrue);
+    expect(res.blockers, isNotEmpty);
+    expect(res.blockers.every((i) => i.photoRequired), isTrue);
 
-    svc.addMockPhoto(c, res.blockers.single);
+    for (final i in res.blockers) {
+      svc.addMockPhoto(c, i);
+    }
     res = await svc.complete(c);
     expect(res.success, isTrue);
     expect(c.result, ChecklistResult.pass);

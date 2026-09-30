@@ -181,8 +181,8 @@ class ChecklistOpsService {
   SignoffStore get _signoffs => SignoffStore.instance;
 
   /// Published templates. Real ones pull down over sync (published only,
-  /// owner `portal`, xprojman-46 §5). These are the three placeholder
-  /// system templates §5 seeds, with wording invented here for review.
+  /// owner `portal`, xprojman-46 §5). These are the three
+  /// system templates §5 seeds, with Product's wording (see below).
   List<ChecklistTemplate> templates() => _seedTemplates;
 
   List<ChecklistInstance> instances(String projectId,
@@ -317,48 +317,63 @@ class ChecklistOpsService {
     return const ChecklistCompletion.ok();
   }
 
+  /// Template wording from Product (`projman2-d4`, 2026-09-30, at the Owner's
+  /// request). Items are statements to mark Pass / Fail / N/A. An item that
+  /// may not apply is required and relies on N/A, rather than optional.
+  /// The wording makes no compliance claims.
   static final List<ChecklistTemplate> _seedTemplates = [
     ChecklistTemplate(
       id: 'tpl-toolbox',
       name: 'Toolbox talk',
       category: ChecklistCategory.toolboxTalk,
-      description: 'Daily pre-work briefing. Every attendee signs.',
+      description: 'Pre-start crew briefing. Record what was covered; every attendee signs on.',
       items: const [
-        ChecklistTemplateItem(id: 'tb1', seq: 1, label: "Today's tasks and sequence explained"),
-        ChecklistTemplateItem(id: 'tb2', seq: 2, label: 'Hazards for today reviewed (incl. new ones raised)'),
-        ChecklistTemplateItem(id: 'tb3', seq: 3, label: 'Relevant SWMS reviewed with the crew'),
-        ChecklistTemplateItem(id: 'tb4', seq: 4, label: 'PPE requirements confirmed'),
-        ChecklistTemplateItem(id: 'tb5', seq: 5, label: 'Emergency assembly point and first aider confirmed'),
-        ChecklistTemplateItem(id: 'tb6', seq: 6, label: 'Questions / concerns raised by crew', isRequired: false),
+        ChecklistTemplateItem(id: 'tb1', seq: 1, label: 'Today\'s tasks, work areas and sequence explained'),
+        ChecklistTemplateItem(id: 'tb2', seq: 2, label: 'Site hazards for today reviewed, including new or changed hazards'),
+        ChecklistTemplateItem(id: 'tb3', seq: 3, label: 'SWMS for today\'s high-risk work reviewed with the workers doing it'),
+        ChecklistTemplateItem(id: 'tb4', seq: 4, label: 'PPE for today\'s tasks confirmed and available'),
+        ChecklistTemplateItem(id: 'tb5', seq: 5, label: 'Exclusion zones, plant movements and overhead/underground services discussed'),
+        ChecklistTemplateItem(id: 'tb6', seq: 6, label: 'Weather and heat/cold conditions considered'),
+        ChecklistTemplateItem(id: 'tb7', seq: 7, label: 'Emergency assembly point, first aider and first-aid kit location confirmed'),
+        ChecklistTemplateItem(id: 'tb8', seq: 8, label: 'Incidents, near misses or hazards since the last talk discussed'),
+        ChecklistTemplateItem(id: 'tb9', seq: 9, label: 'Crew questions and concerns recorded (use the note)', isRequired: false),
       ],
     ),
     ChecklistTemplate(
       id: 'tpl-plant',
       name: 'Plant pre-start',
       category: ChecklistCategory.plantPrestart,
-      description: 'Operator checks before first use each day.',
+      description: "Operator's daily check before first use. Any Fail: tag the plant out and tell your supervisor.",
       items: const [
-        ChecklistTemplateItem(id: 'pl1', seq: 1, label: 'Operator licence / competency sighted'),
-        ChecklistTemplateItem(id: 'pl2', seq: 2, label: 'Fluid levels (oil, hydraulic, coolant, fuel)'),
-        ChecklistTemplateItem(id: 'pl3', seq: 3, label: 'Tyres / tracks — no visible damage', photoRequired: true),
-        ChecklistTemplateItem(id: 'pl4', seq: 4, label: 'Lights, beacon and reversing alarm working'),
-        ChecklistTemplateItem(id: 'pl5', seq: 5, label: 'Seatbelt and ROPS/FOPS intact'),
-        ChecklistTemplateItem(id: 'pl6', seq: 6, label: 'Fire extinguisher present and in date'),
-        ChecklistTemplateItem(id: 'pl7', seq: 7, label: 'Hour meter reading recorded', isRequired: false),
+        ChecklistTemplateItem(id: 'pl1', seq: 1, label: 'Operator holds the required licence/ticket and is competent on this machine'),
+        ChecklistTemplateItem(id: 'pl2', seq: 2, label: 'Operator\'s manual and plant risk assessment available'),
+        ChecklistTemplateItem(id: 'pl3', seq: 3, label: 'Walk-around done: no leaks, damage, loose or missing parts', photoRequired: true),
+        ChecklistTemplateItem(id: 'pl4', seq: 4, label: 'Engine oil, hydraulic oil, coolant and fuel at correct levels'),
+        ChecklistTemplateItem(id: 'pl5', seq: 5, label: 'Tyres/tracks, rims and undercarriage in good condition', photoRequired: true),
+        ChecklistTemplateItem(id: 'pl6', seq: 6, label: 'Brakes, steering and all controls operate correctly'),
+        ChecklistTemplateItem(id: 'pl7', seq: 7, label: 'Lights, beacon, horn and reversing alarm working'),
+        ChecklistTemplateItem(id: 'pl8', seq: 8, label: 'Seatbelt, ROPS/FOPS and guards intact'),
+        ChecklistTemplateItem(id: 'pl9', seq: 9, label: 'Attachment and quick hitch secure, safety pin fitted (N/A if none)'),
+        ChecklistTemplateItem(id: 'pl10', seq: 10, label: 'Fire extinguisher present, charged and in date'),
+        ChecklistTemplateItem(id: 'pl11', seq: 11, label: 'Hour meter reading recorded (use the note)', isRequired: false),
       ],
     ),
     ChecklistTemplate(
       id: 'tpl-qa',
-      name: 'Internal QA — pre-pour slab',
+      name: 'Internal QA: pre-pour slab',
       category: ChecklistCategory.internalQa,
-      description: 'Builder-side check before the statutory inspection.',
+      description: "Builder's own check before the engineer or certifier inspection. It doesn't replace that inspection.",
       items: const [
-        ChecklistTemplateItem(id: 'qa1', seq: 1, label: 'Formwork set out matches drawings'),
-        ChecklistTemplateItem(id: 'qa2', seq: 2, label: 'Reo size, spacing and laps as specified', photoRequired: true),
-        ChecklistTemplateItem(id: 'qa3', seq: 3, label: 'Bar chairs and cover correct', photoRequired: true),
-        ChecklistTemplateItem(id: 'qa4', seq: 4, label: 'Penetrations and set-downs in place'),
-        ChecklistTemplateItem(id: 'qa5', seq: 5, label: 'Vapour barrier lapped and taped'),
-        ChecklistTemplateItem(id: 'qa6', seq: 6, label: 'Termite management system installed', isRequired: false),
+        ChecklistTemplateItem(id: 'qa1', seq: 1, label: 'Set-out and levels checked against the drawings'),
+        ChecklistTemplateItem(id: 'qa2', seq: 2, label: 'Formwork and edge forms braced, true and to dimension'),
+        ChecklistTemplateItem(id: 'qa3', seq: 3, label: 'Reo size, spacing and laps as per structural drawings', photoRequired: true),
+        ChecklistTemplateItem(id: 'qa4', seq: 4, label: 'Bar chairs and cover as specified', photoRequired: true),
+        ChecklistTemplateItem(id: 'qa5', seq: 5, label: 'Starter bars, cogs and ties secured'),
+        ChecklistTemplateItem(id: 'qa6', seq: 6, label: 'Penetrations, set-downs, conduits and sleeves in place and fixed', photoRequired: true),
+        ChecklistTemplateItem(id: 'qa7', seq: 7, label: 'Vapour barrier lapped, taped and undamaged'),
+        ChecklistTemplateItem(id: 'qa8', seq: 8, label: 'Termite management system installed as specified (N/A if not required)'),
+        ChecklistTemplateItem(id: 'qa9', seq: 9, label: 'Excavation clean, no water or loose material'),
+        ChecklistTemplateItem(id: 'qa10', seq: 10, label: 'Concrete order confirmed: grade, slump, volume, pump booked', isRequired: false),
       ],
     ),
   ];
