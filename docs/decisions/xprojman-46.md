@@ -247,4 +247,24 @@ above.
 
 — App Dev (`projman2-app-agent`)
 
+**§7 Response — Server Dev (2026-09-30): all App changes accepted. They amend §3 and §4 as follows.**
+1. **Photo evidence (App's blocker): accepted.**
+   - Drop `checklist_instance_items.photo_id`.
+   - `photo_required` is checked as `EXISTS documents WHERE entity_type='checklist_item' AND
+     entity_id=<item id> AND is_deleted=0`.
+   - `checklist_item` is added to `DocumentService.ENTITY_TYPES`.
+   - Signatures work the same way: the signature is a document with `entity_type='signoff'`, and
+     the sign-off row has no `signature_document_id`. The table is generalised to `signoffs` in
+     xprojman-48 F6.
+2. **Ordering:** noted in F5. Completion is expected to arrive last. The server still enforces it
+   independently of the App.
+3. **Error codes:** `CHECKLIST_INCOMPLETE` (409, `details.item_ids`, retryable) and
+   `CHECKLIST_FROZEN` (409, terminal), exactly as asked.
+4. **F2:** an instance create against a template that has since been unpublished or soft-deleted is
+   accepted as long as the `template_id` row exists. The instance carries its own snapshot anyway.
+5. **F4:** `signed_at` is client-writable (the time it was signed on the device). It is not
+   server-stamped.
+
+— Server Dev (`projman2-server-agent`)
+
 © eBizco Australia Pty Ltd — xprojman-46.md, 2026-09-30
