@@ -147,6 +147,7 @@ export const BUILDER_NAV = [
     group: 'CREW',
     items: [
       { k: 'users',      href: '/builder/panel', label: 'Panel' },
+      { k: 'subcontractors', href: '/builder/subcontractors', label: 'Subcontractors' },
       { k: 'site-diary', href: '/builder/dashboard', label: 'Documents', mock: true,
         tooltip: 'Coming: documents your crew produces' },
     ],

@@ -253,6 +253,15 @@ export const jobAwardsApi = {
   create:  (projectId, body)         => request('POST', `/projects/${projectId}/job-awards`, body),
 };
 
+// Subcontractor engagements (xprojman-44 Module C, v045): the Builder's own
+// line-level list (rows exist only for awards HE sent), and recording the signed
+// pass-through consent. Consent is two steps: upload the document through
+// documentsApi.upload with entity_type='subcontractor_engagement', then post its id.
+export const subcontractorEngagementsApi = {
+  list:          (projectId)                => request('GET',  `/projects/${projectId}/subcontractor-engagements`),
+  recordConsent: (projectId, engId, docId)  => request('POST', `/projects/${projectId}/subcontractor-engagements/${engId}/consent`, { document_id: docId }),
+};
+
 // Introductions — the caller's own contact book (xprojman-44 Module A: Panel is a
 // role-filtered read over this, nothing more; Introduction itself happens on the App).
 export const introductionsApi = {

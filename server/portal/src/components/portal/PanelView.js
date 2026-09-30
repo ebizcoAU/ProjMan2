@@ -25,6 +25,7 @@ function SendAwardRow({ contact, roleOffered, onSent }) {
   const [projects, setProjects] = useState(null);
   const [projectId, setProjectId] = useState('');
   const [engType, setEngType]     = useState('independent_fixed');
+  const [trade, setTrade]         = useState('');
   const [busy, setBusy]           = useState(false);
   const [err, setErr]             = useState(null);
   const [sent, setSent]           = useState(false);
@@ -40,13 +41,16 @@ function SendAwardRow({ contact, roleOffered, onSent }) {
 
   const send = async (e) => {
     e.preventDefault();
-    if (!projectId) return;
+    if (!projectId || (roleOffered === 'subcontractor' && !trade.trim())) return;
     setBusy(true); setErr(null);
     try {
       await jobAwardsApi.create(projectId, {
         to_user_id: contact.user_id,
         role_offered: roleOffered,
         ...(roleOffered === 'builder' ? { builder_engagement_type: engType } : {}),
+        // Required by the server for subcontractor awards (v045); it's carried onto the
+        // subcontractor_engagements row when the award is accepted (xprojman-44 Module C).
+        ...(roleOffered === 'subcontractor' ? { trade_offered: trade.trim() } : {}),
       });
       setSent(true);
       onSent?.();
@@ -82,7 +86,12 @@ function SendAwardRow({ contact, roleOffered, onSent }) {
           {ENGAGEMENT_TYPES.map((t) => <option key={t.v} value={t.v}>{t.label}</option>)}
         </select>
       )}
-      <button className="btn btn-primary" type="submit" disabled={busy || !projectId}>
+      {roleOffered === 'subcontractor' && (
+        <input className="input" style={{ minWidth: 160 }} value={trade} required maxLength={60}
+          placeholder="Trade, e.g. Electrical" onChange={(e) => setTrade(e.target.value)} />
+      )}
+      <button className="btn btn-primary" type="submit"
+        disabled={busy || !projectId || (roleOffered === 'subcontractor' && !trade.trim())}>
         {busy ? 'Sending…' : 'Send'}
       </button>
       <button className="btn btn-ghost" type="button" onClick={() => setOpen(false)}>Cancel</button>
