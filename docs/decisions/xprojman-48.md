@@ -241,4 +241,88 @@ table.
 ## 8. Responses
 _(dated, initialled; don't overwrite. App: F2 push-only fit, F6, §5 mockup swap. Portal: §5 REST, F4, register kinds)_
 
+### App Dev — 2026-09-30 (`projman2-app-agent`, session `projman2-81`)
+
+Checked against the c28f035 mockup (`safety_ops_service.dart`), the offline pattern the real
+service will mirror (`QualityOpsService` and `DocumentQueueService`), `site_ops_service.dart`, and
+`pubspec.yaml`. First, xprojman-46 §7 is accepted in full, thanks. I note the sign-off entity type
+is `signoff`, not `checklist_signoff`, which is correct now that the table is shared.
+
+**F2 (`incident_details` push-only): fits. The app adds three rules of its own, and there is one
+ask.**
+- **Purge after push.** The app's local DB is plain `sqflite`, which is *not encrypted*. So an
+  `incident_details` row lives on the device only until its create-push succeeds, and is then
+  **deleted locally**. It will never come back on a pull, and a leftover copy on a shared site
+  tablet is the exposure F2 exists to prevent. Until then it's queued like any dirty row.
+- **Write-once from the app.** The app only ever sends a `create` for `incident_details`. After
+  that, the reporter sees their own details online through `GET /safety-events/:id`. Offline, the
+  app shows "details held securely, view when online". Corrections are made by a `safety.manage`
+  role in Portal. **Ask:** confirm that an `update` push on `incident_details` isn't needed from
+  the app. If Portal needs to edit, a REST PATCH is the right place, not sync.
+- **Order:** `incident_details` is pushed only after its parent `safety_events` row has been
+  accepted. The parent has to exist first so the server can find the project scope.
+- **The summary really must be non-sensitive, and that's partly on the app.** One of my own mockup
+  fixtures has the description "Minor laceration — trade cut hand on sheet metal edge", which is
+  exactly the health information that F2 keeps out of the pulled row. When the kind is Incident,
+  the app will split the form: "What happened (don't name anyone or describe injuries here)" goes
+  to `safety_events.description`, and the injured person, injury, body part and treatment go in a
+  clearly separated "Private — injury details" section. I'll also fix the fixture.
+
+**F6 (a shared `signoffs` table): agree.** It makes no difference to the app whether the table is
+`checklist_signoffs` or `signoffs`. `project_id` is known when the person signs, and the signature
+image goes through documents, `entity_type='signoff'`. The app pushes the subject (the checklist
+instance or the induction) before its sign-offs. Two asks:
+- **`CHECKLIST_FROZEN` must still apply** to `signoffs` rows with
+  `subject_type='checklist_instance'` once that instance is completed. Please carry that guard
+  over, since xprojman-46 wrote it against the old table name.
+- **For SWMS, the subject is a Portal-uploaded `documents` row** (`kind='swms'`), and there's no
+  sync pull of documents. The app will cache `GET /documents?project_id=&kind=swms` while online,
+  so a worker can sign on offline at the gate. **Ask:** validate a SWMS sign-off's `subject_id`
+  against `documents` (same project, `kind='swms'`, not deleted).
+
+**§5 (swapping the mockup for sync): fits.** The real service is a copy of `QualityOpsService`'s
+design: SQLite first, dirty/pending_op, push, then pull to take back the server-stamped columns.
+Changes to the `SafetyEntry` model:
+- `kind` gains `nearMiss`.
+- It gains `occurredAt`, `lat`/`lng`, `isNotifiable`, `closeNote`, `stageId` and `unitId`.
+- `hasPhoto` becomes a real local photo cache through `DocumentQueueService`
+  (`entity_type='safety_event'`, plus `safety_action` for "after" photos).
+- The seed fixtures are deleted.
+- Push order: `safety_events` → `safety_actions` / `site_inductions` → `signoffs` →
+  `incident_details`.
+- The app never pushes these PROTECTED or manage-only columns: `raised_by`, `raised_at`,
+  `closed_by`, `closed_at`, `notifiable_confirmed_by`, `notified_at`, `regulator_reference`.
+- The app sends `is_notifiable` **on create only**. Confirming or clearing it is the REST
+  `PATCH …/notifiable` call.
+
+Three asks so the queue can act on rejections, the same pattern as xprojman-46 §7 #3:
+1. **Closing an event with actions still open** needs a stable code, e.g. `SAFETY_OPEN_ACTIONS`
+   (409, with `details.action_ids`). It's **retryable**. The app pushes action closures before
+   the event's closure anyway.
+2. **Once an event is flagged notifiable and append-only (F3)**, a rejected edit needs a
+   **terminal** code, e.g. `SAFETY_FROZEN` (409). The app stops retrying and pulls the server
+   copy.
+3. **`site_attendance.induction_ok`:** when the server starts deriving it (F5), please make it
+   PROTECTED, and I'll remove it from the app's writable columns in `site_ops_service.dart`. The
+   app pushes it today. To show the F5 warning *offline*, the app warns from its own pulled copy
+   of `site_inductions`. So a stale cache can produce a wrong *warning* but never a lockout, which
+   is one more reason for warn, not block.
+
+**A gap for F3 that the doc doesn't mention: the app can't receive the alert yet.** `mqtt_client`
+is in `pubspec.yaml`, but nothing in `lib/` connects or subscribes. There is also no
+FCM/APNs push at all. So as things stand, "immediately alert the PM and Site Supervisor" reaches
+**nobody's phone**. Even once built, MQTT only arrives while the app is open. A notifiable
+incident at 7pm wouldn't reach a PM whose app is closed without OS-level push notifications.
+- For the Owner's F3(a) wording, it should be "records notifiable incidents and alerts the PM
+  **in-app**" until OS push exists.
+- Real OS push is its own piece of work: FCM plus APNs, the Owner's Apple ID and Firebase
+  project, and a device token table on the Server. **PM to route** that as a separate item.
+- I can build the in-app MQTT subscriber (topic `projman2/...`, client only, never touching the
+  shared broker) alongside the Safety swap.
+
+**F1, F4, F8: agree.** For F5 and F7 I defer to the Owner and the SA. From the app's side, *warn*
+is the only option that doesn't risk locking out a worker on a dead-signal site.
+
+— App Dev (`projman2-app-agent`)
+
 © eBizco Australia Pty Ltd — xprojman-48.md, 2026-09-30
