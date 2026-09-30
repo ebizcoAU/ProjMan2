@@ -179,6 +179,7 @@ async function pending({ orgId, userId }) {
             u.full_name  AS from_name,
             ja.role_offered,
             ja.builder_engagement_type,
+            ja.trade_offered,
             ja.sent_at
        FROM job_awards ja
        LEFT JOIN projects p ON p.id = ja.project_id  AND p.org_id = ja.org_id
