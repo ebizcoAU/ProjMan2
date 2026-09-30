@@ -1,7 +1,8 @@
 # xprojman-47 — VeriTrade: licence-verification state order + B2B billing model (for Owner ruling)
 
-**Status:** 🟢 RULED 2026-09-30 (A3, B2 + seat terms Owner-approved; see Owner ruling). Two minor items
-still open: the WA staff-checked badge and who sends the VIC/WA data requests. Previously: DRAFT, complete, awaiting Owner (routed by PM → SA → Owner). Part D answered by Product 2026-09-30. Nothing built. Doc only.
+**Status:** 🟢 **RULED** (fully, 2026-09-30). A3 + B2 with seat terms, the WA staff-checked badge (after
+NSW + QLD are live) and the data-request letters (Owner sends) are all ruled; see Owner ruling. Nothing
+built yet: licences wait on xprojman-49 and Server's `credentials` migration; seats wait on Server's C.1.
 **Author:** VeriTrade Dev (`projman2-veritrade-agent`) · **Requested by:** PM (2026-09-30).
 **For:** Owner (both rulings) · SA (review) · Server Dev (§C asks) · Product Manager (§B consistency check, §D).
 **Date:** 2026-09-30.
@@ -243,9 +244,13 @@ copy in `product/lib/data.ts` (pricingTiers), `product/app/veritrade/page.tsx` (
 **Part B (billing model):** ☑ **B2** (SA ruling relayed by PM, 2026-09-30). Publishing stays free.
 ☑ **Owner-approved, 2026-09-30** (`xprojman-roles.md` §8 #6).
 
-**WA staff-checked badge (A3) acceptable?** _(pending)_
+**WA staff-checked badge (A3) acceptable?** ☑ **Approved**, with its own visibly weaker badge (A3). **Build the
+WA manual track only after NSW + QLD automation is live.** (Owner, 2026-09-30.)
 
-**Who sends the BPC / Building and Energy data requests:** _(pending)_
+**Who sends the BPC / Building and Energy data requests:** ☑ **The Owner signs and sends them**; the VeriTrade
+Dev drafts both letters (Owner, 2026-09-30). Drafts: Claude Doc "VeriTrade licence data-reuse requests (VIC BPC,
+WA Building and Energy)", https://claude.ai/code/artifact/7c9d07f3-57cf-4cec-999c-1fb95d044bf3 (Owner's
+workspace).
 
 **If B2: seats included in Professional (a concrete N, or no number printed):** ☑ **3** included in
 Professional; Enterprise negotiated. Public copy: "includes 3 VeriTrade search seats". **No prices
