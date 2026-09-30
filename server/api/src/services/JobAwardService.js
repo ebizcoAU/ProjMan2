@@ -268,8 +268,13 @@ async function recordSubcontractorConsent({ orgId, projectId, engagementId, acto
     throw new ServiceError('VALIDATION_ERROR',
       'document_id must reference a document already uploaded for this engagement (entity_type=subcontractor_engagement)', 400);
   }
+  // The signed clause IS the consent (xprojman-44 §2 step 3): set the flag the cost-plus
+  // redaction reads (ProcurementService) in the same write, so the document stays the
+  // evidence and the flag the one thing every reader checks.
   await pool.query(
-    `UPDATE subcontractor_engagements SET consent_document_id = ?, consent_recorded_at = NOW() WHERE id = ?`,
+    `UPDATE subcontractor_engagements
+        SET consent_document_id = ?, consent_recorded_at = NOW(), subcontractor_pass_through_consent = 1
+      WHERE id = ?`,
     [documentId, engagementId]
   );
   return { id: engagementId, consent_document_id: documentId };

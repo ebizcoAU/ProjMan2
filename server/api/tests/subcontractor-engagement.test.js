@@ -145,9 +145,9 @@ const PDF = Buffer.concat([Buffer.from('%PDF-1.7\n', 'ascii'), crypto.randomByte
 
   const list3 = await call('GET', `/projects/${projId}/subcontractor-engagements`, undefined, builderTok);
   const row3 = (list3.json.data.subcontractor_engagements || [])[0];
-  ok('consent_document_id/consent_recorded_at persist on the row (consent flag itself untouched — separate action)',
+  ok('recording consent persists the document + timestamp AND sets the pass-through flag the PM register reads',
     row3.consent_document_id === docId && !!row3.consent_recorded_at
-      && Number(row3.subcontractor_pass_through_consent) === 0, JSON.stringify(row3));
+      && Number(row3.subcontractor_pass_through_consent) === 1, JSON.stringify(row3));
 
   const consent2 = await call('POST', `/projects/${projId}/subcontractor-engagements/${engId}/consent`,
     { document_id: docId }, builderTok);
