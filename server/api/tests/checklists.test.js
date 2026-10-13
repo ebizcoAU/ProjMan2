@@ -92,6 +92,10 @@ const uuid = () => crypto.randomUUID();
     systemTpls.length === 3 && systemTpls.every((t) => t.is_published === 1 && t.items.length > 0),
     JSON.stringify(list0.json).slice(0, 300));
   const sysToolbox = systemTpls.find((t) => t.category === 'toolbox_talk');
+  // v051: the system templates carry Product's approved wording (not v047's placeholders).
+  ok('v051: system toolbox talk has Product\'s wording (9 items, no placeholder text)',
+    sysToolbox?.name === 'Toolbox talk' && (sysToolbox.items || []).length === 9
+      && !/placeholder/i.test(sysToolbox.description || ''), JSON.stringify(sysToolbox).slice(0, 300));
 
   const sysPatch = await call('PATCH', `/checklist-templates/${sysToolbox.id}`, { name: 'Mine now' }, pmWeb);
   ok('a system template is read-only (SYSTEM_TEMPLATE_READONLY)',
