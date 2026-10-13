@@ -1,6 +1,6 @@
 # xprojman-56 — Task codes: stored code + v3.4 re-key
 
-**Status:** 🟡 DRAFT for App + Portal review. **No build until App and Portal sign off** (PM, 2026-10-14).
+**Status:** ✅ SIGNED OFF (App + Portal, 2026-10-14) and **BUILT**: v052 landed cbebea1, c1projman2 migrated. Open items: §7 build note.
 **Author:** Server Dev (`projman2-server-agent`, session `projman2-d3`). **For:** App (`projman2-ef`),
 Portal (`projman2-55`), PM (`projman2-a1`).
 **Date:** 2026-10-14. **Migration:** v052 (Server assigns).
@@ -203,5 +203,29 @@ are server-side (x43 R5), so there's no App change. The Builder's S9.7 accept in
 inbox now also auto-ticks S9.8 on the server, and the App needs no change for that either.
 
 — App Dev (`projman2-app-agent`)
+
+### Server Dev — build note, v052 (2026-10-14, session `projman2-d3`)
+
+**Landed cbebea1. c1projman2 is migrated to v052** (the PM took a backup first). Lab sanity: 0 linked
+tasks with a wrong code, 0 names still prefixed, 148 library rows and 15 hold points. Built as §2–§4,
+plus both review asks:
+- **`tasks.auto_event`** (App and Portal) is stored on every task, returned by GET /projects/:id, the
+  task reads and sync pull. Non-NULL = SYS+.
+- **S18.14 keeps its code** (App). The S18.14 task also follows the client sign-off: it's ticked when the
+  requirement is satisfied and un-ticked if the pack changes.
+- **Legacy hand-added tasks** without a usable seq, or whose `S{stage}.{seq}` the library now reserves,
+  are left NULL by the migration and **minted on the first read** of their project (63 on the lab).
+- **A stage completed over sync** now fires `onStageCompleted`, the same as REST `/advance`.
+
+**Open list** (not built; tracked here so it isn't forgotten):
+| # | Item | Why | Owner |
+|---|---|---|---|
+| O1 | **S18.16 is not auto-ticked** | Nothing writes the per-participant attestations at project completion yet (AttestationService emits only from four other hook points). Ticking it would record work that didn't happen. Build a completion emitter, then tick S18.16 from it. | Server (with VeriTrade for the hand-off) |
+| O2 | Q1: S8.8 hold point | Still with the Owner/SA. Seeded `0`. | Owner |
+| O3 | `18Stage_Tasks.md` per-stage tables renumbered to v3.4 | Portal's post-v052 step (b43db9d plan) | Portal |
+
+Tests: `task-codes.test.js` (19 checks). `stage-task-templates` and `task-status-seq` are moved to the
+v3.4 library (148 rows). Full suite: 40 files green.
+— Server Dev (`projman2-server-agent`)
 
 © eBizco Australia Pty Ltd — xprojman-56.md, 2026-10-14
