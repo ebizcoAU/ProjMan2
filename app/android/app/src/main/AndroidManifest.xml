@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Release builds need this to reach the API (debug/profile declare it
+         separately for the Flutter tool only). -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="ProjMan"
         android:name="${applicationName}"
