@@ -15,21 +15,15 @@ content that seeds `stage_template_items`/`tasks` rows for the Portal's Stage �
 Task drill-down screen (`xprojman-28` module 19, `docs/mocked/portal/
 project_list.html` Screen 4).
 
-**Code format note:** the `S#.N` codes below are **this document's own**
-task sequence per stage — they do not claim a 1:1 match to the software
-Spec's Part 2 sub-step codes (some System-only sub-steps, e.g. tender
-document packaging, have no PM-facing task here; some PM tasks here, e.g.
-"set `builder_engagement_type`," aren't numbered as their own sub-step in
-Part 2). Cross-check against the PDF directly rather than assuming code
-parity where it matters.
+**Code format note:** since v052 the `S#.N` codes below **are** the v3.4 PDF's Part 2
+codes. A task that exists only in this library has a letter suffix on the nearest PDF
+step (e.g. `S9.6a` "set `builder_engagement_type`"); System-only PDF steps have no row
+unless they gate or bill.
 
-> **2026-09-30: superseded by the alignment rule at the end of this doc.**
-> The codes are being aligned to the v3.4 PDF: same code, same meaning.
-> Library-only tasks get a letter suffix. See **"Code alignment to Spec
-> v3.4"** below. The per-stage tables further down still show the
-> **old v034 codes** until Server's re-seed lands, and are renumbered after
-> that. Until then, use the alignment section wherever a code matters
-> (billing milestones, hold points, xprojman-43/51).
+> **2026-10-14: codes are v3.4.** The per-stage tables below use the v3.4 PDF codes, as re-keyed
+> by Server's v052 (`xprojman-56`): same code, same meaning; library-only tasks carry a letter
+> suffix (EXTRA); **System** rows are SYS+ steps the server ticks (they gate progress or bill).
+> The "Code alignment to Spec v3.4" section at the end is kept as the record of that mapping.
 
 ## How this is meant to be used — core + extra, not a locked list
 
@@ -57,12 +51,13 @@ make a go/no-go decision before spending serious money on design.
 | Code | Task | Typical Actor | PM's Reality Check | ProjMan2 System Need |
 |---|---|---|---|---|
 | S1.1 | Initial client meeting / brief capture | PM | The client's budget is always aspirational. Capture "must haves" vs "nice to haves" — this becomes the filter for Stage 5 options. In WA, clients often don't know the difference between "I want" and "the land allows." | The brief lives on the project itself: `projects.description` (v040) and the Edit page's Brief tab (xprojman-40). It is fixed as dated PDF snapshots in `project_brief_snapshots` (v041, "Formalize Brief", xprojman-41 §3/§9). There is no structured must-have vs nice-to-have field yet, so record that split in the description for now. A structured requirements list would be a new, separate ask. *(Corrected 2026-09-30: the `project_briefs` table this row originally named was retracted and never built.)* |
-| S1.2 | Verify land title & ownership | PM | A surprising number of projects stall here. The person who wants to build isn't always the registered owner. In WA, title searches cost ~$30 and take 1-2 days, but a missed step here can be project-ending. | Document upload with OCR extraction of owner name from title certificate. System should flag if the client's name doesn't match the registered owner. |
-| S1.3 | Order/obtain contour & feature survey | PM | External contractor (surveyor company). Contour surveys in WA can take 2-3 weeks and cost $1,500-$3,000 depending on site size and complexity. This is often the first real timeline gate. PM needs to track who was engaged and when. | Surveyor engagement should be tracked via the `consultants` table with `discipline='surveyor'`. Expected completion date, actual completion date, and document upload (survey plan) should all be tracked. The system should auto-set a follow-up reminder. |
-| S1.4 | Confirm lot/plan number and zoning | PM | Fixed cost from City Council. Zoning certificates typically cost ~$50-150 and confirm what the land can be used for. PM needs to know if the client's dream house fits the zoning. R-codes (e.g., R20, R40) dictate density. | The system should store the zoning code and R-code. A validation check: does the proposed building footprint exceed the site coverage allowance? If yes, flag immediately. |
-| S1.5 | Check easements, covenants, restrictive design guidelines | PM | Town Planner can provide preliminary advice, or can be sourced from council zoning/planning website. Estate covenants in WA greenfield subdivisions are the silent project killer. They often require brick veneer, specific roof pitches, or colour schemes that add cost. The PM needs to know these before Stage 3. | The system should flag "check covenants" as a hard gate. Link to the `compliance_register` with a checklist of covenant conditions. If any covenant condition is flagged, the PM must confirm it's addressed before Stage 3. |
-| S1.6 | Confirm site access for delivery vehicles/crane | PM | Critical for traffic engineering, rubbish truck turns, and crane access. Tight-access sites in infill developments are common. If a 10-tonne truck can't turn around, the building method changes entirely. PM needs to know: what's the turning radius? Is there a weight limit on the road? | Site access should be a geo-tagged note with photos. The system should have a "site access assessment" field with: turning radius (m), road weight limit (tonnes), crane access notes, and a "verified" flag. |
-| S1.7 | Collect customer emails / meeting summary | PM | This task collects all customer emails and meeting summaries to produce a project summary. Clients often get overwhelmed by jargon. The PM needs to synthesise everything into a plain-English summary. This is the document that says "here's what we're doing, here's what we need, here's the timeline." | The system should auto-generate a "Project Summary" document from the brief (S1.1), land info (S1.2-S1.6), and client communications. This becomes the client-facing document that sets expectations. The summary should be versioned and sent as a PDF. |
+| S1.1a | Collect customer emails / meeting summary | PM | This task collects all customer emails and meeting summaries to produce a project summary. Clients often get overwhelmed by jargon. The PM needs to synthesise everything into a plain-English summary. This is the document that says "here's what we're doing, here's what we need, here's the timeline." | The system should auto-generate a "Project Summary" document from the brief (S1.1), land info (S1.2–S1.6, S2.3), and client communications. This becomes the client-facing document that sets expectations. The summary should be versioned and sent as a PDF. |
+| S1.2 | Confirm lot/plan number and zoning | PM | Fixed cost from City Council. Zoning certificates typically cost ~$50-150 and confirm what the land can be used for. PM needs to know if the client's dream house fits the zoning. R-codes (e.g., R20, R40) dictate density. | The system should store the zoning code and R-code. A validation check: does the proposed building footprint exceed the site coverage allowance? If yes, flag immediately. |
+| S1.2a | Confirm site access for delivery vehicles/crane | PM | Critical for traffic engineering, rubbish truck turns, and crane access. Tight-access sites in infill developments are common. If a 10-tonne truck can't turn around, the building method changes entirely. PM needs to know: what's the turning radius? Is there a weight limit on the road? | Site access should be a geo-tagged note with photos. The system should have a "site access assessment" field with: turning radius (m), road weight limit (tonnes), crane access notes, and a "verified" flag. |
+| S1.3 | Declare building type and unit count | PM | Decides how the schedule is drawn: one unit → Gantt, more than one → Line-of-Balance. | Unit count selects the schedule renderer (v3.4 S1.3). |
+| S1.4 | Verify land title & ownership | PM | A surprising number of projects stall here. The person who wants to build isn't always the registered owner. In WA, title searches cost ~$30 and take 1-2 days, but a missed step here can be project-ending. | Document upload with OCR extraction of owner name from title certificate. System should flag if the client's name doesn't match the registered owner. |
+| S1.6 | Order/obtain contour & feature survey | PM | External contractor (surveyor company). Contour surveys in WA can take 2-3 weeks and cost $1,500-$3,000 depending on site size and complexity. This is often the first real timeline gate. PM needs to track who was engaged and when. | Surveyor engagement should be tracked via the `consultants` table with `discipline='surveyor'`. Expected completion date, actual completion date, and document upload (survey plan) should all be tracked. The system should auto-set a follow-up reminder. |
+| S1.7 | Confirm or override the OCR extract | PM | OCR on title/survey documents saves typing but misreads lot numbers and easements often enough that a human check is mandatory. | Show the extract side by side with the source; nothing downstream reads the extract until it's confirmed. |
 
 ## Stage 2 — Environment, Utility & Hazard Audit
 
@@ -74,13 +69,14 @@ aren't marked, the PM needs to chase.
 | Code | Task | Typical Actor | PM's Reality Check | ProjMan2 System Need |
 |---|---|---|---|---|
 | S2.1 | Lodge Dial-Before-You-Dig (DBYD) referral | PM | DBYD responses show where services should be, not where they are. A DBYD mismatch is a common source of variation claims. In WA, DBYD is mandatory before any excavation. | DBYD referral number and lodged date should be stored. The system should auto-set a follow-up reminder (5 days). The DBYD response should be uploaded as a document. |
-| S2.2 | Record sewer/stormwater connection depth and point of connection | PM | If the council's sewer point is 1.5m deep vs 2.5m, it changes the Stage 11 excavation cost significantly. In WA, sewer depths often vary by suburb. | This field should be linked to `project_stages.budget_amount` for Stage 11. A deeper sewer = higher cost. The system should pre-populate typical depths for the suburb (if available). |
-| S2.3 | Check overhead power clearance | PM | In WA, live HV lines are often on the boundary of suburban sites. Clearance is a hard WHS rule, not a suggestion. The crane or scaffold can't go within 6.4m of HV lines. | A visual indicator ("⚠️ HV lines within 5m") should be displayed on every subsequent site diary entry. The system should auto-flag if the site is near HV lines based on address. |
-| S2.4 | Confirm council zoning code and density/site-coverage allowance | PM | R-codes in WA are the foundation of what's possible. R20 = ~500m² per dwelling, R40 = ~350m², R60 = ~220m². If the client wants a 400m² house on an R20 block, the PM has a problem. | The system should have a look-up table of WA R-codes and their minimum lot sizes. Auto-calculate if the proposed footprint exceeds the site coverage allowance (typically 50-60% of the lot). |
-| S2.5 | Check bushfire-prone area (BAL) status | PM | In WA, bushfire-prone areas are common in the hills and outer suburbs. BAL (Bushfire Attack Level) can add $50k-$100k to a build. If the PM misses this, the project is in trouble. | The system should auto-flag if the site address is in a BAL zone (via address lookup) and pre-populate the Stage 13 "timber grade certification" requirement. BAL rating should be stored and visible on every subsequent stage. |
-| S2.6 | Check flood/acid-sulfate-soil overlay | PM | In WA, acid sulfate soils are common in coastal areas and river valleys. If the soil is acidic, it requires special footing treatment. Can trigger a geotechnical report. | The system should auto-flag if the site is in an acid-sulfate-soil zone (via address lookup). If flagged, auto-add S12.8 (core compression test) as a requirement. |
-| S2.7 | Check heritage overlay / tree-protection order | PM | In WA, heritage overlays are common in older suburbs (e.g., Fremantle, Guildford). Tree protection orders are common in the hills. Both add a council referral to the DA pathway. | The system should auto-flag if the site has heritage or tree protection overlays. PM must confirm the conditions are addressed before Stage 7. |
-| S2.8 | PM reviews and confirms the compiled hazard audit | PM | This is the standing AI-confirm-gate rule. The AI/NLP audit is a starting point, but the PM must sanity-check every finding. The PM is legally responsible for the project, not the AI. | The system should require a PM sign-off before the audit results are sent to the client. The PM can override an AI finding with a reason. |
+| S2.1a | Record sewer/stormwater connection depth and point of connection | PM | If the council's sewer point is 1.5m deep vs 2.5m, it changes the Stage 11 excavation cost significantly. In WA, sewer depths often vary by suburb. | This field should be linked to `project_stages.budget_amount` for Stage 11. A deeper sewer = higher cost. The system should pre-populate typical depths for the suburb (if available). |
+| S2.1b | Check overhead power clearance | PM | In WA, live HV lines are often on the boundary of suburban sites. Clearance is a hard WHS rule, not a suggestion. The crane or scaffold can't go within 6.4m of HV lines. | A visual indicator ("⚠️ HV lines within 5m") should be displayed on every subsequent site diary entry. The system should auto-flag if the site is near HV lines based on address. |
+| S2.2 | Confirm council zoning code and density/site-coverage allowance | PM | R-codes in WA are the foundation of what's possible. R20 = ~500m² per dwelling, R40 = ~350m², R60 = ~220m². If the client wants a 400m² house on an R20 block, the PM has a problem. | The system should have a look-up table of WA R-codes and their minimum lot sizes. Auto-calculate if the proposed footprint exceeds the site coverage allowance (typically 50-60% of the lot). |
+| S2.3 | Check easements, covenants, restrictive design guidelines | PM | Town Planner can provide preliminary advice, or can be sourced from council zoning/planning website. Estate covenants in WA greenfield subdivisions are the silent project killer. They often require brick veneer, specific roof pitches, or colour schemes that add cost. The PM needs to know these before Stage 3. | The system should flag "check covenants" as a hard gate. Link to the `compliance_register` with a checklist of covenant conditions. If any covenant condition is flagged, the PM must confirm it's addressed before Stage 3. |
+| S2.4a | Check bushfire-prone area (BAL) status | PM | In WA, bushfire-prone areas are common in the hills and outer suburbs. BAL (Bushfire Attack Level) can add $50k-$100k to a build. If the PM misses this, the project is in trouble. | The system should auto-flag if the site address is in a BAL zone (via address lookup) and pre-populate the Stage 13 "timber grade certification" requirement. BAL rating should be stored and visible on every subsequent stage. |
+| S2.4b | Check flood/acid-sulfate-soil overlay | PM | In WA, acid sulfate soils are common in coastal areas and river valleys. If the soil is acidic, it requires special footing treatment. Can trigger a geotechnical report. | The system should auto-flag if the site is in an acid-sulfate-soil zone (via address lookup). If flagged, auto-add S12.8 (core compression test) as a requirement. |
+| S2.4c | Check heritage overlay / tree-protection order | PM | In WA, heritage overlays are common in older suburbs (e.g., Fremantle, Guildford). Tree protection orders are common in the hills. Both add a council referral to the DA pathway. | The system should auto-flag if the site has heritage or tree protection overlays. PM must confirm the conditions are addressed before Stage 7. |
+| S2.6 | PM reviews and confirms the compiled hazard audit | PM | This is the standing AI-confirm-gate rule. The AI/NLP audit is a starting point, but the PM must sanity-check every finding. The PM is legally responsible for the project, not the AI. | The system should require a PM sign-off before the audit results are sent to the client. The PM can override an AI finding with a reason. |
 
 ## Stage 3 — Concept Design Generation
 
@@ -93,9 +89,9 @@ R-code.
 |---|---|---|---|---|
 | S3.1 | Confirm client's preferred footprint/orientation | PM | Solar orientation is a hidden cost driver. A south-facing living area means higher cooling costs, which impacts NatHERS rating and ultimately the building cost. In WA, north-facing living areas are preferred. | The system should show the solar orientation (north arrow) on the concept footprint and let the PM note "client approved orientation" or "client requested override." |
 | S3.2 | Generate/review footprint within setback envelope | PM/System | In WA, setbacks are often 1.5-3m from boundaries. The AI generates the footprint. The PM's job is to ensure it's not too close to the boundary, easements, or sewer manholes. | The system should auto-check setbacks against the council's requirements (R-code) and flag if the footprint encroaches on any setback. |
-| S3.3 | Review floor area summary against budget | PM | The biggest source of budget blowouts is "just a little bigger" — 10m² extra at Stage 3 becomes $50k extra at Stage 12. The PM needs to catch this early. | The system should show the budget per m² and highlight if the concept exceeds the Stage 1 budget range. This is the PM's early warning system. |
-| S3.4 | PM confirms concept before client sees it | PM | The concept isn't a contract document yet, but it sets expectations. A mistake here is expensive to fix later. If the PM sends a concept that doesn't fit the site, the client gets excited about something that's impossible. | `concept_designs` table should have a `pm_confirmed_at` timestamp. Nothing goes to the client without this. |
-| S3.5 | Log client-requested revisions | PM | Revisions are where time disappears. The client wants "a bit more space here, a bit less there." Each revision takes time and money. | The system should track the number of revisions and flag if the client is changing scope significantly. Revisions should be versioned via `supersedes_id`. |
+| S3.5a | Review floor area summary against budget | PM | The biggest source of budget blowouts is "just a little bigger" — 10m² extra at Stage 3 becomes $50k extra at Stage 12. The PM needs to catch this early. | The system should show the budget per m² and highlight if the concept exceeds the Stage 1 budget range. This is the PM's early warning system. |
+| S3.7 | PM confirms concept before client sees it | PM | The concept isn't a contract document yet, but it sets expectations. A mistake here is expensive to fix later. If the PM sends a concept that doesn't fit the site, the client gets excited about something that's impossible. | `concept_designs` table should have a `pm_confirmed_at` timestamp. Nothing goes to the client without this. |
+| S3.10 | Log client-requested revisions | PM | Revisions are where time disappears. The client wants "a bit more space here, a bit less there." Each revision takes time and money. | The system should track the number of revisions and flag if the client is changing scope significantly. Revisions should be versioned via `supersedes_id`. |
 
 ## Stage 4 — Town Planner / Council Screening
 
@@ -107,9 +103,9 @@ wildly — from 60 days to 120 days.
 | Code | Task | Typical Actor | PM's Reality Check | ProjMan2 System Need |
 |---|---|---|---|---|
 | S4.1 | Decide screening pathway (Planner vs direct) | PM | A Town Planner costs money but saves time. The PM needs to know if the site is contentious (heritage overlay, BAL zone, flood zone, etc.) before deciding. | The system should show a "site risk profile" based on Stage 2 findings, helping the PM decide whether to engage a Town Planner. |
-| S4.2 | Brief the Town Planner (if engaged) | PM | Town Planners need a clean data package. If the PM sends incomplete data, they get a bill for "additional work" and the project is delayed. | The system should generate a "Town Planner package" (PDF of Stage 1-3 data) with a "package complete" checkbox before the PM can send it. |
-| S4.3 | Track council/planner response clock | PM | In WA, council response times are statutory but vary. The PM needs to know when to chase and when to escalate. | The system should have a council response clock, with warnings at 60 days, 75 days, and 90 days. The PM can log a follow-up date. |
-| S4.4 | Record outcome and conditions raised | PM | Conditions raised at this stage feed into Stage 6 (architectural drawings) and Stage 8 (CC). If the PM doesn't note a condition, they'll miss it later. | The system should have a "conditions register" with each condition linked to a task in Stage 6 or 8. The PM must confirm each condition is addressed. |
+| S4.3 | Brief the Town Planner (if engaged) | PM | Town Planners need a clean data package. If the PM sends incomplete data, they get a bill for "additional work" and the project is delayed. | The system should generate a "Town Planner package" (PDF of Stage 1-3 data) with a "package complete" checkbox before the PM can send it. |
+| S4.4 | Track council/planner response clock | PM | In WA, council response times are statutory but vary. The PM needs to know when to chase and when to escalate. | The system should have a council response clock, with warnings at 60 days, 75 days, and 90 days. The PM can log a follow-up date. |
+| S4.5 | Record outcome and conditions raised | PM | Conditions raised at this stage feed into Stage 6 (architectural drawings) and Stage 8 (CC). If the PM doesn't note a condition, they'll miss it later. | The system should have a "conditions register" with each condition linked to a task in Stage 6 or 8. The PM must confirm each condition is addressed. |
 
 ## Stage 5 — Budget-Based Style Generation
 
@@ -120,9 +116,8 @@ significantly between suburbs.
 
 | Code | Task | Typical Actor | PM's Reality Check | ProjMan2 System Need |
 |---|---|---|---|---|
-| S5.1 | Review 3 cost-calibrated style options | PM | The options are AI-generated, but the PM needs to sanity-check them against the local market. A "Budget" option in a high-end suburb might still be expensive. | The system should show the local area average cost per m² (if available) next to the three options. |
-| S5.2 | Present options to client; record their selection | PM | The client's selection is binding for the estimate. The PM needs a signed confirmation. | The system should capture the client's selection with a digital signature or email confirmation, per the frozen/hashed pattern. |
-| S5.3 | Reconcile selected tier against the indicative budget | PM | If the client picks "Deluxe" but their budget is "Budget," the PM has an immediate problem to address. | The system should highlight the gap between the selected tier and the Stage 1 budget in red. This is the PM's "conversation starter." |
+| S5.3 | Review 3 cost-calibrated style options | PM | The options are AI-generated, but the PM needs to sanity-check them against the local market. A "Budget" option in a high-end suburb might still be expensive. | The system should show the local area average cost per m² (if available) next to the three options. |
+| S5.3a | Reconcile selected tier against the indicative budget | PM | If the client picks "Deluxe" but their budget is "Budget," the PM has an immediate problem to address. | The system should highlight the gap between the selected tier and the Stage 1 budget in red. This is the PM's "conversation starter." |
 
 ## Stage 6 — Architectural Drawing Development
 
@@ -133,12 +128,14 @@ $5k-$20k+ for a full set of drawings.
 
 | Code | Task | Typical Actor | PM's Reality Check | ProjMan2 System Need |
 |---|---|---|---|---|
-| S6.1 | Route selected tier's brief to the draftsman/architect | PM | The PM needs to give the architect the right brief. If the brief is wrong, the drawings are wrong. | The system should package the selected tier + site constraints + client selections into an "Architect Brief" document that the PM can download or email. |
-| S6.2 | Client completes material selections | Client | Material selection is where projects often stall. Clients get overwhelmed. In WA, material selection can take 2-4 weeks. | The system should have a visual gallery of materials (tapware, tiles, paint, fixtures) with pricing marked "allowance" vs "actual" per line. |
-| S6.3 | Track draftsman/architect turnaround | PM | External parties don't have system logins. The PM needs to track this manually. | The system should allow the PM to set an expected date for each external deliverable and send reminders. |
-| S6.4 | Upload finalised structural floor plans + elevations | PM | The PM needs to ensure the drawings are complete. A missing drawing at this stage delays Stage 7. | The system should have a checklist of required drawings (floor plan, elevations, sections, etc.) and flag if any are missing. |
-| S6.5 | PM reviews 3D material preview before client sees it | PM | The standing AI-confirm-gate rule. The PM must ensure the materials match the client's selections. | The system should require a PM sign-off before the preview is sent to the client. |
-| S6.6 | Resolve out-of-variance material selections | PM | If a material is out of stock or the price has changed, it's routed through the Variation mechanism. | The system should auto-create a Variation record when a material is out of variance, with the new price as a Variation line. |
+| S6.1 | Client selects a budget tier | Client | The client's selection is binding for the estimate. The PM needs a signed confirmation. | The system should capture the client's selection with a digital signature or email confirmation, per the frozen/hashed pattern. |
+| S6.2 | Route selected tier's brief to the draftsman/architect | PM | The PM needs to give the architect the right brief. If the brief is wrong, the drawings are wrong. | The system should package the selected tier + site constraints + client selections into an "Architect Brief" document that the PM can download or email. |
+| S6.3 | Client completes material selections | Client | Material selection is where projects often stall. Clients get overwhelmed. In WA, material selection can take 2-4 weeks. | The system should have a visual gallery of materials (tapware, tiles, paint, fixtures) with pricing marked "allowance" vs "actual" per line. |
+| S6.3a | Resolve out-of-variance material selections | PM | If a material is out of stock or the price has changed, it's routed through the Variation mechanism. | The system should auto-create a Variation record when a material is out of variance, with the new price as a Variation line. |
+| S6.4 | Track draftsman/architect turnaround | PM | External parties don't have system logins. The PM needs to track this manually. | The system should allow the PM to set an expected date for each external deliverable and send reminders. |
+| S6.5 | Upload finalised structural floor plans + elevations | PM | The PM needs to ensure the drawings are complete. A missing drawing at this stage delays Stage 7. | The system should have a checklist of required drawings (floor plan, elevations, sections, etc.) and flag if any are missing. |
+| S6.7 | PM reviews 3D material preview before client sees it | PM | The standing AI-confirm-gate rule. The PM must ensure the materials match the client's selections. | The system should require a PM sign-off before the preview is sent to the client. |
+| S6.8 | Client views the 3D preview (optional) | Client | Optional: helps clients who can't read plans, but it isn't a contract document. | A view-only preview; never a sign-off surface. |
 
 ## Stage 7 — DA Submission & Approval
 
@@ -149,10 +146,10 @@ complete and correct. In WA, a DA can take 60-120 days to be assessed.
 | Code | Task | Typical Actor | PM's Reality Check | ProjMan2 System Need |
 |---|---|---|---|---|
 | S7.1 | Final release check on the DA package | PM | The PM is the last line of defence. If a mistake goes to council, the clock resets. | The system should have a "pre-submission checklist" with every required document, checked off by the PM before the "Release to Client" button is enabled. |
-| S7.2 | Client reviews and signs off DA package | Client | Clients often don't read the fine print. The PM needs to explain what they're signing. | The system should show the client a simple summary of what they're approving (what's included, what's excluded) before they sign. |
-| S7.3 | Lodge DA with council / certifier | PM/System | Lodgement is the point of no return. After this, changes cost time and money. | The system should record the lodgement date, tracking ID, and expected response date. |
-| S7.4 | Track council's statutory response clock | PM | In WA, council response times are statutory but vary. The PM needs to know when to chase and when to escalate. | The system should have a council response clock, with warnings at 60 days, 75 days, and 90 days. |
-| S7.5 | If declined: redraft via Variation | PM | A client declining at sign-off is painful but not uncommon. The architect's redraft time is billable. | The system should auto-create a Variation record when the client declines, with the architect's redraft cost as a Variation line. |
+| S7.3 | Client reviews and signs off DA package | Client | Clients often don't read the fine print. The PM needs to explain what they're signing. | The system should show the client a simple summary of what they're approving (what's included, what's excluded) before they sign. |
+| S7.3a | If declined: redraft via Variation | PM | A client declining at sign-off is painful but not uncommon. The architect's redraft time is billable. | The system should auto-create a Variation record when the client declines, with the architect's redraft cost as a Variation line. |
+| S7.5 | Lodge DA with council / certifier | PM/System | Lodgement is the point of no return. After this, changes cost time and money. | The system should record the lodgement date, tracking ID, and expected response date. |
+| S7.6 | Track council's statutory response clock | PM | In WA, council response times are statutory but vary. The PM needs to know when to chase and when to escalate. | The system should have a council response clock, with warnings at 60 days, 75 days, and 90 days. |
 
 ## Stage 8 — DA Approval → Construction Certificate (CC)
 
@@ -180,15 +177,17 @@ WA, the average Builder margin is 15-25% on a residential project.
 | Code | Task | Typical Actor | PM's Reality Check | ProjMan2 System Need |
 |---|---|---|---|---|
 | S9.1 | Prepare Bill of Quantities from drawings | PM/Estimator | The BOQ is the document that ties the drawings to the budget. A bad BOQ leads to a bad build. | The system should auto-generate a BOQ from the estimate lines (`estimate_lines` table). The PM should review and sign off. |
-| S9.2 | Issue tender to shortlist of Builders | PM | The tender should go to Builders who are in the PM's contact book (Introduction already completed). | The system should allow the PM to select Builders from the introductions list (same-org v1). The tender package should be a single downloadable PDF. |
-| S9.3 | Compare Builder tenders | PM | Price is not the only factor. Program, inclusions, and Builder's reputation all matter. | The system should allow the PM to compare tenders side-by-side, with columns for price, program, inclusions, and exclusions. |
-| S9.4 | Select winning Builder | PM | Commercial decision, value locked. The PM's reputation is on the line. | The system should record the selection and the reason (price/program/inclusions). This is an auditable decision. |
-| S9.5 | Send formal Job Award invitation | PM | The Job Award is sent from the PM's contact book. No cold strangers. | The system should enforce the "cold stranger" constraint (already implemented — `job_awards` requires a prior `introductions` row). |
-| S9.6 | Builder accepts/declines | Builder | The Builder's acceptance is a lightweight in-app tap. The deposit (S9.8) is the binding event. | The system should record the Builder's acceptance and link it to the deposit payment. |
-| S9.7 | Set `builder_engagement_type` | PM | This decision is the single most important commercial decision the PM makes. It drives Cost Plan visibility for the entire project. | The system should require the PM to select the engagement type before the Job Award is finalised. This should be a clear, explained decision. |
-| S9.8 | Finalise and lock construction Cost Plan | PM | The Cost Plan is the project's financial backbone. Once locked, it's the reference for all actuals. | The system should freeze the Cost Plan (`cost_plans` table) and flag it as "locked." Changes should create a new version (Variation). **BILLING MILESTONE: Deposit.** |
-| S9.9 | Builder confirms/overrides job breakdown | Builder | The Builder sets task-level scope (project vs unit) once assigned. | The system proposes defaults; the Builder confirms/overrides each one. |
-| S9.10 | Builder engages own subcontractor panel | Builder | The Builder engages trade subcontractors. The PM sees the register (who/committed/owed) but never the rates. | The system should record the Builder's subcontractor engagements and show the PM a read-only register. |
+| S9.3 | Issue tender to shortlist of Builders | PM | The tender should go to Builders who are in the PM's contact book (Introduction already completed). | The system should allow the PM to select Builders from the introductions list (same-org v1). The tender package should be a single downloadable PDF. |
+| S9.4 | Compare Builder tenders | PM | Price is not the only factor. Program, inclusions, and Builder's reputation all matter. | The system should allow the PM to compare tenders side-by-side, with columns for price, program, inclusions, and exclusions. |
+| S9.5 | Select winning Builder | PM | Commercial decision, value locked. The PM's reputation is on the line. | The system should record the selection and the reason (price/program/inclusions). This is an auditable decision. |
+| S9.6 | Send formal Job Award invitation | PM | The Job Award is sent from the PM's contact book. No cold strangers. | The system should enforce the "cold stranger" constraint (already implemented — `job_awards` requires a prior `introductions` row). |
+| S9.6a | Set `builder_engagement_type` | PM | This decision is the single most important commercial decision the PM makes. It drives Cost Plan visibility for the entire project. | The system should require the PM to select the engagement type before the Job Award is finalised. This should be a clear, explained decision. |
+| S9.7 | Builder accepts/declines | Builder | The Builder's acceptance is a lightweight in-app tap. The deposit (S9.9) is the binding event. | The system should record the Builder's acceptance and link it to the deposit payment. |
+| S9.8 | Technical documents handed to the crew (offline cache) | System | System step. Nobody ticks it. | Ticked by the server when the Builder accepts the Job Award (S9.7). A manual tick is refused (SYSTEM_STEP). |
+| S9.9 | Finalise and lock construction Cost Plan | PM | The Cost Plan is the project's financial backbone. Once locked, it's the reference for all actuals. | The system should freeze the Cost Plan (`cost_plans` table) and flag it as "locked." Changes should create a new version (Variation). **BILLING MILESTONE: Deposit.** |
+| S9.10 | Stages 10–18 activated for the Builder | System | System step. Nobody ticks it. | Ticked by the server when the programme for Stages 10–18 is activated. A manual tick is refused (SYSTEM_STEP). |
+| S9.10a | Builder engages own subcontractor panel | Builder | The Builder engages trade subcontractors. The PM sees the register (who/committed/owed) but never the rates. | The system should record the Builder's subcontractor engagements and show the PM a read-only register. |
+| S9.10b | Builder confirms/overrides job breakdown | Builder | The Builder sets task-level scope (project vs unit) once assigned. | The system proposes defaults; the Builder confirms/overrides each one. |
 
 ## Stage 10 — Site Works & Earthworks
 
@@ -198,13 +197,14 @@ operations. The PM's role shifts to monitoring and verifying.
 
 | Code | Task | Typical Actor | PM's Reality Check | ProjMan2 System Need |
 |---|---|---|---|---|
-| S10.1 | Site induction / toolbox talk | Site Supervisor | Every worker must be inducted. No exceptions. The PM is responsible if someone isn't. | The system should track who has been inducted (via the `inductions` table) and flag if someone turns up without an induction. |
+| S10.1a | Site induction / toolbox talk | Site Supervisor | Every worker must be inducted. No exceptions. The PM is responsible if someone isn't. | The system should track who has been inducted (via the `inductions` table) and flag if someone turns up without an induction. |
 | S10.2 | Site clearing and demolition | Foreperson | Demolition can uncover unexpected issues (asbestos, contaminated soil). | The system should allow the Site Supervisor to log photos and notes of unexpected discoveries. |
 | S10.3 | Cut and fill earthworks to design levels | Foreperson | In WA, limestone is common. Earthworks often hit rock. This is a variation waiting to happen. | The system should allow the Foreperson to log "rock encountered" and trigger a Variation. |
 | S10.4 | Install temporary site amenities | Foreperson | Toilet, power, water are required before work starts. | The system should have a checklist for site amenities, marked complete by the Site Supervisor. |
-| S10.5 | Install temporary fencing and signage | Foreperson | In WA, site fencing is a WHS and council requirement. | The system should have a checklist for temporary fencing and signage, marked complete by the Site Supervisor. |
-| S10.6 | HOLD POINT — Surveyor sets out building position | Surveyor + Foreperson | This is the first real hold point in the construction phase. Wrong setout = project disaster. | The hold point should be visible on `hold_point_requirements` with `blocks_progress=1`. The surveyor's report should be uploaded. |
-| S10.7 | Site Supervisor confirms setout | Site Supervisor | The Site Supervisor is the PM's independent check. They don't report to Builder. | The `site_diary` should have a "setout verified" entry, signed by the Site Supervisor. |
+| S10.5 | HOLD POINT — Surveyor sets out building position | Surveyor + Foreperson | This is the first real hold point in the construction phase. Wrong setout = project disaster. | The hold point should be visible on `hold_point_requirements` with `blocks_progress=1`. The surveyor's report should be uploaded. |
+| S10.6 | Install temporary fencing and signage | Foreperson | In WA, site fencing is a WHS and council requirement. | The system should have a checklist for temporary fencing and signage, marked complete by the Site Supervisor. |
+
+*S10.7 "Site Supervisor confirms setout" was dropped from the library in v052 (xprojman-56 Q4): the S10.5 hold point's own verify is that confirmation. Live tasks keep it as `S10.7x`.*
 
 ## Stage 11 — Foundation, Slab & In-Ground Services
 
@@ -225,6 +225,7 @@ time-consuming. In WA, concrete footings must be inspected before the pour.
 | S11.9 | HOLD POINT — electrician's rough-in certificate | Inspector (Electrical) | In WA, electrical rough-in must be certified by a licensed electrician before the pour. | The `hold_point_requirements` table should have a row for electrician's certificate. The Inspector completes it via the App. |
 | S11.10 | HOLD POINT — plumber's rough-in certificate | Inspector (Plumbing) | Plumbing rough-in must be certified before the pour. | The `hold_point_requirements` table should have a row for plumber's certificate. The Inspector completes it via the App. |
 | S11.11 | HOLD POINT — Principal Certifier overall verification | Inspector | The Principal Certifier verifies everything before the pour. | The `hold_point_requirements` table should have a row for Principal Certifier verification. The Inspector completes it via the App. |
+| S11.12 | Concrete pour (after the S11.9–S11.11 certificates) | Foreperson | Only after all three pre-pour certificates (S11.9–S11.11) are in. | The pour is blocked until the S11.9–S11.11 hold points are satisfied. |
 
 ## Stage 12 — Concrete Slab Pour & Foundation (Base Milestone)
 
@@ -243,6 +244,7 @@ cure for 7-14 days before any further work.
 | S12.7 | HOLD POINT — Form BA2 slab inspection | Inspector | This is a statutory hold point. The Inspector must pass it. | The hold point should be visible on `hold_point_requirements` with `blocks_progress=1`. The Inspector completes it via the App. |
 | S12.8 | HOLD POINT — core compression test (if flagged) | Inspector | If Stage 2 flagged a soil hazard, the core tests are mandatory. If not, they're optional. | The system should auto-flag if core compression tests are required based on the Stage 2 hazard audit. |
 | S12.9 | HOLD POINT — compaction test log (if flagged) | Inspector | Same as S12.8. | Same as S12.8. |
+| S12.10 | BASE milestone: Stage 12 validated | System | System step. Nobody ticks it. | Ticked by the server when this stage is validated. A manual tick is refused (SYSTEM_STEP). |
 
 ## Stage 13 — Frame & Roof Construction (Frame Milestone)
 
@@ -261,7 +263,8 @@ is typically timber (AS 1684) or steel.
 | S13.7 | Record timber/steel + roof material dockets | Site Supervisor | Dockets are proof of material grade and quantity. The PM needs these for compliance. | The system should allow the Site Supervisor to upload photos of delivery dockets. |
 | S13.8 | HOLD POINT — structural engineer inspects frame | Inspector (Engineer) | The engineer checks the structural integrity. Different from the building surveyor's check. | The `hold_point_requirements` table should have a row for structural engineer. The Inspector completes it via the App. |
 | S13.9 | HOLD POINT — building surveyor inspects frame | Inspector (Surveyor) | The surveyor checks compliance with the approved plans. | The `hold_point_requirements` table should have a row for building surveyor. The Inspector completes it via the App. |
-| S13.10 | HOLD POINT — F5 timber grade certification | System | The F5 certificate is mandatory for timber frames. | The system should check for the F5 certificate on file before allowing the stage to complete. **BILLING MILESTONE: Frame.** |
+| S13.10 | HOLD POINT — F5 timber grade certification | System | The F5 certificate is mandatory for timber frames. | The system should check for the F5 certificate on file before allowing the stage to complete. (The Frame billing milestone is S13.11.) |
+| S13.11 | FRAME milestone: Stage 13 validated | System | System step. Nobody ticks it. | Ticked by the server when this stage is validated. A manual tick is refused (SYSTEM_STEP). |
 
 ## Stage 14 — Lock-Up & External Envelope (Lock-Up Milestone)
 
@@ -343,15 +346,19 @@ Certificate is the final statutory document.
 | S18.1 | Final building inspection | Inspector | The Inspector signs off. If they fail, defects must be rectified. | The `hold_point_requirements` table must have a row for Occupation Certificate (S18.3). |
 | S18.2 | Issue Form BA3 (Certificate of Compliance) | Inspector | Form BA3 is issued after final inspection. | The system should record Form BA3 on file. |
 | S18.3 | HOLD POINT — Occupation Certificate | Inspector | This is the final statutory hold point. The building cannot be occupied without it. | The hold point must block Stage 18 completion until the OC is issued. |
-| S18.4 | Practical Completion walkthrough — generate defect list | PM & Client | The PM and Client walk through together. Defects are logged. | The system should generate a defect list from the walkthrough and track rectification. |
-| S18.5 | Defect rectification (loops until clear) | Tradie | This can take weeks. The PM must track each defect to closure. | The system should have a defect list (already exists via `defects` table) with status tracking. |
-| S18.6 | Client handover — keys, manuals, warranties | PM | The final delivery. The PM hands over the keys and the handover pack. | The system should auto-generate the handover pack (a query over evidence since Stage 10). |
-| S18.7 | Client satisfaction survey | Client | The survey is the final client interaction. | The system should auto-send the survey and record the response. |
-| S18.8 | Prepare fixed-asset + depreciation draft | System | This is a draft only, not lodged. | The system should prepare the draft and flag it as "draft." |
-| S18.9 | APPROVAL GATE — Accountant/BAS Agent approves | Accountant/BAS Agent | The Accountant must approve the depreciation schedule before ATO lodgement. | The system must have a mandatory approval gate before ATO lodgement fires. |
-| S18.10 | Auto-email handover pack | System | The handover pack is auto-emailed to the client. | The system should auto-email the handover pack. |
-| S18.11 | Client final digital sign-off | Client | The client signs off on the completed project. | The system should capture the client's sign-off (frozen/hashed). |
-| S18.12 | Project status set to completed | System | The project is complete. | The system should set the project status to "completed." **BILLING MILESTONE: Completion.** |
+| S18.6 | Practical Completion walkthrough — generate defect list | PM & Client | The PM and Client walk through together. Defects are logged. | The system should generate a defect list from the walkthrough and track rectification. |
+| S18.7 | Defect rectification (loops until clear) | Tradie | This can take weeks. The PM must track each defect to closure. | The system should have a defect list (already exists via `defects` table) with status tracking. |
+| S18.8 | Client handover — keys, manuals, warranties | PM | The final delivery. The PM hands over the keys and the handover pack. | The system should auto-generate the handover pack (a query over evidence since Stage 10). |
+| S18.9 | Client satisfaction survey | Client | The survey is the final client interaction. | The system should auto-send the survey and record the response. |
+| S18.10 | Cross-check: Stages 12 and 15 validated | System | System step. Nobody ticks it. | Ticked by the server when Stages 12 and 15 are both validated. A manual tick is refused (SYSTEM_STEP). |
+| S18.11 | Prepare fixed-asset + depreciation draft | System | This is a draft only, not lodged. | The system should prepare the draft and flag it as "draft." |
+| S18.12 | APPROVAL GATE — Accountant/BAS Agent approves | Accountant/BAS Agent | The Accountant must approve the depreciation schedule before ATO lodgement. | The system must have a mandatory approval gate before ATO lodgement fires. |
+| S18.13 | Auto-email handover pack | System | The handover pack is auto-emailed to the client. | The system should auto-email the handover pack. |
+| S18.14 | Client final digital sign-off | Client | The client signs off on the completed project. | The system should capture the client's sign-off (frozen/hashed). |
+| S18.15 | Project status set to completed | System | The project is complete. | The system should set the project status to "completed." **BILLING MILESTONE: Completion.** |
+| S18.16 | Work recorded on every participant's Verified Work History | System | System step. Nobody ticks it. | Ticked by the server when the completion attestations are written. A manual tick is refused (SYSTEM_STEP). |
+
+*Since v050 (xprojman-43 §14 O1), S18.12 no longer blocks Stage 18: the asset register is exported to the accountant, who approves in their own system. S18.14 (the client's sign-off, xprojman-51) is the blocking step, and the server satisfies it from the sign-off.*
 
 ---
 
@@ -410,7 +417,7 @@ Certificate is the final statutory document.
 
 ---
 
-## Code alignment to Spec v3.4 (2026-09-30, handover #9)
+## Code alignment to Spec v3.4 (2026-09-30, handover #9) — ✅ applied in v052 (2026-10-14)
 
 **Author:** Portal Dev (`projman2-portal-agent`). **Re-seed:** Server Dev
 writes the migration (number assigned by Server, `xprojman-roles` §8 #9).
