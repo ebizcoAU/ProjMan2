@@ -1,27 +1,30 @@
-# ProjMan2 — Admin & Monitoring Dashboard Design Specification
+# ProjMan — Admin & Monitoring Dashboard Design Specification
 
-**Status:** ✅ BUILT + verified 2026-07-24 (migration_v007 + admin server + admin UI).
-`tests/admin.test.js` 18/18 — incl. the allowlist gate and the boundary proof that no
-`/admin/*` endpoint returns project/user content. Design below was approved; this
-header marks it delivered.
-**Date:** 2026-07-23
+**Status:** 🟡 BUILT, PARTIAL against this spec. Re-baselined 2026-10-14 against the code
+(c1projman2 at v047). The core (v007 schema, allowlist, `/admin/*` endpoints, login log,
+billing) is built, and `tests/admin.test.js` has 18 checks. Two later additions were
+built without being specced: the **platform roles** (v011) and the **platform Finance
+module** (v031/v032/v036, eBizco's own books). **§13 is the build-status table, and §14
+lists the gaps and risks.** Where §1–§12 and §13 disagree, §13 describes the code.
+§1–§12 remain the approved design.
+**Date:** 27 July 2026 (design) · 14 October 2026 (re-baseline, §13–§15)
 **Author:** Server dev (NexusPM)
 **Reviewer:** owner (eBizco)
-**Companion docs:** `servdesignspecification.md` (the tenant web console & server) ·
-`docs/decisions/projman-01.md` (wire contract) · `projman-04.md` (server progress).
+**Companion docs:** `portaldesignspecification.md` (the tenant desk console) ·
+`serverdesignspecification.md` (server/API) · `veritradedesignspecification.md`
+(a third, unrelated public product — see §0) · `devroadmap.md` (roles, phases)
 
-> This spec covers a **separate surface** from the tenant web console
-> (`server/dashboard`, the Project Manager's construction workspace). This is the
-> **System Admin (eBizco platform) interface**: manage platform users, watch the login
-> transaction log and authentication activity, and run **fee-paying / SaaS billing**.
-> It shows **identity, account, and billing data across all tenants — never
-> project/construction data** (that stays in the tenant portal), and each **tenant's
-> own** org-admin (their users/devices/settings/audit) lives in the **portal**, not
-> here.
+> This spec covers a **separate surface** from the tenant desk console (**Portal** —
+> the Project Manager's, and every other desk role's, construction workspace). This is
+> the **System Admin (eBizco platform) interface**: manage platform users, watch the
+> login transaction log and authentication activity, and run **fee-paying / SaaS
+> billing**. It shows **identity, account, and billing data across all tenants — never
+> project/construction data** (that stays in Portal), and each **tenant's own**
+> org-admin (their users/devices/settings/audit) lives in **Portal**, not here.
 >
 > **Refined 2026-07-23 (owner):** this is a **single-tier platform surface** — the
 > System Admin (eBizco). The earlier two-tier "tenant admin sees their org" idea is
-> dropped: an org's admin manages their own org in the **portal Admin module**
+> dropped: an org's admin manages their own org in **Portal's** Admin module
 > (`portaldesignspecification.md`). And **fee-paying is a real module here** (§5.4), not
 > a placeholder.
 >
@@ -34,20 +37,39 @@ header marks it delivered.
 
 ---
 
+## 0. Three surfaces sometimes confused with each other — read this first
+
+This project's naming has collided across three genuinely different products more
+than once; stated plainly, so this document is never mistaken for either of the
+others:
+
+| Surface | Who sees it | What it's for |
+|---|---|---|
+| **Portal** | Tenant users — PM, Builder, Property Developer, Site Supervisor, Inspector, Client | Running a construction project. Construction/project content lives here, never on the admin dashboard. |
+| **This Dashboard** | eBizco's own platform-ops team only, via a `platform_admins` allowlist | Account and billing administration across every tenant. Never construction content, never tenant-facing, never publicly reachable. |
+| **VeriTrade** | The public — B2B trade-vetting network | A standalone, public-facing product entirely unrelated to this dashboard. Fed by Portal/App evidence, authenticated through the App, never through this admin surface. |
+
+Nothing below concerns VeriTrade at all — it's listed here only so a reader of this
+set of documents never conflates "platform admin dashboard" with "public-facing
+product."
+
+**Terminology.** "System Admin" = an **eBizco platform operator**, NOT a tenant
+construction role — it must not enter the tenant role registry (§2/§3). The brief's
+"Org Admin" (a tenant managing their own org) is **not a dashboard user at all** —
+that is `projectManager` working in **Portal's** Admin module. The dashboard is
+platform-only.
+
+---
+
 ## 1. Scope & audience
 
 | | |
 |---|---|
 | **Purpose** | **Account & billing administration** for the eBizco platform: manage user *accounts*, watch login/auth activity, and run fee-paying/SaaS billing. |
-| **Audience** | **System Admin only** — eBizco platform operators / support. (Not tenant users; an org admin self-serves in the **portal**.) |
+| **Audience** | **System Admin only** — eBizco platform operators / support. (Not tenant users; an org admin self-serves in **Portal**.) |
 | **Shows** | User accounts (by role/status), registration + login/auth activity, device pairing status, the login transaction log, subscription/plan/fee status, revenue, system health. |
 | **Does NOT show** | **Anything a user created or any project data** — no diaries, photos, documents, cost plans, stages, tasks. **Account layer only.** |
-| **Surface** | A **new mount `/admin/*`**, distinct from the tenant `/api/v1/*`. Its own auth middleware; a gated route group of the same Next.js app (`/admin/*`, per the portal spec §1). |
-
-**Terminology.** "System Admin" = an **eBizco platform operator**, NOT a tenant
-construction role — it must not enter the 6-role registry (§2/§3). The brief's "Org
-Admin" (a tenant managing their own org) is **not a dashboard user at all** — that is
-`projectManager` working in the **portal Admin module**. The dashboard is platform-only.
+| **Surface** | A **new mount `/admin/*`**, distinct from the tenant `/api/v1/*`. Its own auth middleware; a gated route group of the same Next.js app (`/admin/*`, per the Portal spec §2). |
 
 ---
 
@@ -58,17 +80,19 @@ two constraints from the existing architecture shape it:
 
 **(a) `org_id` isolation is the platform's core guarantee.** Every tenant query filters
 on the token's `org_id`; `isolation.test.js` (16/16) proves nothing crosses the org
-boundary, and projman-01 §7 forbids cross-org endpoints "until projman-02 is BUILT."
+boundary, and the server spec forbids cross-org endpoints "until `PM2-02` is BUILT."
 This dashboard is the **first legitimate cross-tenant read** in the system — it exists
 precisely to look across orgs. That makes its containment critical: it lives on a
 **separate mount**, is **read-only for the account layer** (its only writes are billing),
 touches **no domain content**, and **audits every view**.
 
-**(b) The 6-role registry is tenant-scoped construction roles.** `projectManager …
-client` describe who does what *inside one builder's project*. A platform operator
-(eBizco) is a different kind of principal. Putting `sys_admin` into the `roles` table
-would leak a cross-tenant superuser into the pairing shortlist, the assignable-role
-list, and the construction permission matrix.
+**(b) The tenant role registry is tenant-scoped construction roles** — Property
+Developer, Project Manager, Builder, Site Supervisor, Foreperson, Tradie, Inspector,
+Client, plus the post-v1 roles (`devroadmap.md` §3). They describe who does what
+*inside one Builder's project*. A platform operator (eBizco) is a different kind of
+principal. Putting `sys_admin` into the `roles` table would leak a cross-tenant
+superuser into the pairing shortlist, the assignable-role list, and the construction
+permission matrix.
 
 **The design:**
 
@@ -77,11 +101,10 @@ list, and the construction permission matrix.
    contained by the allowlist below.
 2. **One tier: System Admin.** Access = membership of a **`platform_admins` allowlist**
    (not a tenant role, not a tenant permission). Every `/admin/*` caller must be on it;
-   everyone else gets 403. There is **no tenant tier** — an org admin uses the portal.
+   everyone else gets 403. There is **no tenant tier** — an org admin uses Portal.
 3. **`sys_admin` is NOT added to the `roles` table.** Platform-admin status is a
    `platform_admins` row (`user_id`, `granted_by`, `created_at`), provisioned out-of-
-   band (seed/CLI), never via tenant user-management, never device-pairable. (Open
-   Decision #3 — my counter-recommendation to "add sys_admin as a role".)
+   band (seed/CLI), never via tenant user-management, never device-pairable.
 4. **Every cross-tenant read is itself audited.** A platform admin viewing a tenant's
    data writes an `audit_log` row (`admin.view`, the org viewed) — the watchers are
    watched. Read-only: the admin dashboard never mutates tenant construction data.
@@ -95,9 +118,8 @@ weakening of isolation — and leaves the construction role model untouched.
 
 **✅ BUILT + verified 2026-07-24 (migration_v011 addendum).** The dashboard stays a
 **single platform TIER** exactly as designed below (a `projectManager` still has zero
-reach here) — what's new is three **admin-team roles WITHIN that one tier**,
-requested directly by the owner, so a System Admin operator is no longer all-or-
-nothing:
+reach here) — what's new is three **admin-team roles WITHIN that one tier**, so a
+System Admin operator is no longer all-or-nothing:
 
 | `admin_role` | Reach |
 |---|---|
@@ -112,44 +134,41 @@ it explicitly (no implicit superset, so the route file is the whole story).
 `platform_admins.admin_role` defaults to the least-privileged `staff` — a bare INSERT
 never silently grants full access. `GET /admin/me` reports `{ userId, role }`.
 
-**Refined same day (owner):** browsing the full cross-tenant account directory
-(`GET /admin/users` — names, emails, orgs) is **`admin`-only**, even though
-`account`/`staff` still hold the user-account **action**
+**Full cross-tenant account directory** (`GET /admin/users` — names, emails, orgs) is
+**`admin`-only**, even though `account`/`staff` still hold the user-account **action**
 (`POST /users/:id/(suspend|reactivate|force-logout)`, which itself returns no PII —
 just `{userId, action}`). The `account`/`staff` Accounts page is a narrow act-by-id
 form (paste a user id from a support ticket, choose an action) — never a browsable
-list. This keeps "manage user (enable/disable)" for both roles per the original ask,
-without handing every admin-team member a directory of every tenant's people.
+list.
 
-**Kept separate (owner, same day):** a merge into one shared `PortalNav` sidebar was
-tried and reverted — cramming the tenant PROJECTS/SITE/COMMERCIAL/ORGANISATION groups
-and the platform Overview/Accounts/Devices/Organisations/Billing/Login-Log group into
-one sidebar read as crowded. The System Admin dashboard keeps its **own** dedicated
-sidebar (`admin/layout.js`, a plain `<aside>` + `NAV` list filtered by `admin_role`,
-still mirroring `routes/admin.js`'s `requireAdminRole(...)` lists exactly) — visually
-and structurally separate from the tenant Portal's `PortalNav`, not a shared
-component. It also has its **own entry point**, `/admin/login` (`admin/login/page.js`)
-— a different front door onto the exact same identity/auth as the app and the tenant
-Portal (one JWT, one `POST /auth/login`; not a second auth system), landing on `/admin`
-on success. It confirms the account actually holds a `platform_admins` row before
-entering — a valid tenant login that isn't a platform admin sees a clear message on
-that page, rather than a silent bounce, and keeps its (still valid) tenant session.
-The tenant Portal's `/login` is unchanged and unaware any of this exists. **Reinforced
-by the owner directly: "Portal should have nothing to do with admin/account/staff of
-the Platform Management Team"** — `PortalNav.js` and `(console)/layout.js` carry zero
-reference to `admin_role` or `adminApi` (verified). The split is total: separate nav,
-separate login, separate layout — the only thing shared is the underlying identity/
-auth (one JWT, one `users` table), which is by design (same as the app).
+**Kept separate:** a merge into one shared `PortalNav` sidebar was tried and reverted —
+cramming the tenant PROJECTS/SITE/COMMERCIAL/ORGANISATION groups and the platform
+Overview/Accounts/Devices/Organisations/Billing/Login-Log group into one sidebar read
+as crowded. The System Admin dashboard keeps its **own** dedicated sidebar
+(`admin/layout.js`, a plain `<aside>` + `NAV` list filtered by `admin_role`, still
+mirroring `routes/admin.js`'s `requireAdminRole(...)` lists exactly) — visually and
+structurally separate from the tenant Portal's `PortalNav`, not a shared component. It
+also has its **own entry point**, `/admin/login` (`admin/login/page.js`) — a different
+front door onto the exact same identity/auth as the app and Portal (one JWT, one
+`POST /auth/login`; not a second auth system), landing on `/admin` on success. It
+confirms the account actually holds a `platform_admins` row before entering — a valid
+tenant login that isn't a platform admin sees a clear message on that page, rather than
+a silent bounce, and keeps its (still valid) tenant session. **Portal has nothing to do
+with admin/account/staff of the Platform Management Team** — `PortalNav.js` and
+`(console)/layout.js` carry zero reference to `admin_role` or `adminApi` (verified).
+The split is total: separate nav, separate login, separate layout — the only thing
+shared is the underlying identity/auth (one JWT, one `users` table), which is by
+design (same as the App).
 
 | Principal | How identified | Dashboard access |
 |---|---|---|
 | **System Admin** (`admin`/`account`/`staff`) | row in `platform_admins`, `admin_role` column | Per the table above — all orgs, scoped `/admin/*` endpoints |
-| **Everyone else** (any tenant role, incl. `projectManager`) | — | **No access** (403) — org-admin is done in the portal |
+| **Everyone else** (any tenant role) | — | **No access** (403) — org-admin is done in Portal |
 
 - Access is the **`platform_admins` allowlist**, full stop — not a tenant role, not a
   tenant permission (no `admin.dashboard.view` on the construction matrix). This keeps
-  the 6-role model untouched; `admin_role` is a platform-tier-internal refinement, not
-  a second tenant-facing tier.
+  the tenant role registry untouched; `admin_role` is a platform-tier-internal
+  refinement, not a second tenant-facing tier.
 - `adminAuthenticate` verifies the JWT, then checks `platform_admins`; a hit sets
   `req.admin = { userId, role }`.
 - Provisioning is an **out-of-band CLI** step —
@@ -162,33 +181,29 @@ auth (one JWT, one `users` table), which is by design (same as the app).
 
 ---
 
-## 4. Data sources — brief's assumptions mapped to our ACTUAL schema
+## 4. Data sources — mapped to the actual schema
 
-The brief lists an idealised schema. Here is the reconciliation with what exists today,
-and the **gaps to close** (migration_v007, §10):
-
-| Brief table/field | Reality in `c1projman2` | Action |
+| Field | Reality in `c1projman2` | Action |
 |---|---|---|
 | `organisations` (count, trend, plan, trial) | ✅ exists — `plan`, `trial_ends_at`, `created_at` | use as-is |
 | `users` (count, role, status, created_at) | ✅ exists | use as-is |
 | `auth_identities.provider` / `.identifier` | ✅ `provider`, `provider_sub`, **`email`** (not `identifier`) | map `identifier → email` |
 | `sessions` (active, device_info) | ✅ `sessions` — `ip_address`, `user_agent`, `device_id`, `revoked_at`, `expires_at` | use; "active" = `revoked_at IS NULL AND expires_at > NOW()` |
 | `devices` (count, role, status, last_seen) | ✅ exists — `role`, `status`, `last_seen_at` | use as-is |
-| `pairing_tokens` (pending/confirmed/rejected) | ✅ exists — `status` enum | use as-is |
+| `pairing_tokens` (pending/confirmed/rejected) — see also `introductions`/`job_awards` per the corrected identity model, `serverdesignspecification.md` §7.3 | ✅ exists — `status` enum | use as-is |
 | `audit_log` (login txns, IP, device, outcome) | ✅ has `ip`, `device_id`, `detail` JSON, `action`, `created_at` — **no `user_agent` column** | see gap ↓ |
 | `payments`, `licenses` | ❌ **do not exist** | payment metrics are **placeholders** (Open Decision #2) |
 | `sync_queue`, `sync_log` | ❌ — we have **`sync_history`** (push/pull cycles + `status` + `error_message`) | use `sync_history` for sync health |
-| Geolocation (IP → city) | ❌ not stored — IP is raw | add local resolution (§6, gap ↓) |
+| Geolocation (IP → city) | ❌ not stored — IP is raw | add local resolution (§6) |
 
-**Gaps to close (migration_v007 + small server work), §10:**
+**Gaps to close (migration_v007 + small server work):**
 1. **`user_agent` on auth events.** `audit_log` records `ip` + `device_id` but not the
-   user agent (it lives only in `sessions`, and only for *successful* logins). The login
-   log wants device/OS per event including failures. → add `user_agent` to `audit_log`
-   (or write it into `detail` for auth actions). Small, do it now so history accrues.
+   user agent (it lives only in `sessions`, and only for *successful* logins). → add
+   `user_agent` to `audit_log`.
 2. **Failed-login completeness.** `auth.login_failed` **is** already audited for a wrong
-   password (good). The *unknown-email* path returns without an audit row (deliberate
-   non-disclosure). → optionally log those as `auth.login_failed` `reason=unknown_user`
-   so the security view is complete — flagged as a privacy trade-off for your call.
+   password. The *unknown-email* path returns without an audit row (deliberate
+   non-disclosure) — optionally log those with `reason=unknown_user`, flagged as a
+   privacy trade-off.
 3. **Geolocation.** Resolve `ip → city/region/country` (§6). No column needed if
    resolved at read time; optionally cache onto the audit row.
 4. **`platform_admins` table** (§2/§3).
@@ -204,7 +219,7 @@ counts, statuses, auth events, billing — never a row of construction content.
 | Metric | Query |
 |---|---|
 | Total user accounts (all orgs) | `COUNT(*) users WHERE is_deleted=0` |
-| Accounts by role | `GROUP BY role` — bar/pie (the 6 roles) — *counts, not content* |
+| Accounts by role | `GROUP BY role` — bar/pie, *counts, not content* |
 | New accounts (7/30d) | `WHERE created_at >= …` + trend |
 | Accounts by status | `GROUP BY status` (active/suspended/disabled) |
 
@@ -230,10 +245,12 @@ projects, or org content.
 | Pairing requests | `pairing_tokens GROUP BY status` (pending/requested/confirmed/rejected/expired) |
 | Active in 24h | `devices WHERE last_seen_at >= NOW()-INTERVAL 1 DAY` |
 
-### 5.4 Fees & billing — **a real module** (owner: fee-paying is core to the dashboard)
-This is SaaS billing: **eBizco charging the tenant organisations** for ProjMan2 — not
-construction payments. It needs a small billing schema (§10) since `payments`/`licenses`
-don't exist yet:
+### 5.4 Fees & billing — a real module
+
+This is SaaS billing: **eBizco charging the tenant organisations** for ProjMan — not
+construction payments (and not VeriTrade's own B2B subscription billing, which is a
+separate commercial system owned by VeriTrade itself). It needs a small billing schema
+(§10) since `payments`/`licenses` don't exist yet:
 
 | View / action | Data |
 |---|---|
@@ -246,11 +263,9 @@ don't exist yet:
 | Overdue list | `payments WHERE status='overdue'` → chase list |
 
 Payment *capture* (a gateway — Stripe et al.) is out of scope for the schema itself;
-v1 can be **manual reconciliation** (System Admin records a received payment) with a
-gateway wired later. The **billing schema + the fee views/actions are the real
-deliverable** here, not a placeholder.
+v1 can be **manual reconciliation** with a gateway wired later.
 
-### 5.5 Login transaction log — **the key operational view** (§6)
+### 5.5 Login transaction log — the key operational view (§6)
 
 ### 5.6 System health — platform-only, v1-lite
 | Metric | Source |
@@ -280,16 +295,17 @@ operational/support view.
 
 **Actions surfaced:** `auth.login`, `auth.login_failed`, `auth.oauth_login`,
 `auth.oauth_register`, `auth.register`, `auth.logout`, `recovery.*`, `pairing.confirm`,
-`device.revoke`. (Answer to Q3: **explicit auth events**, not intermediate OAuth
-redirects — our OAuth is token-exchange, so there are no server-side redirects to log.)
+`device.revoke`. **Explicit auth events**, not intermediate OAuth redirects — OAuth is
+token-exchange, so there are no server-side redirects to log. **VeriTrade login
+approvals (`serverdesignspecification.md` §7.4) are a separate event stream on
+VeriTrade's own side, not surfaced here** — this log is ProjMan tenant auth only.
 
-### 6.1 Geolocation — recommend **local GeoLite2**, not an external API
-IP is personal information under the AU Privacy Act, and §8.4 of the server spec commits
-to AU data residency. Sending user IPs to an external service (ipapi.co and similar)
-ships PII offshore — a residency/privacy regression. **Recommendation: MaxMind GeoLite2
-as a local database file**, resolved server-side at read time (no outbound call, nothing
-leaves `ap-southeast-2`). Optionally cache the resolved city onto the audit row to avoid
-re-lookups. (Open Decision #1.)
+### 6.1 Geolocation — local GeoLite2, not an external API
+IP is personal information under the AU Privacy Act, and the server spec commits to AU
+data residency. Sending user IPs to an external service ships PII offshore — a
+residency/privacy regression. **Recommendation: MaxMind GeoLite2 as a local database
+file**, resolved server-side at read time (no outbound call, nothing leaves
+`ap-southeast-2`). Optionally cache the resolved city onto the audit row.
 
 ---
 
@@ -313,8 +329,7 @@ security boundary.
 | `POST /admin/billing/payments` · `PATCH /admin/orgs/:id/plan` | record a payment / change a plan (the dashboard's only writes) |
 | `GET /admin/system/health` | API + sync health |
 
-Response envelope: `{ success, data }`, pagination `{ page, pages, total }` (the ported
-`PortalPagination` shape).
+Response envelope: `{ success, data }`, pagination `{ page, pages, total }`.
 
 ---
 
@@ -322,24 +337,22 @@ Response envelope: `{ success, data }`, pagination `{ page, pages, total }` (the
 
 - **Filters:** date range (logs/registrations/logins), user email (logs/devices),
   organisation (narrow to one org), outcome (success/fail), method (provider).
-- **Pagination:** server-side, reuse the tenant `{ page, pages, total }` shape; the
-  ported `PortalPagination` renders it.
-- **Export:** CSV stream for the login log and reports (`…/export` endpoints), same
-  filters as the view; streamed so a 12-month export doesn't buffer in memory. Excel =
-  CSV opened in Excel (no XLSX lib needed v1).
+- **Pagination:** server-side, reuse the tenant `{ page, pages, total }` shape.
+- **Export:** CSV stream for the login log and reports, same filters as the view;
+  streamed so a 12-month export doesn't buffer in memory.
 
 ---
 
 ## 9. UI layout (high-level)
 
 A **clean, data-dense admin theme — deliberately not construction-themed** (this is ops,
-not site work). Reuses the ported portal kit (`PortalCard`/`PortalKpi`/`PortalTable`/
+not site work). Reuses the ported Portal kit (`PortalCard`/`PortalKpi`/`PortalTable`/
 `PortalPagination`/`usePortalData`) but on a neutral admin palette, in its own route
-group (`/admin`) separate from the tenant console shell.
+group (`/admin`) separate from the tenant Portal shell.
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
-│  ProjMan2 System Admin              [Org: All ▾]  [Billing]  🔄60s │  topbar: org filter + billing
+│  ProjMan System Admin              [Org: All ▾]  [Billing]  🔄60s │  topbar: org filter + billing
 ├───────────────────────────────────────────────────────────────┤
 │  KPI ROW  ┌ Users ┐ ┌ Orgs ┐ ┌ Active sessions ┐ ┌ MRR ┐       │  cards from /stats + /billing
 ├───────────────────────────────────────────────────────────────┤
@@ -353,10 +366,9 @@ group (`/admin`) separate from the tenant console shell.
 └───────────────────────────────────────────────────────────────┘
 ```
 
-- **Auto-refresh 60s** (configurable), manual refresh button. (Open Decision #4.)
+- **Auto-refresh 60s** (configurable), manual refresh button.
 - **Responsive:** desktop primary, tablet secondary.
-- **Charts** follow the `dataviz` design system at build time (one visual system, light
-  + dark, accessible) — not hand-rolled colours.
+- **Charts** follow the `dataviz` design system at build time.
 - Single System-Admin surface: an **org filter** (narrow to one org), the always-on
   Organisation column, the **Billing** area, and the system-health panel.
 
@@ -378,41 +390,31 @@ payments          id, org_id (FK), subscription_id, amount, currency, status
                   (paid|overdue|failed|refunded), method, paid_at, period, note, created_at
 ```
 NB: **no `admin.dashboard.view` on the construction matrix** — dashboard access is the
-`platform_admins` allowlist (§3), so the 6-role model is untouched.
+`platform_admins` allowlist (§3), so the tenant role registry is untouched.
 
 Plus: capture `user_agent` into audit on auth actions; (optional) log unknown-email
 login failures; ship the GeoLite2 file + a `lib/geo.js` resolver; a retention job
-pruning `audit_log` older than 12 months (Open Decision #5, AU Privacy Act).
+pruning `audit_log` older than 12 months (AU Privacy Act).
 
 ---
 
-## 11. Answers to your questions + the open decisions
+## 11. Open decisions
 
-**Q1 — Is the audit log capturing IP, user agent, device info?** IP ✅ (`audit_log.ip`),
-device ✅ (`audit_log.device_id` → join `devices`). **User agent ✗** in `audit_log`
-(only in `sessions`, success-only). → add it now (§10). Failed logins: wrong-password
-**is** audited; unknown-email is not (non-disclosure) — flagged.
-
-**Q2 — Geolocation provider?** **Local MaxMind GeoLite2** — no PII leaves AU. Avoid
-external IP-lookup APIs for residency (§6.1).
-
-**Q3 — All auth events or explicit logins?** **Explicit auth events** (login, failed
-login, register, logout, recovery, key device actions). Our OAuth is token-exchange —
-no server-side redirects exist to log.
-
-**Q4 — Payments in v1?** **Revised (owner): yes — a real billing module.** Fee-paying is
-core to this surface, so v1 ships the billing schema (`subscriptions`/`payments`, §10)
-and the fee views/actions (§5.4). Payment-gateway *capture* (Stripe etc.) can start as
-manual reconciliation and wire a gateway later; the schema + admin actions are real now.
-
-| # | Open decision | My recommendation |
+| # | Open decision | Recommendation |
 |---|---|---|
 | 1 | Geolocation provider | **GeoLite2 local** (residency; §6.1) |
-| 2 | Billing in v1 | **Yes — real module** (owner). Schema + views/actions now; gateway later. Manual reconciliation acceptable for v1. |
-| 3 | System Admin as a role? | **No — a `platform_admins` allowlist, not a tenant role** (§2). Keeps the 6-role construction matrix clean and isolation honest. |
+| 2 | Billing in v1 | **Yes — real module.** Schema + views/actions now; gateway later. Manual reconciliation acceptable for v1. |
+| 3 | System Admin as a role? | **No — a `platform_admins` allowlist, not a tenant role** (§2). Keeps the tenant construction matrix clean and isolation honest. |
 | 4 | Refresh interval | **60s auto + manual button** |
 | 5 | Log retention | **12 months** + a prune job (AU Privacy Act) |
-| 6 | Payment gateway | Out of v1 schema — **manual reconciliation** first; Stripe/eWAY wired when billing goes live. Confirm the gateway preference when we get there. |
+| 6 | Payment gateway | Out of v1 schema — **manual reconciliation** first; Stripe/eWAY wired when billing goes live. |
+
+**Answers on record:**
+- **IP/user-agent/device capture** — IP ✅, device ✅, user agent ✗ (add per §4 gap 1).
+- **Geolocation provider** — local GeoLite2, no PII leaves AU.
+- **Auth events logged** — explicit events only (login, failed login, register, logout,
+  recovery, key device actions); no OAuth redirects to log (token-exchange model).
+- **Payments in v1** — yes, a real billing module; gateway capture can start manual.
 
 ---
 
@@ -436,15 +438,121 @@ Steps 1–4 are the spine; the test in step 9 is non-negotiable — it must prov
 
 ---
 
-## 13. Review ask
+## 13. Build status — re-baselined against the code (2026-10-14)
 
-Approve §2 (the platform-only architecture), §3 (allowlist access), §5.4 + §10 (the
-billing schema), §7 (endpoints), and answer §11's open decisions. Then I build steps
-1–4 (+6 billing) and bring the access/boundary test green before any UI.
+Checked file by file against `server/api/src/routes/admin.js`, `AdminService.js`,
+`BillingService.js`, `FinanceService.js`, `lib/audit.js`, `lib/geo.js` and
+`server/dashboard/src/app/admin/*`. ✅ built · 🟡 partial · ❌ not built.
 
-**Filename note:** saved as `dashboarddesignspecification.md` to match its siblings
-(`servdesignspecification.md`, `appdesignspecification.md`). Rename if you'd prefer
-`dashboardspecification.md`.
+| Spec item | Status | Notes |
+|---|---|---|
+| §2 allowlist, separate `/admin/*` mount, `sys_admin` not a tenant role | ✅ | `platform_admins` (v007), `admin_role` (v011) |
+| §2(4) **every cross-tenant view audited** | 🟡 | Audited: the org-filtered login log, the export and org payments. **Not audited:** `/users`, `/orgs/:id`, `/devices`, `/stats`. |
+| §5.1 account stats | ✅ | totals, by role, by status, new 7/30d |
+| §5.1 suspend / reactivate / force-logout | ✅ | `POST /users/:id/:action` |
+| §5.1 **disable** account, **trigger password reset** | ❌ | `users.status='disabled'` exists and login honours it, but no admin action sets it |
+| §5.2 org count, login success/fail, by method, active sessions | ✅ | counts only, no series |
+| §5.2 registration trend (30/90d), password resets (7/30d) | ❌ | not returned by `stats()` |
+| §5.3 devices total, active 24h | ✅ | |
+| §5.3 devices by role/status, pairing requests by status | ❌ | no `pairing_tokens` query |
+| §5.4 billing: subscriptions, plan change, record payment, MRR, overdue, trials | ✅ | `BillingService`; UI `finance/sales`, `orgs/[id]` |
+| §5.6 system health API | ✅ | `GET /admin/system/health` |
+| §5.6 system health **panel** | ❌ | `adminApi.health` is never called by any page |
+| §6 login transaction log (rows, actions, outcome, method, device) | ✅ | `/admin/logs` page |
+| §6 `user_agent` | 🟡 | captured on audit rows (v007), not shown in the UI or the CSV |
+| §6.1 GeoLite2, local | 🟡 | `lib/geo.js` built, no outbound calls; **off unless `GEOLITE2_DB` + `maxmind` are installed**, so location is null today |
+| §7 endpoints | ✅ | plus `/me`, `/stats/activity`, `/orgs/:id`, `/orgs/:id/payments`, `/finance/*` (§15) |
+| §8 filters | 🟡 | the API accepts them all; the UI has no org filter on the log, no role/org filter on users, search only on devices |
+| §8 export | 🟡 | login log only; buffered (capped at 100k rows), not streamed |
+| §9 KPI row, role + method charts | ✅ | method is a bar, not a pie |
+| §9 **60s auto-refresh** + manual refresh | ❌ | fetches once |
+| §9 org filter in the top bar | ❌ | no top bar |
+| §9 registration trend line (90d) | ❌ | an hourly sessions chart stands in its place |
+| §10 schema | ✅ | v007 |
+| §10 **12-month `audit_log` prune job** | ❌ | none anywhere in `server/` |
+| §10 log unknown-email failures (optional) | ❌ | `auth.js` returns without an audit row |
+| §12 step 9 tests | 🟡 | 18 checks incl. the allowlist gate and the content boundary; **none test the `account`/`staff` 403 limits** |
+
+## 14. Gaps, risks and the "ready" bar
+
+**The "ready" bar (proposed to the PM 2026-10-14):** G1–G5 below + the two legal fixes
+L1–L2. Everything else is tracked, not blocking.
+
+| # | Gap | Size |
+|---|---|---|
+| G1 | System-health panel (API exists; add the page incl. recent `sync_history` failures) | S |
+| G2 | 60s auto-refresh + manual refresh button on overview and log (§11 #4) | S |
+| G3 | `disable` and `password-reset` account actions (`admin`, `staff`), audited, no PII in the response | S |
+| G4 | `audit_log` retention prune: 12 months (§11 #5), as a script run daily, with a dry-run flag | S |
+| G5 | Registration trend: a daily series in `stats()` + line chart (30/90d) | S |
+| G6 | Audit every cross-tenant view (§2(4)): `/users`, `/orgs/:id`, `/devices`, `/stats` | S |
+| G7 | Tests for the `account`/`staff` 403 limits | S |
+| G8 | Pairing/device breakdowns (§5.3), password-reset counts (§5.2) | S |
+
+**Legal / security risks (flagged to the PM):**
+
+| # | Risk | Why it matters | Fix |
+|---|---|---|---|
+| L1 | **No `audit_log` retention** | The 12-month retention this spec commits to (APP 11.2, destroy PII no longer needed) is not enforced; IPs, emails and devices accumulate indefinitely | G4 |
+| L2 | **Platform payroll is not compliant** (§15.2) | Salary runs pay the annual figure; PAYG/super are hand-typed and in practice 0; no PAYG/super liability postings; no STP. The P&L's "PAYG withheld" / "BAS payable" figures rest on these. | Freeze the payroll page for real pay runs until fixed, or replace with an external payroll product (the Owner decides) |
+| L3 | `staff` can bulk-export the cross-tenant login log (emails, IPs, orgs) | It contradicts the "non-admin roles act by id only" rule in spirit; the export is audited, but the unfiltered view is not | Restrict the export to `admin`, or audit every view (G6) |
+| L4 | CSV formula injection in the export | Tenant-controlled org names starting with `= + - @` run as formulas in Excel | Prefix those cells with `'` |
+| L5 | `audit.js` trusts the first `X-Forwarded-For` value | IP evidence in the log is spoofable | Use Express's `req.ip` (trust proxy is already 1) |
+| L6 | `scripts/seed-admin-team.js` hardcodes and prints a known password | Run against prod, it creates known credentials | Refuse to run when `NODE_ENV=production`; random passwords |
+| L7 | Admin-action audit rows carry the admin's own `org_id`, not the target user's | Per-tenant audit trails miss actions taken on their users | Pass the target org |
+
+Also stale: the overview page text says "ProjMan2 has no MQTT broker", but MQTT was
+reintroduced (`AdminService.js` comment). §4's "`payments` ❌ do not exist" row is superseded
+by v007.
+
+## 15. Built but previously unspecified
+
+### 15.1 Platform roles (v011) — as built
+
+`platform_admins.admin_role ∈ {admin, account, staff}`. The column default is `staff`;
+`grant-platform-admin.js` defaults to `admin`.
+
+| Endpoint group | admin | account | staff |
+|---|---|---|---|
+| `/me`, `/stats`, `/stats/activity` | ✓ | ✓ | ✓ |
+| `POST /users/:id/{suspend,reactivate,force-logout}` | ✓ | ✓ | ✓ |
+| `GET /users` (directory, PII) | ✓ | – | – |
+| `/devices`, `/system/health` | ✓ | – | – |
+| `/orgs*`, `/billing/*`, `PATCH /orgs/:id/plan`, `/finance/*` | ✓ | ✓ | – |
+| `/logs/login`, `/logs/login/export` | ✓ | – | ✓ |
+
+The PII rule in §3 (non-admin platform roles act by id, no directory) holds for `/users`
+only. `staff` reads the login log (emails, IPs) and
+`account` sees org details and payroll staff names/rates (L3).
+
+### 15.2 Platform Finance — eBizco's own books (v031, v032, v036)
+
+**Whose books:** eBizco as the SaaS operator. The tables have **no `org_id`** by design
+(`fin_accounts` tree, `fin_journal`, `fin_expenses`, `fin_staff`, `fin_payroll`,
+`fin_payroll_items`). This is separate from the per-tenant `org_accounts`/`org_journal`
+(v042/v044, `serverdesignspecification.md`), and separate from tenant payroll, which stays
+**cancelled** (server spec §12).
+
+| Feature | Status | Notes |
+|---|---|---|
+| Chart of accounts (3-level tree) | ✅ | `POST /finance/accounts` has no UI |
+| Expenses → journal (Dr expense / Cr Cash, incl. tax) | ✅ | |
+| Subscription payment → journal (Dr Cash / Cr Subscription Revenue) | 🟡 | fire-and-forget, outside the payment's transaction; a failure is only logged |
+| P&L, Balance Sheet (live from the journal), GST/PAYG/BAS summary | 🟡 | GST assumes every subscription receipt is GST-inclusive (`/11`); no tax invoice is produced |
+| Payroll runs | ⚠️ **Not fit for real pay runs** | see below |
+
+**Payroll as built** (`FinanceService.createPayrollRun`, `markPayrollPaid`):
+- salary: `gross = fin_staff.rate`, and v031 defines `rate` as the **annual salary**, so each
+  run pays a year's salary;
+- hourly: `gross = Σ hours × rate_factor × rate`;
+- `tax` and `super_amount` are request fields; the UI never sends them, so they are 0;
+- paying a run posts Dr Wages Expense / Cr Cash for **net** only: no PAYG-withholding
+  liability, no super liability or expense (the `Superannuation` account is unused);
+- no PAYG withholding tables, no Super Guarantee rate, no TFN, no super fund, no STP Phase 2.
+
+Treat this as a **ledger-entry convenience, not a payroll system**, until the Owner decides
+between fixing it properly (pay-period proration, ATO withholding schedules, SG, STP via a
+gateway) or using an external payroll product and importing the journal (L2).
 
 ---
 

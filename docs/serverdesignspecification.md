@@ -1,9 +1,11 @@
 # ProjMan — Server Design Specification
 
-**Status:** Specification of record — §5 onward describes already-built modules;
-§1–4 and §7–8 are the corrected architecture layer, ship as a migration on top
-of what exists, not a rewrite of it
-**Date:** 27 July 2026
+**Status:** Specification of record. **Re-baselined against the code on 2026-10-14. Read §15
+first:** it gives the build status of every module (c1projman2 at v047, v048 on a branch),
+how the server maps onto the v3.4 stages, the corrections to stale statements in §3–§14,
+and the legal and blocking items. Where §15 and an earlier section disagree, §15
+describes the code.
+**Date:** 27 July 2026 (architecture) · 14 October 2026 (re-baseline, §15)
 **Owner:** eBizco Australia (Vince Phan) / NexusPM (server)
 **Source of truth:** *ProjMan — The 18-Stage Construction Lifecycle, Fully
 Decomposed*, v3.4 — cited as "the 18-Stage spec."
@@ -1088,6 +1090,317 @@ scope-class resolver and a new token shape.
 | 26 | Two live tokens per device (home + active engagement) vs. one token that embeds multiple scopes (§13.2) | **Two tokens** — keeps the existing single-scope token shape untouched everywhere else in the codebase; the device/App just holds a second one, closer to a "second login" than a token-format change |
 | 27 | Engagement token lifetime — same as a normal session, or deliberately short-lived (re-activate per visit)? | **Short-lived** (recommend session-length, not indefinite) — an engagement can be revoked (§7.5); a long-lived token would keep serving stale `scope_json` between revocation checks longer than necessary |
 | 28 | `attestations.issuing_org_id` — anonymised at read time for the owner's own evidence view, or only in third-party/VeriTrade-facing summaries? | **Only third-party-facing** — the owner should always see who actually attested to what; anonymisation (§7.5) protects the *counterparty* from exposure to *other* counterparties, not from the subject themselves |
+
+---
+
+## 14. Stage 3 — Concept Design Generation AI gap, + two supporting schema pieces
+
+**§14.2's schema (BUILT, migration v030, 2026-09-03)**: `documents.supersedes_id` and the
+`consultants` table both landed — bundled with `xprojman-29`'s task-cost-centre migration
+(unrelated tables, same migration file, both small and additive). Applied to `c1projman2_e2e`
+(full suite: 470/470, 0 failed, 21 suites) and live `c1projman2`. **§14.1's AI-generation
+itself remains unbuilt** — that's the real, larger gap (§14.5 #29), not solved by this
+migration. §14.0/§14.1/§14.3/§14.4 below are otherwise unchanged (design draft,
+specify-then-build for what's still open).
+
+**§14 as originally written here (2026-09-03, `project_briefs`/`concept_designs` as new
+pre-Stage-1 tables) is RETRACTED.** It was drafted from `docs/processmap.md`'s flowchart
+without first reading `docs/researchPaper/ProjMan_18Stage_Specification_v3.4.pdf` — the
+document `devroadmap.md` names explicitly as "the Core Logic Driver... do not re-derive it,
+read that file." Having now read it in full, the retracted design substantially duplicated
+territory the v3.4 spec already precisely defines. Owner correction, 2026-09-03: *"the design
+specification will outlay each phase of the construction, input, output parameters, do not
+code blindly and have no plan"* — this rewrite follows Portal's
+**Phases → Inputs → Outputs → Parameters → Server dependency** format (`xprojman-28.md`),
+grounded in the v3.4 spec instead of a discussion flowchart.
+
+### 14.0 Why the retraction — what the spec actually says
+
+- **There is no pre-Stage-1 "brief" phase.** Stage 1 (S1.1 "Capture client profile") *is*
+  the entry point — a PM captures the client, site, land documents, OCR extract, in one
+  office session, no draft/brief precursor. Confirmed already built exactly this way
+  (`create_project_screen.dart`'s `_create()`).
+- **Concept Design is Stage 3 (S3.1–S3.11), not a pre-project phase.** PM triggers it
+  against an *already-created* project; the AI engine computes footprint/setback/elevation/
+  floor-area (S3.2–S3.6); PM confirms before it reaches the client (S3.7, the standing
+  confirm-gate rule established at S2.6); the three output PDFs store as
+  `documents.kind='concept_design'` (S3.8, no new table — `documents.kind` is already a free
+  `VARCHAR(40)`); revision loop regenerates a **new version linked via `supersedes_id`**
+  (S3.10/S3.11) — the spec's own Part 3 notes this was "Built as S3.10/S3.11 rather than
+  deferred," i.e. it's meant to exist, not be optional.
+- **Budget Estimate is Stage 5 (S5.1–S5.4), AI-generated 3-tier options, not a brief field.**
+  Same confirm-gate + frozen/hashed pattern as Stage 3/7.
+- **Stage 9 is unambiguously "Construction Tender Preparation" — PM tenders to Builders**
+  (resolves Portal's naming-collision flag on `processmap.md` node H outright; there is only
+  one "Tender & Contract" event in the real spec, not two).
+- **What genuinely has no home anywhere in the 18 stages**: "Client Enquiry" and "Project
+  Brief" (`processmap.md` nodes A–B) — the spec's Stage 1 starts from an already-decided
+  client relationship, it doesn't model the enquiry that precedes it. That's real, narrow,
+  new territory — see §14.4. Everything else `processmap.md` proposed (nodes C–H) already has
+  a stage.
+
+### 14.1 Module: Stage 3 AI Concept Generation
+
+**Phases** (S3.1→S3.11, in order):
+1. PM triggers generation (one click) against an existing project — pulls zoning + boundary
+   data already captured at Stages 1–2.
+2. AI computes: structural footprint within the setback-compliant envelope, mandatory green
+   open-space overlay, elevation profile (max height), internal floor-area summary (m²),
+   setback-rationale text.
+3. PM reviews/confirms (or edits inputs and re-triggers) — **nothing reaches the client
+   unconfirmed**, the standing rule from S2.6.
+4. System stores 3 PDFs (Footprint / Elevation / Area Summary) + rationale text, auto-emails
+   the client.
+5. Client requests changes (call/meeting/email — **no client-portal write at this stage**,
+   S3.10's note: "pre-contract, PM still the sole recorder"); PM records the request and
+   re-triggers generation.
+6. AI regenerates as a **new version**, linked to the original via `supersedes_id` — original
+   never overwritten, same frozen-record discipline as every other client-facing artefact in
+   this spec (§1.4 pattern).
+
+**Inputs:** `projects.site_address`/`lot_plan` + `projects.geofence_*` (S1); zoning code,
+easements, hazard buffers recorded at Stage 2 (whichever table ends up holding S2's audit —
+not yet built either, out of scope for this section); PM's one-click trigger; PM's
+confirm/edit decision (S3.7); PM's recorded change request (S3.10, free text — no structured
+field, matches the spec's own "PM records requested changes" as a prose action, not a form).
+
+**Outputs:** 3 PDFs + rationale text as `documents` rows (`entity_type='project'`,
+`entity_id=projects.id`, `kind='concept_design'`); a client-facing email; on a revision, a
+**new** set of 3 PDFs + rationale superseding the prior set.
+
+**Parameters:** gated on `projects.write`/`projectManager` (same actor as every other Stage
+1–8 sub-step — PM is the sole system user through Stage 8, per the spec's own S6 note); no new
+permission. Confirm-gate (S3.7) is a UI/workflow rule, not a schema rule — nothing stops the
+AI-generation call from completing, S3.7 is what's required before S3.9's auto-email fires.
+
+**Server dependency — what's actually missing:**
+1. **The AI generation itself** (S3.2–S3.6) — no implementation exists anywhere in this
+   codebase today (confirmed: zero `.py` files, zero OCR/inference service, nothing in
+   `server/api/src/`). This is the real, substantive gap — not a schema gap, an AI-integration
+   one. Model choice / provider is unscoped, same open question already logged against
+   `xprojman-27` module #20 (NCC AI assistant) — recommend both go through the same scoping
+   pass rather than two separate ad-hoc integrations.
+2. **`documents.supersedes_id`** — does not exist on `documents` today (only `site_diary` has
+   this pattern currently, `documents` v024 doesn't). Needed for S3.11's versioning, and
+   arguably for every other frozen/hashed correction the spec describes hitting `documents`
+   (Stage 6 architectural drawings, Stage 5/7 client-facing sends) — one column serves all of
+   them, not a per-stage field.
+3. **Stage 2's own audit data model** — Concept Design's inputs (zoning, easements, hazard
+   buffers) don't have a confirmed home in the current schema; `ncc_register` is a compliance
+   *checklist* (open/closed items gating stage completion), not a repository for DBYD/zoning/
+   easement facts. Flagging as a dependency of this module, not solving it here — out of
+   scope for §14, needs its own pass if Stage 2 is next.
+
+### 14.2 Two small, shared schema pieces (referenced across multiple stages, not just Stage 3)
+
+- **`documents.supersedes_id`** (CHAR(36), nullable, soft ref to `documents.id`) — §14.1 point 2
+  above.
+- **`consultants`** — referenced repeatedly in the spec (S6.2/S6.4 draftsman/architect, S8.2/
+  S8.3 Principal Certifier + Structural Engineer, S13.8/S13.9 Engineer vs. Surveyor sign-off —
+  *two different disciplines*, neither substitutes for the other, S18.12 Accountant/BAS Agent)
+  but **no such table exists** (grepped, zero hits). These are external, no-login parties whose
+  certification the PM uploads on receipt — same shape each time. Proposed:
+  `consultants(id, org_id, discipline VARCHAR(40) NOT NULL, name, contact?, licence_number?,
+  is_deleted, created_at)` — `discipline` is free text (`draftsman|architect|structural_engineer
+  |building_surveyor|principal_certifier|accountant_bas_agent|...`), not an ENUM, same
+  extensibility reasoning as `attestations.source_type` (§13.1). This is a real, standalone gap
+  — worth its own migration regardless of Stage 3, since Stage 8/13/18 need it as much as
+  Stage 6 does. Not designed further here — flagging existence and shape only.
+
+### 14.3 Build deviation found while reading the spec (not this section's to fix)
+
+**S9.10 says stages 10–18 are seeded "now that a Builder is attached"** — i.e. Stages 1–9 and
+Stages 10–18 come from *separate* seeding events, only the latter gated on Job Award
+acceptance. What's actually built today (confirmed via App Agent's `create_project_screen.dart`
+finding, §14.0 above) is `instantiateProgramme` stamping **all 18 stages atomically at project
+creation** — Stage 1, before a Builder exists. This is a genuine spec/build mismatch, not a
+documentation gap. Not resolving it here — flagging for whoever owns Stage 9's build (nobody,
+currently — Stage 9's tender/Job-Award flow isn't built either) so it doesn't get discovered
+as a surprise mid-build.
+
+### 14.4 What's still genuinely new: Client Enquiry → Brief (nodes A–B only)
+
+Per §14.0, the only real gap `processmap.md` surfaced that the v3.4 spec doesn't already own is
+the pre-client-relationship enquiry — before a PM has a named client ready for Stage 1's S1.1.
+**Not designed in this section** — deliberately narrow scope for this rewrite (get Stage 3
+right first, since that's what triggered the retraction). If wanted, this is a small, separate
+follow-up: a lightweight `enquiries` table (name/contact/interest, no site data yet, no AI
+involvement) feeding into Stage 1's S1.1 as a pre-fill, not a parallel `projects`-shaped
+table. Flagging as future scope, not committing to it here.
+
+### 14.5 Open items for owner ruling
+
+| # | Decision | Recommendation |
+|---|---|---|
+| 29 | AI provider/model for Stage 3 generation (§14.1 point 1) | Scope together with `xprojman-27` #20 (NCC AI assistant) — same open question, don't solve twice |
+| 30 | ~~`consultants` table (§14.2) — build now or defer~~ | **BUILT** (v030, 2026-09-03) — no route/service wired yet, schema only, per §14.2's original scope |
+| 31 | ~~S9.10 vs. built `instantiateProgramme` behaviour (§14.3)~~ | **RESOLVED by v046** (xprojman-45 Option B): S9.10 is programme activation, gated on the Builder's Job Award acceptance |
+| 32 | Whether `enquiries` (§14.4) gets designed as a follow-up | Deferred — flagging only |
+
+---
+
+## 15. Re-baseline against the code (2026-10-14)
+
+Sources: every migration v001–v047 on `server/p5-site-ops`, v048 at `203f7de`, every route,
+service and test under `server/api`, and a full read of the v3.4 PDF. ✅ built · 🟡
+partial · 📐 specced, not built · ❌ not started.
+
+### 15.1 Module status
+
+| Module | Status | Where (service · test) | Notes |
+|---|---|---|---|
+| Identity, auth, recovery | ✅ | AuthService · isolation | |
+| OAuth (Google/Microsoft/Facebook), SMS | ✅ | lib/oauth, lib/sms · **no tests** | Microsoft/Facebook return 503 without credentials; dev bypass outside production |
+| Pairing, devices, sync | ✅ | SyncService, sync/registry · isolation, domain | pull filters to local columns (tolerant reader) |
+| Roles-as-data, RBAC (§7.1–7.2) | ✅ (v004/v005/v012) | lib/access · access, directive1 | **§10 #4 answered: a broader grant survived** (§15.3) |
+| `builder_engagement_type`, subcontractor consent (§7.2.1) | ✅ (v014) | ProcurementService redaction · subcontractor-engagement | |
+| Self-registration → Introduction → Job Award (§7.3) | ✅ (v013, v018, v045) | IntroductionService, JobAwardService · directive1 | Tender issue/compare (S9.1–9.5) ❌ |
+| **Programme activation / Builder gate** | ✅ **v046** | StageProgressionService, JobAwardService · builder-gate | xprojman-45 Option B: stages 10–18 are gated on the Builder's acceptance |
+| Deactivation, not erasure (§7.6) | ✅ (v015) | organisation routes | VeriTrade `is_published` is not cleared on deactivation |
+| PM2-02 engagements / identities / attestations (§13) | ✅ (v027) | EngagementService, AttestationService · engagements, identity, attestations | Emitted from 4 of 5 hook points: **none on stage completion**, contrary to §13.3 |
+| VeriTrade login (§7.4) + generic app-login | ✅ (v028, v029, v033) | VeriTradeLoginService · veritrade-login | Routes differ from §7.4 (see §15.4) |
+| 18-stage engine, hold points, task library | ✅ (v006, v016, v034, v037, v038) | StageProgressionService, HoldPointService · stages, task-status-seq | `onStageValidated` has no handler registered |
+| Site ops: diary, attendance, deliveries, site map | ✅ (v008, v040) | SiteOpsService, SiteMapService · siteops, site-map | site map needs `GOOGLE_MAPS_API_KEY` |
+| Quality: inspections, defects, certificates | ✅ (v009) | InspectionService · quality | Defects have no DLP fields |
+| **Checklists** | ✅ **v047** | ChecklistService · checklists | xprojman-46. System-template wording still the placeholder (data migration queued) |
+| **Safety / OHS** | 📐→✅ **v048 on branch `server/v048-safety` only** | SafetyService · safety (33 checks) | xprojman-48. Landing is waiting on the Owner's approval in the Server session, together with the `notified_at` fix (§15.5) |
+| Compliance (NCC/CPC reference + gates) | 🟡 (v010) | ComplianceService · compliance | `cpc_evidence` (named in §8) does not exist |
+| Commercial: Cost Plan, estimates, progress claims | ✅ (v017) | EstimateService, ClaimService · commercial | |
+| Procurement | ✅ (v019) | ProcurementService · procurement | |
+| Variations, contracts | ✅ (v021) | ContractService · variations | retention modelled (`retention_pct`), not withheld |
+| Task costing, rate cards, cost centres, quotes | ✅ (v030, v039, v043) | CostingService, TaskQuoteService · task-costing, task-quotes | |
+| Documents | ✅ (v024, v025, v030) | DocumentService, lib/storage · documents | disk driver only (no object store); `supersedes_id` exists but the service doesn't use it |
+| Project brief snapshots, status, delete | ✅ (v035, v041) | ProjectBriefService, ProjectDeletionService | snapshot = an acknowledgement flag, not a content hash |
+| Fixed assets, depreciation (S18.11 draft → S18.12 `tax.approve`) | ✅ (v022) | DepreciationService · depreciation | |
+| GST / BAS (P8b) | ✅ (v023) | TaxService · tax | accrual only; "lodge" sets status, no ATO transmission |
+| TPAR (P8c) | ✅ (v026) | TparService · tpar | record only, no ATO transmission |
+| Tenant chart of accounts + `org_journal` auto-posting | ✅ (v042, v044) | OrgFinanceService · org-finance-journal | supersedes §11.1's "no native GL" |
+| Platform (eBizco) books + platform payroll | ✅ (v031, v032, v036) | FinanceService · finance, finance-coa | `dashboarddesignspecification.md` §15.2; **payroll not compliant** |
+| Admin dashboard, SaaS billing | ✅ (v007, v011) | AdminService, BillingService · admin | gaps: dashboard spec §14 |
+| **Client billing (xprojman-43)** | 📐 **approved, not built** | — | see §15.2 |
+| Tenant payroll | ❌ cancelled (§12) | — | still cancelled; only platform payroll exists |
+| Consultants | 🟡 schema only (v030) | — | |
+| Stage 2 hazard audit, Stage 3 AI concept, Stage 4 screening, Stage 6 selections, Stage 7 DA | ❌ | — | §15.3 |
+| Push notifications (xprojman-54) | 📐 draft | — | FCM/APNs credentials |
+| Xero/MYOB live sync | ❌ | — | §11.4 #6: native facts + export now, live API sync deferred |
+
+### 15.2 Client billing — xprojman-43 as approved (§11, 2026-10-14)
+
+Approved by the SA (= Owner) on 2026-09-30; the REST contract was agreed with Portal on
+2026-10-14 (x43 §11; Server's reply is to be written up as x43 §12). The build order is Steps 1–3 (schema +
+`ClientBillingService`, revenue posting into `org_journal`, payment schedule), then Step 4
+(milestone triggers).
+- **Milestones are keyed to v3.4 codes:** Deposit S9.9 · Base S12.10 · Frame S13.11 ·
+  Lock-up S14.7 · Fixing S16 · Completion S18.15 (gated on S18.3 OC + S18.14 client
+  sign-off — **S18.14 is not built**, so the Completion trigger waits on xprojman-51).
+- **Jurisdiction:** `projects.site_state`, falling back to `organisations.state`.
+- **Deposit cap is a data table, not code** (PM ruling 2026-10-14): `deposit_caps
+  (jurisdiction, min_price, max_price, pct, abs_cap_amount, source, verified_at)`. Only VIC and
+  WA are seeded as verified. For an unverified state, or no row, the response carries a
+  `DEPOSIT_CAP_UNVERIFIED` warning and nothing is blocked. A verified row hard-blocks with
+  `DEPOSIT_CAP_EXCEEDED` 409.
+- **Void-safe uniqueness:** a generated `live_milestone` column, then `UNIQUE (project_id,
+  live_milestone)`. Void auto-creates a replacement draft (`supersedes_id`). Voiding an
+  issued invoice posts a reversal.
+- **Invoice number** assigned at issue. GST only if `organisations.gst_registered`. Full
+  payment only in v1, recorded by PM/office (`payment_recorded_by`). Revenue posts on
+  issue (accrual-only, §11.4). `SCHEDULE_LOCKED` once a milestone is issued or paid.
+
+### 15.3 Mapping to the v3.4 stages
+
+| Stage | Server support | Status |
+|---|---|---|
+| 1 Creation | customers, projects, `modular_units` at create (S1.3); OCR and the S1.8 tracking email are no-op hooks; `land_title`/`survey` are not in the document-kind allowlist | 🟡 |
+| 2 Hazard audit (S2.1–2.7) | no hazard/site-constraints table, no AI, no S2.6 confirm gate | ❌ |
+| 3 Concept (§14) | only `documents.supersedes_id` | ❌ |
+| 4 Screening | no pathway record, no clock | ❌ |
+| 5 Budget | `cost_plans` draft → locked; no content hash, can be unlocked | 🟡 |
+| 6 Drawings / selections | no material selections; the client has only `projects.read` | ❌ |
+| 7 DA | no DA statuses, no statutory clock, no client hashed sign-off | ❌ |
+| 8 CC | inspection + certificate flags, but **`is_hold_point=0`**: stages 10+ are gated on Builder acceptance, not on CC issue (S8.8) | 🟡 |
+| 9 Tender / Award / Deposit | Job Award + S9.9 deposit (`project_payments`, TPAR) + S9.10 activation ✅; tender ❌; `job_awards.document_hash` hashes metadata + time, not document content | 🟡 |
+| 10 Site works | S10.5 set-out blocking hold point, geofenced attendance, diary | ✅ |
+| 11 Foundation | stage hold point + the three S11.9–11.11 rows, **non-blocking** | 🟡 |
+| 12 Base | hold point; S12.8/9 rows non-blocking, **no S2.4 auto-trigger** (§8 patch (2) not built) | 🟡 |
+| 13 Frame | hold point + structural gate; no separate engineer/surveyor rows | 🟡 |
+| 14 Lock-up | checklists (internal QA), generic completion | 🟡 |
+| 15 Rough-in | stage hold point; separate electrical/plumbing rows and task-level lining gate not built | 🟡 |
+| 16 Fixing | S16.7 energisation cert, jurisdiction-aware ✅; per-room sign-off partial | 🟡 |
+| 17 External | S17.2 crossover flag | ✅ |
+| 18 Handover | S18.11/18.12 ✅; OC/BA3 are free-text certificate types; S18.13 pack ❌; **S18.14 client sign-off ❌**; S18.15 status ✅; S18.16 attestations go to the Builder only, not to every participant | 🟡 |
+
+**Cross-cutting rules from v3.4 that are not met:**
+- §1.4 frozen/hashed records: no `content_hash`, `frozen_at`, `email_message_id`, no DB
+  triggers. Immutability is enforced in application code only (estimate lock,
+  `CHECKLIST_FROZEN`, `SAFETY_FROZEN`).
+- §1.5 two-tier unit hold points: `hold_point_requirements` has no `unit_id` (only
+  `checklist_instances` does).
+
+**Numbering collision.** The v034 task library was seeded from `18Stage_Tasks.md`, and its
+codes don't match v3.4. Seed "S18.11" is the client sign-off (v3.4 **S18.14**), seed "S18.8"
+is the depreciation draft (v3.4 S18.11), seed "S9.8" is the Cost Plan lock (v3.4 S9.9), and
+Stage 6 differs. The code (HoldPointService, DepreciationService) uses v3.4 numbering, so
+"S18.11" means two different things depending on where you read it. Re-key the seed to v3.4
+in a data migration; this is part of xprojman-43 Steps 1–2 (milestone codes).
+
+### 15.4 Corrections to earlier sections (stale statements)
+
+| Where | Stale statement | Fact |
+|---|---|---|
+| §3 | ProgrammeService / CostPlanService / EvidenceService | StageProgressionService / EstimateService + CostingService / AttestationService |
+| §7.4 | `/veritrade/login/status/:id`, `/app/veritrade-login/scan\|respond` | `/veritrade/login/initiate`, `/login/:id/{context,approve,deny,status}`, plus generic `/auth/app-login/*` (v033) |
+| §8 | lists five modules | see §15.1; `cpc_evidence` does not exist |
+| §9 | build order A–G | A, A2, B, D, D2, E, F built (v012–v016, v027–v029, v033); C is Portal; **G (licence verification) not built** |
+| §10 #4 | "audit before shipping step A" | **Answered: `inspector` still holds `quality.write` (v009:175), never revoked.** v024 also lets it DELETE documents through that grant. Fix: revoke, keep `quality.validate` (Server, next migration) |
+| §10 #6 | "unresolved" | ruled in §11.4 #6: (B)+(b1), native facts + export, sync deferred |
+| §11 | "P8b/P8c not yet authorised", "TaxService NOT yet written", "no native GL" | TaxService, TPAR, `org_accounts`/`org_journal` all built (v023, v026, v042, v044) |
+| §11.4 #18 | open | resolved: `accounts.read` is in `OWNER_CAPABILITIES` |
+| §12 | payroll cancelled | still true for tenants; a **platform-only** payroll exists (v031, dashboard spec §15.2) |
+| §13 | "design draft, before any migration" | built in v027; §13.6's "v028 = AttestationService" is wrong (v028 is VeriTrade; attestations needed no migration) |
+| §14.1 | "`documents.supersedes_id` does not exist" | added in v030 (unused by the service) |
+| §14.3 | "Stage 9's Job Award flow isn't built" | built (v013/v045/v046) |
+
+### 15.5 Fixes in flight (Server lane)
+
+| Fix | State |
+|---|---|
+| **TZ pin:** `db/pool.js:8` reads `config.timezone`, which doesn't exist (the key is `config.server.timezone`), so the process runs in UTC and every `dateStrings` expiry check is 8h lenient. Present since d71b702. | One-line fix drafted; lands with v048 |
+| **`notified_at` normalisation** (v048 `setNotifiable`): ISO with Z/offset → Perth wall clock, 400 on garbage | drafted + test; lands with v048 |
+| v047 system-template wording → Product's approved copy | data migration queued |
+| `inspector` `quality.write` revoke | next migration |
+
+### 15.6 Legal / regulatory items (for the Owner's legal list)
+
+| # | Item | Server today | Needs |
+|---|---|---|---|
+| R1 | **Deposit caps** (state Home Building Acts) | not enforced (no client invoices yet) | statute verification of every state except VIC/WA (PM has it on the Owner's list) |
+| R2 | **WHS notifiable incidents** | v048 records, flags, alerts, keeps 5 years; never lodges with the regulator | v048 landing; the Owner confirms "record only" |
+| R3 | **Health information in incident details** (Privacy Act, APP 3/6) | v048: create-only, never pulled to devices, REST read limited to safety.manage + reporter | v048 landing |
+| R4 | **Retention classes** (v3.4 §1.11, S18.13; APP 11.2) | no retention classes, no prune job anywhere (incl. `audit_log`); soft delete only | an Owner ruling on periods; then a retention job |
+| R5 | **Recording / surveillance consent** (v3.4 p31) | nothing | solicitor (state surveillance Acts) |
+| R6 | **Minors** (TAFE/school users, v3.4 p6/p30) | no DOB, no guardian consent | consent design + ruling |
+| R7 | **Contract execution by in-app tap** (S9.7) | tap built, S9.9 deposit anchors it | solicitor |
+| R8 | **Security of Payment** response times | `progress_claims` has no due/response dates | solicitor, then a claim clock |
+| R9 | **Defects liability / statutory warranty** per state | `defects` has no DLP fields | ruling on periods |
+| R10 | **Home Warranty Insurance** (S8.7) | generic document only, no gate | ruling: gate S9/S10 on it? |
+| R11 | **Platform payroll** (PAYG, SG, STP) | not compliant (dashboard spec §15.2) | Owner: fix or external payroll |
+| R12 | **Location / IP minimisation** (v3.4 §4.3) | no continuous tracking ✅; no retention limit on IP/location | part of R4 |
+| R13 | **Frozen/hashed evidence** (v3.4 §1.4) | app-level only; `document_hash` hashes metadata | design decision: DB triggers + content hashes |
+
+### 15.7 Blockers
+
+| Blocked | On |
+|---|---|
+| v048 landing (+ TZ and `notified_at` fixes) | the Owner's approval typed in the Server session (approval relayed through the PM can't be used) |
+| AI engines (S2.5, S3, S5.2, S6.6) and OCR (S1.5) | provider choice + credentials (`OPENAI_*` keys exist in `.env.example` but nothing reads them) |
+| Outbound client email (S1.8, S2.7, S3.9, S4.3, S7.7, S18.13) | production SMTP, with a provider that returns a message id (§1.4) |
+| Push (xprojman-54) | FCM/APNs credentials |
+| Microsoft / Facebook OAuth, ABR lookup, Google Maps | `MICROSOFT_CLIENT_ID`, `FACEBOOK_APP_*`, `ABR_GUID`, `GOOGLE_MAPS_API_KEY` |
+| Object storage for documents | a storage decision (only the disk driver exists) |
+| ATO / regulator / STP transmission | Owner ruling (today: record only) + software-provider credentials |
+| xprojman-43 Completion trigger | S18.14 client sign-off (xprojman-51) |
+| VeriTrade licence verification (§9 step G) | state data access (VeriTrade lane) |
+| Dispute mechanism (v3.4 §4.1) | design; VeriTrade hardcodes `unresolved_disputes: 0` |
 
 ---
 
