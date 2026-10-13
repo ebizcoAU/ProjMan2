@@ -403,14 +403,15 @@ export const commercialApi = {
 };
 
 // Quality (P6a) — review reads; field capture rides /sync/push from the app.
-// patchDefect is the one office-side write (PATCH /projects/:id/defects/:defectId,
-// dbaa649): same quality.write gate and writable columns as the sync path. There is
-// no REST create — defects are raised on site.
+// Office-side writes, quality.write: patchDefect (PATCH /projects/:id/defects/:defectId,
+// dbaa649) and createDefect (POST /projects/:id/defects, c637e22: send a minted `id` so a
+// retry is idempotent; status is always 'open', raised_by/raised_at are server-stamped).
 export const qualityApi = {
   inspections:  (id)             => request('GET', `/projects/${id}/inspections`),
   defects:      (id, status)     => request('GET', `/projects/${id}/defects${status ? `?status=${status}` : ''}`),
   certificates: (id)             => request('GET', `/projects/${id}/certificates`),
   patchDefect:  (id, defectId, body) => request('PATCH', `/projects/${id}/defects/${defectId}`, body),
+  createDefect: (id, body)       => request('POST', `/projects/${id}/defects`, body),
 };
 
 // Safety/OHS (xprojman-48 as amended by Server's §8 response, v048). Screens import

@@ -5,6 +5,7 @@
 // - Paper fallback: upload the client's signed form + the short hash printed on it; the
 //   server only counts it if that hash is the current pack's (else PACK_CHANGED).
 // - Sign-off history: every row frozen on arrival, newest first, with is_current.
+// - A decline's reasons each get "Raise defect" (POST /projects/:id/defects, quality.write).
 // The assisted sign-off on the PM's device is the App's screen; it lands here as history.
 // Stage 18 can't complete until an accepted sign-off matches the current pack.
 'use client';
@@ -16,7 +17,7 @@ import { PortalCard }    from '@/components/portal/PortalCard';
 import { PortalEmpty }   from '@/components/portal/PortalEmpty';
 import { PortalError }   from '@/components/portal/PortalError';
 import { usePortalData } from '@/components/portal/usePortalData';
-import { projectsApi, authApi, handoverApi, documentsApi } from '@/lib/api';
+import { projectsApi, authApi, handoverApi, documentsApi, qualityApi } from '@/lib/api';
 import { ProjectTabs } from '../_ProjectTabs';
 
 const KIND = { occupation_certificate: 'Occupation certificate', ba3: 'BA3', manual: 'Manual', warranty: 'Warranty',
@@ -139,7 +140,40 @@ function PaperUpload({ projectId, pack, latest, onDone }) {
   );
 }
 
-function SignoffRow({ s }) {
+// A decline's reasons, one per line, each with "Raise defect" (POST /projects/:id/defects,
+// quality.write). The id is minted once per reason so a retry can't double-raise; there's no
+// link column, so the description carries the sign-off date and reason (Server, c637e22).
+function DeclineReasons({ s, projectId, stageId, canRaise }) {
+  const reasons = String(s.decline_reasons || '').split('\n').map((r) => r.trim()).filter(Boolean);
+  const [state, setState] = useState({}); // index → { id, status: 'busy'|'raised'|'error', msg }
+  const raise = async (i, reason) => {
+    const id = state[i]?.id || crypto.randomUUID();
+    setState((x) => ({ ...x, [i]: { id, status: 'busy' } }));
+    try {
+      await qualityApi.createDefect(projectId, {
+        id, description: `Client sign-off decline (${String(s.signed_at).slice(0, 10)}): ${reason}`,
+        ...(stageId ? { stage_id: stageId } : {}), severity: 'medium',
+      });
+      setState((x) => ({ ...x, [i]: { id, status: 'raised' } }));
+    } catch (e) { setState((x) => ({ ...x, [i]: { id, status: 'error', msg: errMsg(e) } })); }
+  };
+  return (
+    <div style={{ marginTop: 6 }}>
+      {reasons.map((r, i) => (
+        <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'baseline', padding: '3px 0' }}>
+          <span style={{ flex: 1, color: 'var(--text)' }}>{r}</span>
+          {canRaise && (state[i]?.status === 'raised'
+            ? <Link href={`/projects/${projectId}/quality`} style={{ fontSize: 12, color: 'var(--green)' }}>✓ Defect raised</Link>
+            : <button type="button" className="btn btn-ghost" style={{ padding: '1px 8px', fontSize: 12 }}
+                disabled={state[i]?.status === 'busy'} onClick={() => raise(i, r)}>Raise defect</button>)}
+          {state[i]?.status === 'error' && <span style={{ fontSize: 12, color: 'var(--red)' }}>{state[i].msg}</span>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SignoffRow({ s, projectId, stageId, canRaise }) {
   return (
     <div style={{ borderTop: '1px solid var(--b1)', padding: '10px 0', fontSize: 13 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -154,7 +188,7 @@ function SignoffRow({ s }) {
           : <span className="badge">Superseded, or the pack has changed since</span>}
       </div>
       {s.decision === 'declined' && s.decline_reasons && (
-        <div style={{ marginTop: 6, whiteSpace: 'pre-wrap', color: 'var(--text)' }}>{s.decline_reasons}</div>
+        <DeclineReasons s={s} projectId={projectId} stageId={stageId} canRaise={canRaise} />
       )}
       <div style={{ marginTop: 4, display: 'flex', gap: 10, fontSize: 12, color: 'var(--dim)' }}>
         <span style={{ fontFamily: 'var(--fm)' }}>pack {String(s.pack_hash || '').slice(0, 8)}</span>
@@ -172,6 +206,7 @@ export default function ProjectHandoverPage() {
   const project = usePortalData(() => projectsApi.detail(id), [id]);
   const perms = usePortalData(() => authApi.permissions());
   const canWitness = (perms.data?.data?.permissions || []).includes('handover.witness');
+  const canRaise = (perms.data?.data?.permissions || []).includes('quality.write');
   const [pack, setPack] = useState(null);
   const [signoffs, setSignoffs] = useState(null);
   const [err, setErr] = useState(null);
@@ -256,10 +291,10 @@ export default function ProjectHandoverPage() {
         <PortalCard title="Client sign-offs">
           {!signoffs ? <PortalEmpty message="Loading…" /> : !signoffs.length ? (
             <PortalEmpty message="No sign-off yet. The PM takes it on the App at handover, or records a paper form here." />
-          ) : signoffs.map((s) => <SignoffRow key={s.id} s={s} />)}
+          ) : signoffs.map((s) => <SignoffRow key={s.id} s={s} projectId={id} stageId={stage18?.id} canRaise={canRaise} />)}
           {latest?.decision === 'declined' && (
             <div style={{ fontSize: 12, color: 'var(--dim)', marginTop: 10 }}>
-              Raise a defect for each reason in the App (S18.7), then take a new sign-off once they’re fixed.
+              Raise a defect for each reason (S18.7). They go to the App on the next sync. Take a new sign-off once they’re fixed.
             </div>
           )}
         </PortalCard>
