@@ -8,8 +8,9 @@ import 'permissions_service.dart';
 /// so wiring v050 later swaps this service's internals, not the screens.
 ///
 /// The contract it is shaped to:
-/// - `handover_packs` is pull-only, one row per project, exposed once S18.3
-///   (Occupation Certificate) is validated. The app **never computes the
+/// - `handover_packs` is pull-only, one row per project, present once the
+///   project has any handover document. Signing is gated on Stage 18's
+///   S18.3 (Occupation Certificate) being validated. The app **never computes the
 ///   hash**; it shows the server's, with the first 8 hex characters as the
 ///   short reference.
 /// - `client_signoffs` is create-only. The app pushes `method
@@ -147,8 +148,9 @@ class ClientSignoffService {
     return p.has('handover.witness') || p.role == 'projectManager';
   }
 
-  /// The pack for a project, or null before S18.3 is validated.
-  /// **Mockup:** a fixture pack, clearly sample data.
+  /// The project's pack, or null while it has no handover documents. The
+  /// pack is NOT gated on S18.3; the screen gates signing on Stage 18
+  /// being validated (Server, x51 2026-10-14). **Mockup:** a fixture pack.
   HandoverPack? packFor(String projectId) =>
       _packs[projectId] ??= _fixturePack(projectId, 0);
 

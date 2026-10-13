@@ -11,7 +11,13 @@ import '../../widgets/signature_pad.dart';
 class ClientSignoffScreen extends StatefulWidget {
   final String projectId;
   final String projectName;
-  const ClientSignoffScreen({super.key, required this.projectId, required this.projectName});
+
+  /// Stage 18's hold point (S18.3, the Occupation Certificate) is validated.
+  /// The pack exists before that (Server, x51), but signing is gated on it,
+  /// as the server does (`OC_NOT_VALIDATED`).
+  final bool ocValidated;
+  const ClientSignoffScreen(
+      {super.key, required this.projectId, required this.projectName, required this.ocValidated});
 
   @override
   State<ClientSignoffScreen> createState() => _ClientSignoffScreenState();
@@ -51,9 +57,12 @@ class _ClientSignoffScreenState extends State<ClientSignoffScreen> {
         children: [
           _mockBanner(),
           const SizedBox(height: 12),
-          if (pack == null)
+          if (!widget.ocValidated)
             _box(Op.warning, Op.warningText, Icons.lock_outline,
                 'Available once the Occupation Certificate (S18.3) is validated.')
+          else if (pack == null)
+            _box(Op.warning, Op.warningText, Icons.folder_off_outlined,
+                'No handover documents yet. They are added in the Portal.')
           else ...[
             _status(current, stale),
             const SizedBox(height: 16),

@@ -125,8 +125,19 @@ void main() {
   });
 
   testWidgets('no signing method is preselected', (t) async {
-    await t.pumpWidget(const MaterialApp(home: ClientSignoffScreen(projectId: 'p1', projectName: 'P')));
+    await t.pumpWidget(const MaterialApp(
+        home: ClientSignoffScreen(projectId: 'p1', projectName: 'P', ocValidated: true)));
+    await t.dragUntilVisible(
+        find.text('Client signs in their own app'), find.byType(ListView), const Offset(0, -300));
+    expect(find.text('Client signs on this device'), findsOneWidget);
     expect(find.byIcon(Icons.radio_button_checked), findsNothing);
     expect(find.text('Hand the device to the client'), findsNothing);
+  });
+
+  testWidgets('signing is gated on S18.3 being validated', (t) async {
+    await t.pumpWidget(const MaterialApp(
+        home: ClientSignoffScreen(projectId: 'p1', projectName: 'P', ocValidated: false)));
+    expect(find.text('Available once the Occupation Certificate (S18.3) is validated.'), findsOneWidget);
+    expect(find.text('Client signs on this device'), findsNothing);
   });
 }

@@ -271,6 +271,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                 builder: (_) => ClientSignoffScreen(
                   projectId: widget.projectId,
                   projectName: _project?.name ?? 'Project',
+                  ocValidated: s.isValidated,
                 ),
               )),
               icon: const Icon(Icons.draw_outlined, size: 16),
