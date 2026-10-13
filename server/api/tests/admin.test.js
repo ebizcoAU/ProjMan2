@@ -149,6 +149,32 @@ async function call(m, p, b, t) {
   ok('L3: staff still reads the login log', (await call('GET', '/admin/logs/login', undefined, staffTok)).status === 200);
   const staffCsv = await fetch(BASE + '/admin/logs/login/export', { headers: { Authorization: `Bearer ${staffTok}` } });
   ok('L3: staff CANNOT export the login log (403)', staffCsv.status === 403, String(staffCsv.status));
+
+  // G3: disable / password-reset — staff (support) may; account may not.
+  const regV = await call('POST', '/auth/register', {
+    organisation: { name: `AdminOrgV ${s}` },
+    user: { full_name: 'Val Victim', email: `v${s}@x.com`, password: 'hunter2hunter2' },
+    device: { device_uid: `v-${s}`, platform: 'web' },
+  });
+  const vUser = regV.j.data.user.id;
+  const reset = await call('POST', `/admin/users/${vUser}/password-reset`, {}, staffTok);
+  const [[tok]] = await pool.query(
+    "SELECT COUNT(*) AS n FROM recovery_tokens WHERE user_id = ? AND purpose = 'password_reset' AND used_at IS NULL", [vUser]);
+  ok('G3: staff sends a password reset (a live recovery code is issued; no PII in the response)',
+    reset.status === 200 && Number(tok.n) === 1 && JSON.stringify(reset.j.data) === JSON.stringify({ userId: vUser, action: 'password-reset' }),
+    JSON.stringify([reset.j, tok]));
+  const dis = await call('POST', `/admin/users/${vUser}/disable`, {}, staffTok);
+  const [[vRow]] = await pool.query('SELECT status FROM users WHERE id = ?', [vUser]);
+  ok('G3: staff disables an account', dis.status === 200 && vRow.status === 'disabled', JSON.stringify([dis.j, vRow]));
+  ok('G3: the disabled user\'s session is dead', (await call('GET', '/auth/me', undefined, regV.j.data.accessToken)).status >= 401);
+  const vLogin = await call('POST', '/auth/login', { email: `v${s}@x.com`, password: 'hunter2hunter2' });
+  ok('G3: …and they can\'t log in', vLogin.status >= 400, JSON.stringify(vLogin.j));
+  const resetDisabled = await call('POST', `/admin/users/${vUser}/password-reset`, {}, staffTok);
+  ok('G3: no password reset for a disabled account (ACCOUNT_DISABLED)', resetDisabled.status === 409 && resetDisabled.j.code === 'ACCOUNT_DISABLED');
+  await pool.query("UPDATE platform_admins SET admin_role = 'account' WHERE user_id = ?", [staffUser]);
+  const acctDis = await call('POST', `/admin/users/${vUser}/disable`, {}, staffTok);
+  ok('G3: the account role cannot disable (403)', acctDis.status === 403, String(acctDis.status));
+  await call('POST', `/admin/users/${vUser}/reactivate`, {}, pmA);
   await pool.query('DELETE FROM platform_admins WHERE user_id = ?', [staffUser]);
 
   await pool.query('DELETE FROM platform_admins WHERE user_id = ?', [userA]);

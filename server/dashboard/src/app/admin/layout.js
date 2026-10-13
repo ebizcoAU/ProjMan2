@@ -31,6 +31,7 @@ const NAV = [
     ],
   },
   { href: '/admin/logs',     label: 'Login Log',       roles: ['admin', 'staff'] },
+  { href: '/admin/health',   label: 'System Health',   roles: ['admin'] },
 ];
 
 export default function AdminLayout({ children }) {

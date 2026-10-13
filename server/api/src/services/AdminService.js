@@ -137,6 +137,15 @@ async function userAction({ userId, action }) {
     await pool.query(`UPDATE users SET status = 'suspended' WHERE id = ?`, [userId]);
   } else if (action === 'reactivate') {
     await pool.query(`UPDATE users SET status = 'active' WHERE id = ?`, [userId]);
+  } else if (action === 'disable') {
+    // Stronger than suspend: login and recovery both refuse a disabled account. Sessions end now.
+    await pool.query(`UPDATE users SET status = 'disabled', security_version = security_version + 1 WHERE id = ?`, [userId]);
+    await pool.query(`UPDATE sessions SET revoked_at = NOW(), is_authoritative = 0 WHERE user_id = ? AND revoked_at IS NULL`, [userId]);
+  } else if (action === 'password-reset') {
+    // Sends the user the same recovery code as "forgot password". Support never sees the code.
+    const [[u]] = await pool.query('SELECT id, email, full_name, status FROM users WHERE id = ? LIMIT 1', [userId]);
+    if (u.status === 'disabled') throw new ServiceError('ACCOUNT_DISABLED', 'Reactivate the account before sending a reset', 409);
+    await require('../lib/recoveryCode').issueRecoveryCode(u, 'password_reset');
   } else if (action === 'force-logout') {
     // Bump security_version (invalidates every token) + revoke live sessions.
     await pool.query(`UPDATE users SET security_version = security_version + 1 WHERE id = ?`, [userId]);

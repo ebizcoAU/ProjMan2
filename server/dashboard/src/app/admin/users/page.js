@@ -27,10 +27,15 @@ import { adminApi }      from '@/lib/api';
 
 const STATUS_BADGE = { active: 'badge-active', suspended: 'badge-pending', disabled: 'badge-revoked' };
 const fmtDate = (v) => v ? new Date(v).toLocaleDateString('en-AU') : '—';
+// `roles` mirrors routes/admin.js: disable / password-reset are admin + staff (support), not account.
 const ACTIONS = [
-  { k: 'suspend',       label: 'Suspend',      cls: 'btn-danger' },
-  { k: 'reactivate',    label: 'Reactivate',   cls: 'btn-ghost' },
-  { k: 'force-logout',  label: 'Force logout', cls: 'btn-ghost' },
+  { k: 'suspend',        label: 'Suspend',             cls: 'btn-danger', roles: ['admin', 'account', 'staff'] },
+  { k: 'reactivate',     label: 'Reactivate',          cls: 'btn-ghost',  roles: ['admin', 'account', 'staff'] },
+  { k: 'force-logout',   label: 'Force logout',        cls: 'btn-ghost',  roles: ['admin', 'account', 'staff'] },
+  { k: 'disable',        label: 'Disable',             cls: 'btn-danger', roles: ['admin', 'staff'],
+    confirm: 'Disable this account? The user is signed out and can\'t log in or recover it until reactivated.' },
+  { k: 'password-reset', label: 'Send password reset', cls: 'btn-ghost',  roles: ['admin', 'staff'],
+    confirm: 'Email this user a password-reset code?' },
 ];
 const HEADERS = [
   { label: 'Name', key: 'name' }, { label: 'Email', key: 'email' },
@@ -41,7 +46,7 @@ const HEADERS = [
 
 // account/staff: no directory — a single-id action form, so acting on an account
 // never requires (or grants) browsing the cross-tenant user list.
-function ActByIdForm() {
+function ActByIdForm({ role }) {
   const [id, setId] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
@@ -49,6 +54,8 @@ function ActByIdForm() {
 
   const act = async (action) => {
     if (!id.trim()) { setErr('Enter a user id first'); return; }
+    const def = ACTIONS.find((a) => a.k === action);
+    if (def?.confirm && !window.confirm(def.confirm)) return;
     setBusy(true); setErr(null); setResult(null);
     try {
       await adminApi.userAction(id.trim(), action);
@@ -68,7 +75,7 @@ function ActByIdForm() {
           value={id} onChange={(e) => setId(e.target.value)} placeholder="User id"
           style={{ flex: 1, minWidth: 240, padding: '8px 10px', borderRadius: 6, border: '1px solid var(--b1)', background: 'var(--s1)', fontSize: 14, fontFamily: 'var(--fm)' }}
         />
-        {ACTIONS.map((a) => (
+        {ACTIONS.filter((a) => a.roles.includes(role)).map((a) => (
           <button key={a.k} className={`btn ${a.cls}`} disabled={busy} onClick={() => act(a.k)}>
             {a.label}
           </button>
@@ -106,6 +113,8 @@ function ScopedDirectory({ scope, subtitle, showOrgColumn = true }) {
   const pg = data?.data?.pagination;
 
   const act = async (id, action) => {
+    const def = ACTIONS.find((a) => a.k === action);
+    if (def?.confirm && !window.confirm(def.confirm)) return;
     setErr(null);
     try { await adminApi.userAction(id, action); await refetch(); }
     catch (e) { setErr(e?.response?.data?.message || e.message); }
@@ -155,6 +164,10 @@ function ScopedDirectory({ scope, subtitle, showOrgColumn = true }) {
                       ? <button className="btn btn-danger" style={{ padding: '3px 8px', fontSize: 12 }} onClick={() => act(u.id, 'suspend')}>Suspend</button>
                       : <button className="btn btn-ghost" style={{ padding: '3px 8px', fontSize: 12 }} onClick={() => act(u.id, 'reactivate')}>Reactivate</button>}
                     <button className="btn btn-ghost" style={{ padding: '3px 8px', fontSize: 12 }} onClick={() => act(u.id, 'force-logout')}>Force logout</button>
+                    <button className="btn btn-ghost" style={{ padding: '3px 8px', fontSize: 12 }} onClick={() => act(u.id, 'password-reset')}>Reset password</button>
+                    {u.status !== 'disabled' && (
+                      <button className="btn btn-danger" style={{ padding: '3px 8px', fontSize: 12 }} onClick={() => act(u.id, 'disable')}>Disable</button>
+                    )}
                   </span>,
                 ])}
               />
@@ -209,7 +222,7 @@ export default function AdminUsers() {
   return (
     <div style={{ padding: 24, maxWidth: 1200 }}>
       <h1 style={{ fontFamily: 'var(--fh)', fontSize: 24, fontWeight: 700, marginBottom: 20 }}>User Accounts</h1>
-      {!role ? <PortalEmpty message="Loading…" /> : role === 'admin' ? <FullDirectory /> : <ActByIdForm />}
+      {!role ? <PortalEmpty message="Loading…" /> : role === 'admin' ? <FullDirectory /> : <ActByIdForm role={role} />}
     </div>
   );
 }

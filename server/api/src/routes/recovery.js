@@ -20,16 +20,16 @@
 const router = require('express').Router();
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
-const { v4: uuidv4 } = require('uuid');
 const { body, validationResult } = require('express-validator');
 
 const pool   = require('../db/pool');
 const config = require('../config');
 const { authenticate } = require('../middleware/auth');
 const { audit, clientIp } = require('../lib/audit');
-const { sendRecoveryCode, maskEmail } = require('../lib/email');
+const { maskEmail } = require('../lib/email');
 const { readDevice } = require('../lib/tokens');
 const AuthService = require('../services/AuthService');
+const { issueRecoveryCode } = require('../lib/recoveryCode');
 
 function validation(req, res) {
   const errors = validationResult(req);
@@ -39,7 +39,6 @@ function validation(req, res) {
   return true;
 }
 
-const generateCode = () => String(crypto.randomInt(100000, 1000000));
 const hashToken = (raw) => crypto.createHash('sha256').update(String(raw)).digest('hex');
 
 // ============================================================================
@@ -80,22 +79,9 @@ router.post(
         return res.json(genericResponse);
       }
 
-      // Supersede any outstanding code. Two live codes means the older one is a
-      // second valid guess against the same account.
-      await pool.query(
-        `UPDATE recovery_tokens SET used_at = NOW()
-          WHERE user_id = ? AND purpose = ? AND used_at IS NULL`,
-        [user.id, purpose]
-      );
-
-      const code = generateCode();
-      await pool.query(
-        `INSERT INTO recovery_tokens (id, user_id, code_hash, purpose, expires_at)
-         VALUES (?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? SECOND))`,
-        [uuidv4(), user.id, await bcrypt.hash(code, 10), purpose, config.recovery.codeTtlSeconds]
-      );
-
-      await sendRecoveryCode(user.email, code, purpose, user.full_name);
+      // Supersede any outstanding code, store a fresh one, email it (shared with the
+      // platform admin's "send password reset" action, lib/recoveryCode).
+      await issueRecoveryCode(user, purpose);
       await audit(req, 'recovery.requested', {
         orgId: user.org_id, userId: user.id, entity: 'users', entityId: user.id,
         detail: { purpose },

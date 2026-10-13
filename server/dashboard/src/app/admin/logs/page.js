@@ -9,13 +9,14 @@ import { PortalError }   from '@/components/portal/PortalError';
 import { PortalPagination } from '@/components/portal/PortalPagination';
 import { usePortalData } from '@/components/portal/usePortalData';
 import { adminApi, getToken } from '@/lib/api';
+import { RefreshBar } from '@/components/portal/RefreshBar';
 
 const fmtWhen = (v) => v ? new Date(v).toLocaleString('en-AU', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
 
 export default function AdminLogs() {
   const [f, setF] = useState({ email: '', outcome: '', method: '', from: '', to: '', page: 1 });
-  const { data, loading, error } = usePortalData(
-    () => adminApi.loginLog({ ...f, limit: 50 }), [f.email, f.outcome, f.method, f.from, f.to, f.page]);
+  const { data, loading, error, refetch, updatedAt } = usePortalData(
+    () => adminApi.loginLog({ ...f, limit: 50 }), [f.email, f.outcome, f.method, f.from, f.to, f.page], { refreshMs: 60000 });
 
   // CSV export is admin-only (routes/admin.js, Admin Privacy Rule): a 'staff' session never
   // sees a button it would only get a 403 from.
@@ -41,7 +42,10 @@ export default function AdminLogs() {
 
   return (
     <div style={{ padding: 24, maxWidth: 1300 }}>
-      <h1 style={{ fontFamily: 'var(--fh)', fontSize: 24, fontWeight: 700, marginBottom: 20 }}>Login Transaction Log</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
+        <h1 style={{ fontFamily: 'var(--fh)', fontSize: 24, fontWeight: 700 }}>Login Transaction Log</h1>
+        <RefreshBar updatedAt={updatedAt} onRefresh={refetch} />
+      </div>
       {error && <div style={{ marginBottom: 12 }}><PortalError message={error} /></div>}
 
       <PortalCard title="Authentication events (all organisations)">

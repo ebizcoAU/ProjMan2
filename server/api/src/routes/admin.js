@@ -35,6 +35,7 @@ const anyAdminRole  = requireAdminRole('admin', 'account', 'staff');
 const canMoney       = requireAdminRole('admin', 'account');
 const canUserActions = requireAdminRole('admin', 'account', 'staff');
 const canLoginLog    = requireAdminRole('admin', 'staff');
+const canSupportActions = requireAdminRole('admin', 'staff'); // disable / password-reset (G3)
 const adminOnly      = requireAdminRole('admin');
 
 // Who am I — the dashboard nav gates itself on this (no role hard-coded client-side).
@@ -80,6 +81,17 @@ router.get('/users', adminOnly,
 );
 
 // Account actions — user-account layer only (suspend/reactivate/force-logout).
+// disable / password-reset (dashboard spec §5.1, G3): the same act-by-id, no-PII-response shape.
+router.post('/users/:id/:action(disable|password-reset)', canSupportActions, async (req, res) => {
+  try {
+    const { orgId, ...result } = await AdminService.userAction({ userId: req.params.id, action: req.params.action });
+    await audit(req, `admin.user.${req.params.action}`, {
+      orgId, entity: 'users', entityId: req.params.id, detail: { by_platform_admin: req.admin.userId },
+    });
+    return res.json({ success: true, data: result });
+  } catch (err) { return sendError(res, err); }
+});
+
 router.post('/users/:id/:action(suspend|reactivate|force-logout)', canUserActions, async (req, res) => {
   try {
     const { orgId, ...result } = await AdminService.userAction({ userId: req.params.id, action: req.params.action });

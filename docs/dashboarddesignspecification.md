@@ -480,10 +480,10 @@ L1–L2. Everything else is tracked, not blocking.
 
 | # | Gap | Size |
 |---|---|---|
-| G1 | System-health panel (API exists; add the page incl. recent `sync_history` failures) | S |
-| G2 | 60s auto-refresh + manual refresh button on overview and log (§11 #4) | S |
-| G3 | `disable` and `password-reset` account actions (`admin`, `staff`), audited, no PII in the response | S |
-| G4 | `audit_log` retention prune: 12 months (§11 #5), as a script run daily, with a dry-run flag | S |
+| G1 | System-health panel (API exists; add the page incl. recent `sync_history` failures) | ✅ **Done 2026-10-14:** `/admin/health` (admin), 60s refresh |
+| G2 | 60s auto-refresh + manual refresh button on overview and log (§11 #4) | ✅ **Done 2026-10-14:** `usePortalData` `refreshMs` + `RefreshBar` (overview, log, health) |
+| G3 | `disable` and `password-reset` account actions (`admin`, `staff`), audited, no PII in the response | ✅ **Done 2026-10-14:** `POST /admin/users/:id/(disable\|password-reset)`. Disable ends sessions and blocks login and recovery; reset emails the user the standard recovery code (support never sees it) |
+| G4 | `audit_log` retention prune: 12 months (§11 #5), as a script run daily, with a dry-run flag | ✅ **Done 2026-10-14:** `scripts/prune-audit-log.js`. **Dry run is the default** (prints the cutoff and counts per action); `--apply` deletes; never shorter than 12 months. **Not scheduled**: when to schedule it daily is the Owner's call at production |
 | G5 | Registration trend: a daily series in `stats()` + line chart (30/90d) | S |
 | G6 | Audit every cross-tenant view (§2(4)): `/users`, `/orgs/:id`, `/devices`, `/stats` | S |
 | G7 | Tests for the `account`/`staff` 403 limits | S |
@@ -493,7 +493,7 @@ L1–L2. Everything else is tracked, not blocking.
 
 | # | Risk | Why it matters | Fix |
 |---|---|---|---|
-| L1 | **No `audit_log` retention** | The 12-month retention this spec commits to (APP 11.2, destroy PII no longer needed) is not enforced; IPs, emails and devices accumulate indefinitely | G4 |
+| L1 | **No `audit_log` retention**. ✅ Tooling done (G4); scheduling is open | The 12-month retention this spec commits to (APP 11.2, destroy PII no longer needed) is not enforced; IPs, emails and devices accumulate indefinitely | G4 |
 | L2 | **Platform payroll is not compliant** (§15.2) | Salary runs pay the annual figure; PAYG/super are hand-typed and in practice 0; no PAYG/super liability postings; no STP. The P&L's "PAYG withheld" / "BAS payable" figures rest on these. | Freeze the payroll page for real pay runs until fixed, or replace with an external payroll product (the Owner decides) |
 | L3 | `staff` can bulk-export the cross-tenant login log (emails, IPs, orgs) | It contradicts the "non-admin roles act by id only" rule in spirit; the export is audited, but the unfiltered view is not | ✅ **Fixed 2026-10-14:** export is `admin`-only (API + button hidden). Open: `staff` still *views* emails/IPs in the log, see below |
 | L4 | CSV formula injection in the export | Tenant-controlled org names starting with `= + - @` run as formulas in Excel | ✅ **Fixed 2026-10-14:** cells starting `= + - @ \t \r` are prefixed with `'` |

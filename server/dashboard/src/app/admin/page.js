@@ -9,6 +9,7 @@ import { PortalError }   from '@/components/portal/PortalError';
 import { PortalHourlyChart } from '@/components/portal/PortalHourlyChart';
 import { usePortalData } from '@/components/portal/usePortalData';
 import { adminApi }      from '@/lib/api';
+import { RefreshBar }    from '@/components/portal/RefreshBar';
 
 const money = (v) => Number(v || 0).toLocaleString('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 });
 
@@ -33,7 +34,7 @@ function Bars({ data, keyField = 'role', color = 'var(--blue)' }) {
 
 export default function AdminOverview() {
   const me = usePortalData(() => adminApi.me());
-  const { data, loading, error } = usePortalData(() => adminApi.stats());
+  const { data, loading, error, refetch, updatedAt } = usePortalData(() => adminApi.stats(), [], { refreshMs: 60000 });
 
   const role = me.data?.data?.role;
   const seesMoney = role === 'admin' || role === 'account';
@@ -41,15 +42,19 @@ export default function AdminOverview() {
   // Only fetched once we know the role, and only for a role that can reach it — an
   // 'account'/'staff' session must never even attempt the other's 403'd endpoint
   // (matches routes/admin.js's requireAdminRole lists, §2/§3 addendum).
-  const rev = usePortalData(() => (seesMoney ? adminApi.billing.revenue() : Promise.resolve(null)), [seesMoney]);
-  const activity = usePortalData(() => adminApi.activity({ hours: 24 }));
+  const rev = usePortalData(() => (seesMoney ? adminApi.billing.revenue() : Promise.resolve(null)), [seesMoney], { refreshMs: 60000 });
+  const activity = usePortalData(() => adminApi.activity({ hours: 24 }), [], { refreshMs: 60000 });
+  const refreshAll = () => { refetch(); rev.refetch(); activity.refetch(); };
 
   const s = data?.data;
 
   return (
     <div style={{ padding: 24, maxWidth: 1200 }}>
       <h1 style={{ fontFamily: 'var(--fh)', fontSize: 24, fontWeight: 700, marginBottom: 4 }}>Platform Overview</h1>
-      <div style={{ fontSize: 13, color: 'var(--dim)', marginBottom: 20 }}>Accounts, authentication and billing across all organisations.</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
+        <div style={{ fontSize: 13, color: 'var(--dim)' }}>Accounts, authentication and billing across all organisations.</div>
+        <RefreshBar updatedAt={updatedAt} onRefresh={refreshAll} />
+      </div>
 
       {error && <div style={{ marginBottom: 12 }}><PortalError message={error} /></div>}
       {loading ? <PortalEmpty message="Loading…" /> : s && (
