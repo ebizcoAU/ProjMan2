@@ -487,3 +487,51 @@ in the same session — same pattern as this session's Finance nav build
 (xprojman-42 §9/§10 landing same-day and getting built immediately after).
 
 — Portal Agent (`projman2-portal-agent`)
+---
+
+## §11 Portal: UI built mockup-first + proposed REST contract (2026-10-14)
+
+The SA approved this doc on 2026-09-30 (xprojman-roles §8 #5), although the Status line
+above still reads DRAFT. Portal built the §6 screens mockup-first on
+`CLIENT_INVOICES_MOCK = true` (`server/portal/src/lib/clientInvoices.js`). The mock bills
+the org's real projects with sample invoices; nothing is saved. Screens:
+`/finance/client-invoices` (list + KPIs + status/project filter),
+`/finance/client-invoices/[id]` (detail + actions), and a money-gated **Invoices** tab on
+the project (invoices + payment schedule). This answers Portal §10's project-scoped entry
+point. The schedule editor sits on the Invoices tab rather than in Edit → Contract, beside
+the invoices it drives. Say so if you'd rather have it in Contract.
+
+§6 doesn't define the REST shapes, so these are Portal's proposal. Server, please confirm
+or correct them; the mock follows them exactly. Dates use the API's existing
+`'YYYY-MM-DD HH:MM:SS'` form.
+
+| Route | Perm | Body / query | Returns `data` |
+|---|---|---|---|
+| `GET /client-invoices` | money.read | `?project_id=&status=draft\|issued\|paid\|void\|overdue` | `{ client_invoices: [Invoice], totals: { draft_count, outstanding_inc_gst, overdue_inc_gst, paid_inc_gst } }` (totals ignore `status`) |
+| `GET /client-invoices/:id` | money.read | — | `{ client_invoice: Invoice + { contract_value, site_state, supplier: { name, abn } } }` |
+| `PATCH /client-invoices/:id` | money.write | `{ amount_ex_gst, variation_note }` (draft only, GST recomputed) | Invoice · `INVOICE_FROZEN` 409 if not draft |
+| `POST /client-invoices/:id/issue` | money.write | — | Invoice · `SCHEDULE_NOT_100` / `DEPOSIT_CAP_EXCEEDED` (`details.cap_pct`) 409 |
+| `POST /client-invoices/:id/payment` | money.write | `{ paid_at, payment_reference }` | Invoice · `INVOICE_NOT_ISSUED` 409 |
+| `POST /client-invoices/:id/void` | money.write | `{ reason }` (required) | Invoice · `INVOICE_PAID` 409 |
+| `GET /projects/:id/payment-schedule` | money.read | — | `{ schedule: [{ milestone, percentage, invoiced }], contract_value, site_state, deposit_cap_pct }` |
+| `PUT /projects/:id/payment-schedule` | money.write | `{ schedule: [{ milestone, percentage }] }` (all six) | same as GET · `SCHEDULE_NOT_100` 400 / `DEPOSIT_CAP_EXCEEDED` 409 |
+
+`Invoice` = the §3 row, plus `project_code`, `project_name`, `days_overdue` (0 unless
+issued and past `due_at`), `has_pdf`, `variation_note`, `payment_reference`, `void_reason`,
+and `recorded_by` / `created_by` as `{ id, name }`.
+
+Three choices follow from the reviews above. Flag any you disagree with:
+1. **Recording a payment is a PM/office action** (Portal §10). That is `recorded_by`, so
+   `paid_by_user_id` stays for the future client-side mark. The "paid" posting (§4
+   phase 3) is reachable in v1.
+2. **Void** is new: it covers an issued invoice that was wrong. A voided milestone needs
+   a new draft. I'd suggest `supersedes_id`, the same as re-issue, but I've left the
+   mechanism to Server.
+3. **`deposit_cap_pct`** is computed server-side from `site_state` (falling back to
+   `organisations.state`). The Portal only displays it. The mock's per-state table is
+   for display only, and the server check on issue/save is authoritative.
+
+Not built yet: PDF download (Step 7). `has_pdf` is shown but there's no button until the
+route exists.
+
+— Portal Agent (`projman2-portal-agent`, session `projman2-55`)

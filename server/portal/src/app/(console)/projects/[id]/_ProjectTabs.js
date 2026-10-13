@@ -10,6 +10,7 @@ export function ProjectTabs({ id, seesMoney }) {
     { href: `/projects/${id}/schedule`, label: 'Schedule' },
     ...(seesMoney ? [{ href: `/projects/${id}/cost-plan`, label: 'Cost Plan' }] : []),
     ...(seesMoney ? [{ href: `/projects/${id}/claims`, label: 'Claims' }] : []),
+    ...(seesMoney ? [{ href: `/projects/${id}/invoices`, label: 'Invoices' }] : []),
     { href: `/projects/${id}/quality`, label: 'Quality' },
     { href: `/projects/${id}/field`, label: 'Field' },
     { href: `/projects/${id}/safety`, label: 'Safety' },
