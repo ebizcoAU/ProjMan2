@@ -33,7 +33,9 @@ class SiteOpsService {
   /// PROTECTED column (projman-05 §6.2): `is_current`/`author_id`/
   /// `finalised_at`/`finalised_by` (site_diary), `geo_verified`
   /// (site_attendance — server-derives it from `check_in_lat`/`lng` against
-  /// the project geofence), `received_by` (deliveries). Sending one would be
+  /// the project geofence; and, since server v048, `induction_ok`, derived at
+  /// check-in from `site_inductions`, xprojman-48 F5), `received_by`
+  /// (deliveries). Sending one would be
   /// silently dropped server-side anyway (`sanitise()` in sync/registry.js),
   /// but keeping the wire payload to exactly what the app owns means a
   /// `_pullAndApply` afterwards can never be mistaken for an echo of our own
@@ -47,7 +49,7 @@ class SiteOpsService {
     'site_attendance': [
       'project_id', 'person_id', 'person_name', 'person_type', 'trade',
       'check_in_at', 'check_out_at', 'check_in_lat', 'check_in_lng', 'method',
-      'induction_ok', 'is_deleted',
+      'is_deleted',
     ],
     'deliveries': [
       'project_id', 'supplier_id', 'supplier_name', 'po_id', 'po_reference',
