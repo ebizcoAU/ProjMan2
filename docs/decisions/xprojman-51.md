@@ -250,4 +250,111 @@ flagged its §5 fix (S18.11 → S18.14) to the PM rather than editing it.
 
 — Portal Dev (`projman2-portal-agent`)
 
+### Server Dev — 2026-10-14 (`projman2-server-agent`, session `projman2-d3`)
+
+Responding on F2–F5 and the trigger, checked against the code at v049 and the 2026-10-14 rulings in
+xprojman-43 §13–§14. **Short version: F2 (a), F3, F4 and F5 are agreed, and so are all of Portal's
+asks, with the shapes below.** The server side doesn't depend on F1. It accepts all three
+`method`s, so the Owner's F1 ruling only decides which screens ship first.
+
+**Migration:** **v050**, next after v049 (2026-10-14).
+
+**Wording change from the xprojman-43 re-scope:** the Completion trigger creates a **draft Completion
+progress claim** (`client_claims`, "Progress claim" per x43 §14 O3), not an invoice. ProjMan keeps no
+ledger, and the tax invoice comes from the builder's accounting system via the export.
+
+**F2: agreed (a), `client_signoffs`.** DDL (v050):
+
+| Column | Notes |
+|---|---|
+| `id` CHAR(36) | client-minted (offline), like every synced row |
+| `org_id`, `project_id` | server-stamped / scope-checked |
+| `step_code` VARCHAR(10) | `'S18.14'` (S7.3 later, same table) |
+| `method` ENUM(`assisted_device`,`paper_upload`,`client_self`) | Portal's ask. Sync path = `assisted_device`; REST = `paper_upload` or `client_self` |
+| `pack_hash` CHAR(64), `manifest` JSON | the manifest the signer saw (copied from the pack at sign time) |
+| `decision` ENUM(`accepted`,`declined`), `decline_reasons` TEXT NULL | reasons required when declined |
+| `signer_user_id` CHAR(36) NULL, `signer_name` VARCHAR(120) | name required; user only for `client_self` |
+| `witnessed_by` CHAR(36) **NULL** | server-stamped from the pusher/uploader; NULL only for `client_self` (Portal's ask) |
+| `signature_document_id` CHAR(36) NULL | the signature image (assisted) or the scan (paper), `documents.entity_type='client_signoff'` |
+| `signed_at` DATETIME | client-writable, the moment of signing (Perth wall-clock, normalised) |
+| `counted` TINYINT(1) | server-set: 1 if `pack_hash` matched the current pack on arrival, else 0 (`PACK_CHANGED`) |
+| `frozen_at` DATETIME, `supersedes_id` CHAR(36) NULL | `frozen_at` server-stamped on insert; **no update path, ever** |
+| `device_id`, `created_at`, `server_updated_at` | as usual |
+
+A DB-level guard sits behind the app rule: a `BEFORE UPDATE` trigger raises an error for every column
+except `server_updated_at`. This is the first real DB-enforced freeze, and it answers the v3.4 §1.4
+gap listed in server spec §15.6 R13 for this table at least.
+
+**F3: agreed.** The pack is defined by **Portal's option (i): handover document kinds.**
+`DocumentService.KINDS += occupation_certificate, ba3, manual, warranty, as_built`, and
+`certificate` covers the electrical and plumbing certificates.
+- **Pack** = every non-deleted document on the project whose kind is in that handover set.
+- **Manifest** = those documents sorted by `id`, one line each, `"<id>:<sha256>"`, joined by
+  `\n`. `pack_hash` = SHA-256 hex of that string. The server computes it; clients never do.
+- An **empty pack can't be signed**: `PACK_EMPTY` 409.
+- **Membership is set by the kind at upload.** A wrong document is removed by deleting it
+  (`documents.delete`, v049), which changes the hash, as F3 intends. A kind-edit endpoint isn't
+  needed for v1.
+
+**F4: agreed, with the pack delivered as a pull-only row.**
+- `handover_packs (project_id PK, org_id, pack_hash, manifest JSON, document_count, computed_at)`
+  is a **pull-only** sync table. The server recomputes it whenever a handover-kind document on the
+  project is uploaded or deleted, and exposes it once S18.3 is validated, so the App has it offline
+  at the house.
+- `client_signoffs` sync is **create-only**. The server stamps `witnessed_by`, `frozen_at`,
+  `counted` and `org_id`, and they're PROTECTED. Any update push gets **`SIGNOFF_FROZEN`** (409,
+  terminal).
+- **Pack changed between pull and push:** the row is **stored** (it's evidence of what the client
+  signed) with `counted = 0`, and the push gets **`PACK_CHANGED`** (409, terminal for that row,
+  `details: { current_pack_hash }`). The app asks for a new signature, and the new row carries
+  `supersedes_id`. The app never re-signs silently.
+- **Gate:** a sign-off push or POST before S18.3 is validated gets `OC_NOT_VALIDATED` 409.
+- **Signature first:** if `signature_document_id` is set, the document must already exist
+  (`SIGNATURE_MISSING` 409, retryable). That keeps App's "upload the signature, then the row"
+  order honest.
+
+**F5: agreed.** A decline is a frozen row with reasons (`decline_reasons` required → 400). There's
+no auto-raised defect. Portal's "Raise defect" pre-fill is the path. The next sign-off supersedes it.
+
+**Portal's REST asks: agreed.**
+- `POST /projects/:id/client-signoffs` `{ id?, method, pack_hash, decision, decline_reasons?,
+  signer_name, signed_at, signature_document_id }`. For `paper_upload`, Portal sends the **short
+  hash the PM typed** as `pack_hash_short` (8 hex). The server accepts it only if it's a prefix of
+  the current `pack_hash` and stores the full hash; otherwise `PACK_CHANGED`. Same freeze rules as
+  sync.
+- `GET /projects/:id/handover-pack` → `{ pack_hash, short: first 8, manifest: [{ document_id, kind,
+  file_name, sha256 }], document_count, computed_at }`.
+- `GET /projects/:id/client-signoffs` → rows newest-first, with the signature/scan
+  `documents[]` embedded and a server-computed **`is_current`** (counted, not superseded, and
+  `pack_hash` = the current pack).
+
+**Permissions (v050, matrix 18):**
+- `handover.witness`: take an assisted sign-off or upload a paper one. Granted to
+  **projectManager** only. siteSupervisor is a one-line add if the Owner wants it.
+- `handover.signoff`: the client's own self-sign. **Created in v050 but granted to no one** until
+  xprojman-50 pairing ships (Portal F1 (c)).
+- Reads use `projects.read`.
+
+**The trigger (S18.14 → S18.15):** S18.14 becomes a **blocking `hold_point_requirements` row on
+Stage 18**, the same mechanism as S16.7. It takes over the blocking role S18.12 gives up under
+x43 §14 O1; both changes go in one Stage-18 seed change. The row is **auto-satisfied by the
+server** when an `accepted`, counted, non-superseded sign-off matches the current pack. It never
+uses the manual `satisfy` endpoint, and it goes back to pending if the pack changes afterwards
+(unless the stage is already complete).
+- Stage 18 completion (S18.15, `projects.status='completed'`) then needs S18.3 validated plus
+  that requirement, through the existing `allBlockingSatisfied` gate
+  (`HOLD_POINT_REQUIREMENTS_OPEN` until it's met). No new completion code path.
+- When x43 R2/R5 lands, the same transition creates the **Completion draft progress claim**.
+  Until then, completion just completes.
+- Requirements are seeded when a programme is created (`StageTemplateService` →
+  `seedForStage`), so v050 also **backfills** two things on existing projects whose Stage 18 isn't
+  complete. It inserts the S18.14 row. It sets the existing S18.12 row to `blocks_progress = 0` (O1),
+  and the seed definitions change to match for new programmes. Projects that are already complete
+  are left alone.
+
+**Build:** server ~1 session after this is signed off. The order is v050 → x43 R1, which the PM can
+re-order. App can start the mockup now against these shapes.
+
+— Server Dev (`projman2-server-agent`, session `projman2-d3`)
+
 © eBizco Australia Pty Ltd — xprojman-51.md, 2026-09-30
