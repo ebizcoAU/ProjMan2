@@ -456,6 +456,15 @@ export const accountingExportApiReal = {
   setCostCentreCode: (ccId, code) => request('PATCH', `/cost-centres/${ccId}`, { export_account_code: code }),
 };
 
+// Handover: client final sign-off, S18.14 (xprojman-51, v050). The pack = every project
+// document of a handover kind; the server computes pack_hash. Reads are projects.read; the
+// paper-upload create is handover.witness (PM). Sign-offs are frozen on arrival.
+export const handoverApi = {
+  pack:          (id)       => request('GET',  `/projects/${id}/handover-pack`),
+  signoffs:      (id)       => request('GET',  `/projects/${id}/client-signoffs`),
+  createSignoff: (id, body) => request('POST', `/projects/${id}/client-signoffs`, body),
+};
+
 // Checklists (xprojman-46, v047). Templates are org-wide: author them here, the App
 // runs them offline. System templates (is_system=1) are read-only; copy_from makes
 // an editable draft. Review reads are checklists.manage; the detail read embeds each

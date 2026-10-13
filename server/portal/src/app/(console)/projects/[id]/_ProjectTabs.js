@@ -15,6 +15,7 @@ export function ProjectTabs({ id, seesMoney }) {
     { href: `/projects/${id}/field`, label: 'Field' },
     { href: `/projects/${id}/safety`, label: 'Safety' },
     { href: `/projects/${id}/documents`, label: 'Documents' },
+    { href: `/projects/${id}/handover`, label: 'Handover' },
   ];
   return (
     <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--b1)', marginBottom: 16 }}>

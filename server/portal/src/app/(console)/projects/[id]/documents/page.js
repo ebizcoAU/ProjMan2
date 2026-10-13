@@ -23,12 +23,20 @@ const KIND_LABEL = {
   general: 'General', inspection_photo: 'Inspection photo', defect_photo: 'Defect photo',
   certificate: 'Certificate', site_diary_photo: 'Site diary photo', delivery_docket: 'Delivery docket',
   task_document: 'Task document', task_quote: 'Task quote',
+  // Handover kinds (v050, xprojman-51 F3): with `certificate`, these ARE the handover pack.
+  occupation_certificate: 'Occupation certificate', ba3: 'BA3', manual: 'Manual', warranty: 'Warranty',
+  as_built: 'As-built', signature: 'Signature', client_signoff: 'Client sign-off',
 };
 const ENTITY_LABEL = {
   inspection_item: 'Inspection', defect: 'Defect', certificate: 'Certificate',
   site_diary: 'Site diary', delivery: 'Delivery', task: 'Task', task_quote: 'Task quote',
+  client_signoff: 'Client sign-off',
 };
-const UPLOAD_KINDS = ['general', 'certificate', 'delivery_docket', 'task_document'];
+const UPLOAD_KINDS = ['general', 'certificate', 'delivery_docket', 'task_document',
+  'occupation_certificate', 'ba3', 'manual', 'warranty', 'as_built'];
+// Uploading one of these adds it to the project's handover pack, which changes the pack the
+// client signs (a signed pack that changes needs signing again). See the Handover tab.
+const HANDOVER_KINDS = ['certificate', 'occupation_certificate', 'ba3', 'manual', 'warranty', 'as_built'];
 
 const bytes = (n) => {
   if (n == null) return '—';
@@ -133,7 +141,7 @@ export default function DocumentsPage() {
           <div>
             <label style={{ display: 'block', fontSize: 11.5, color: 'var(--muted)', marginBottom: 3 }}>Kind</label>
             <select className="input" style={{ width: 170 }} value={uploadKind} onChange={(e) => setUploadKind(e.target.value)}>
-              {UPLOAD_KINDS.map((k) => <option key={k} value={k}>{KIND_LABEL[k] || k}</option>)}
+              {UPLOAD_KINDS.map((k) => <option key={k} value={k}>{KIND_LABEL[k] || k}{HANDOVER_KINDS.includes(k) ? ' (handover pack)' : ''}</option>)}
             </select>
           </div>
           <button type="button" className="btn btn-primary" disabled={uploading} onClick={upload}>

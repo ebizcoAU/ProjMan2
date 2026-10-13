@@ -219,7 +219,12 @@ export default function FieldPage() {
                                   <Td>{Number(r.blocks_progress) === 1 ? <span className="badge badge-revoked">blocking</span> : <span style={{ color: 'var(--dim)' }}>no</span>}</Td>
                                   <Td><span className={`badge ${open ? 'badge-pending' : 'badge-active'}`}>{r.status || 'open'}</span></Td>
                                   <Td right>
-                                    {open ? (
+                                    {open && r.auto_source ? (
+                                      // Server-satisfied (v050: S18.14 from the client's sign-off); manual satisfy is AUTO_REQUIREMENT.
+                                      <Link href={`/projects/${id}/handover`} style={{ fontSize: 12, color: 'var(--dim)' }}>
+                                        Satisfied by the client’s sign-off
+                                      </Link>
+                                    ) : open ? (
                                       <ActionBtn
                                         disabled={!allowed || busy === r.id}
                                         title={allowed ? `Satisfy as ${r.required_role}` : `Needs ${SATISFY_PERM[r.required_role]} (${r.required_role})`}

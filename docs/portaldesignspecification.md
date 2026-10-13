@@ -297,7 +297,7 @@ earlier status notes. Legend:
 | 6b | Subcontractor engagements + pass-through consent record | Built | `/builder/subcontractors` (`babc051`, xprojman-44 Module C, v045) | Live test |
 | 6c | Job Award inbox (Builder) | Built | `/builder/job-awards`, legacy `/job-awards` | Live test |
 | 7 | Variations | Not started | — | Design pass (§9 #13 affects it) |
-| 8 | Handover & As-Built Vault | Specced | xprojman-51 (S18.14 client sign-off, Handover card) | Schema (Server) and Owner F1 |
+| 8 | Handover: client final sign-off (S18.14) + pack | Built (on live v050) | `/projects/[id]/handover`: current pack (kinds, short code), print sign-off form, paper-upload fallback (`handover.witness`), frozen sign-off history with `is_current`. Handover kinds in the Documents upload picker. Field tab shows the S18.14 hold point read-only (server-satisfied). The assisted sign-off itself is the App's screen (xprojman-51) | Live test (logins). As-built vault query (§6.4): not started. Client self-sign waits on xprojman-50 |
 | 9 | Consultant & Rate-Card | Not started | (Cost Rates / Cost Centres in `/finance/settings` are task cost types, not this) | — |
 | 10 | Legal/Compliance register | Not started | — | §9 rows 16–27 are its first content |
 | 11 | Client Communications Center | Not started | The Project Brief PDF snapshot history (formalise / re-issue) is built on the project edit page | Customer pairing (xprojman-50) |
