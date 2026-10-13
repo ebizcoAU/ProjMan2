@@ -153,8 +153,16 @@ const isoDay = (d) => new Date(Date.now() + d * 86400000).toISOString().slice(0,
     JSON.stringify(restFix.json));
   const reg1 = await call('PATCH', `/safety-events/${notId}/notifiable`,
     { notified_at: '2026-09-30 10:15:00', regulator_reference: 'WS-12345' }, pmWeb);
-  ok('notified_at + regulator_reference recorded', reg1.json.data?.safety_event?.regulator_reference === 'WS-12345',
-    JSON.stringify(reg1.json).slice(0, 300));
+  ok('notified_at + regulator_reference recorded', reg1.json.data?.safety_event?.regulator_reference === 'WS-12345'
+    && reg1.json.data?.safety_event?.notified_at === '2026-09-30 10:15:00', JSON.stringify(reg1.json).slice(0, 300));
+  const regZ = await call('PATCH', `/safety-events/${notId}/notifiable`, { notified_at: '2026-10-14T01:00:00.000Z' }, pmWeb);
+  ok('notified_at ISO Z is stored as Perth wall-clock', regZ.json.data?.safety_event?.notified_at === '2026-10-14 09:00:00',
+    JSON.stringify(regZ.json).slice(0, 300));
+  const regOff = await call('PATCH', `/safety-events/${notId}/notifiable`, { notified_at: '2026-10-14T12:00:00+10:00' }, pmWeb);
+  ok('notified_at with an offset is stored as Perth wall-clock', regOff.json.data?.safety_event?.notified_at === '2026-10-14 10:00:00',
+    JSON.stringify(regOff.json).slice(0, 300));
+  const regBad = await call('PATCH', `/safety-events/${notId}/notifiable`, { notified_at: 'yesterday-ish' }, pmWeb);
+  ok('an unparseable notified_at is a 400', regBad.status === 400, JSON.stringify(regBad.json));
   const flagEdit = await push(sup, 'safety_events', 'update', { id: hazardId, is_notifiable: 1 });
   const hz = (await call('GET', `/safety-events/${hazardId}`, undefined, pmWeb)).json.data.safety_event;
   ok('is_notifiable is create-only on sync (an update push does not set it)',
