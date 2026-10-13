@@ -490,6 +490,37 @@ const TABLES = {
     ]),
     unprotect: new Set(['user_id']),
   },
+
+  // ── Client final sign-off, S18.14 (migration_v050, xprojman-51) ───────────────
+  // HandoverService guards the push: create-only, handover.witness, S18.3 validated, the
+  // signature document already uploaded. It writes the server-owned columns (method,
+  // witnessed_by, frozen_at, counted, the server manifest) INTO the insert, because the
+  // row can never be updated afterwards (DB triggers refuse it). Pulled so the PM's
+  // device keeps the history and the counted/frozen state offline.
+  client_signoffs: {
+    table: 'client_signoffs',
+    owner: 'app',
+    pull: true,
+    scope: 'org',
+    orgColumn: 'org_id',
+    idColumn: 'id',
+    projectColumn: 'project_id',
+    columns: new Set([
+      'project_id', 'step_code', 'pack_hash', 'manifest', 'decision', 'decline_reasons',
+      'signer_name', 'signed_at', 'signature_document_id', 'supersedes_id', 'updated_at',
+    ]),
+  },
+  // The server-computed handover pack (one row per project). Read-only to every device.
+  handover_packs: {
+    table: 'handover_packs',
+    owner: 'server',
+    pull: true,
+    scope: 'org',
+    orgColumn: 'org_id',
+    idColumn: 'id',
+    projectColumn: 'project_id',
+    columns: new Set([]),
+  },
 };
 
 // Never writable by a device push, on any table, whatever the registry says.

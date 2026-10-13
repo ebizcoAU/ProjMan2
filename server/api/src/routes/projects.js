@@ -43,6 +43,7 @@ const MembershipService = require('../services/MembershipService');
 const StageTemplateService = require('../services/StageTemplateService');
 const StageProgressionService = require('../services/StageProgressionService');
 const InspectionService = require('../services/InspectionService');
+const HandoverService = require('../services/HandoverService');
 const TaskProgressService = require('../services/TaskProgressService');
 const JobAwardService = require('../services/JobAwardService');
 const HoldPointService = require('../services/HoldPointService');
@@ -1470,6 +1471,43 @@ router.post('/:id/fixed-assets/:assetId/approve', canApproveTax, async (req, res
       detail: { project_id: req.params.id, status: result.status },
     });
     return res.json({ success: true, data: result });
+  } catch (err) { return sendError(res, err); }
+});
+
+// ── S18.13/S18.14 handover pack + client final sign-off (xprojman-51, v050) ──────────
+// Reads are projects.read; the create checks handover.witness (paper_upload) or
+// handover.signoff (client_self) inside the service. Rows are frozen on arrival.
+router.get('/:id/handover-pack', canReadProjects, async (req, res) => {
+  try {
+    const data = await HandoverService.getPack({
+      orgId: req.auth.orgId, projectId: req.params.id,
+      actor: { role: req.auth.role, userId: req.auth.userId },
+    });
+    return res.json({ success: true, data });
+  } catch (err) { return sendError(res, err); }
+});
+
+router.get('/:id/client-signoffs', canReadProjects, async (req, res) => {
+  try {
+    const data = await HandoverService.listSignoffs({
+      orgId: req.auth.orgId, projectId: req.params.id,
+      actor: { role: req.auth.role, userId: req.auth.userId },
+    });
+    return res.json({ success: true, data });
+  } catch (err) { return sendError(res, err); }
+});
+
+router.post('/:id/client-signoffs', async (req, res) => {
+  try {
+    const data = await HandoverService.createSignoff({
+      orgId: req.auth.orgId, projectId: req.params.id,
+      actor: { role: req.auth.role, userId: req.auth.userId }, body: req.body || {},
+    });
+    await audit(req, 'client_signoff.create', {
+      entity: 'client_signoffs', entityId: data.client_signoff?.id,
+      detail: { project_id: req.params.id, method: req.body?.method, decision: req.body?.decision },
+    });
+    return res.status(201).json({ success: true, data });
   } catch (err) { return sendError(res, err); }
 });
 

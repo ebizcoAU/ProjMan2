@@ -15,6 +15,7 @@ const { v4: uuidv4 } = require('uuid');
 const pool = require('../db/pool');
 const config = require('../config');
 const { ServiceError } = require('./errors');
+const { toWallClock } = require('../lib/datetime');
 const access = require('../lib/access');
 const { projectScope } = require('../lib/scope');
 const { sendMail } = require('../lib/email');
@@ -26,22 +27,6 @@ const KINDS = ['hazard', 'near_miss', 'incident'];
 const SEVERITIES = ['low', 'medium', 'high'];
 const STATUSES = ['open', 'in_progress', 'closed'];
 const EXPIRING_DAYS = 14;
-
-// notified_at arrives as wall-clock ('YYYY-MM-DD HH:MM:SS', the form the API returns) or as
-// ISO with Z/offset. The pool's +08:00 pin only converts Date objects, so an ISO string would
-// land as the wrong wall time — normalise to Perth here; anything unparseable is a 400.
-const WALL_CLOCK = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/;
-function toWallClock(value, field) {
-  if (value === null) return null;
-  if (typeof value === 'string' && WALL_CLOCK.test(value)) return value.length === 16 ? `${value}:00` : value;
-  const d = typeof value === 'string' && value ? new Date(value) : null;
-  if (!d || Number.isNaN(d.getTime())) throw new ServiceError('VALIDATION_ERROR', `${field} must be a date-time`, 400);
-  const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
-    timeZone: config.server.timezone, hourCycle: 'h23',
-    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
-  }).formatToParts(d).map((x) => [x.type, x.value]));
-  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}`;
-}
 
 const isSafetyOps = (wireName) => SYNC_TABLES.has(wireName);
 const canReport = (role) => access.hasPermission(role, 'safety.report');

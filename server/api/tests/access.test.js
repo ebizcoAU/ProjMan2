@@ -74,7 +74,7 @@ async function pairAs(admin, adminUserId, role, uid, stamp) {
   // accounts edits, narrower than money.write (same reasoning as tax.approve).
   // v14 (v043, xprojman-39 §3): + quotes.approve (projectManager only) — mirrors
   // claims.approve exactly, including NOT enforcing four-eyes.
-  ok('permissions: matrixVersion present', d?.matrixVersion === 17, JSON.stringify(d?.matrixVersion));
+  ok('permissions: matrixVersion present', d?.matrixVersion === 18, JSON.stringify(d?.matrixVersion));
   ok('permissions: projectManager has finance.manage (v13)', d?.permissions?.includes('finance.manage'),
     JSON.stringify(d?.permissions));
   ok('permissions: projectManager has quotes.approve (v14)', d?.permissions?.includes('quotes.approve'),

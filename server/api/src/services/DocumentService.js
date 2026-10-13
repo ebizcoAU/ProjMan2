@@ -26,6 +26,8 @@ const { ServiceError } = require('./errors');
 const access = require('../lib/access');
 const storage = require('../lib/storage');
 const { projectScope } = require('../lib/scope');
+// Lazy: HandoverService reads documents, and DocumentService tells it when the pack changes.
+const handover = () => require('./HandoverService');
 
 // The canonical sets from xprojman-21 §P2. `task` added v030 (xprojman-29) — task-level
 // drawings/reports reuse this exact mechanism rather than a new store. `task_quote` added
@@ -36,10 +38,15 @@ const { projectScope } = require('../lib/scope');
 const ENTITY_TYPES = ['inspection_item', 'defect', 'certificate', 'site_diary', 'delivery', 'task', 'task_quote', 'subcontractor_engagement',
                       'checklist_item', 'signoff',
                       // v048 (xprojman-48): safety evidence + the project-level safety register.
-                      'safety_event', 'safety_action', 'project'];
+                      'safety_event', 'safety_action', 'project',
+                      // v050 (xprojman-51): the S18.14 signature image or paper scan.
+                      'client_signoff'];
 const KINDS = ['inspection_photo', 'defect_photo', 'certificate', 'site_diary_photo',
                'delivery_docket', 'task_document', 'task_quote', 'general', 'checklist_photo', 'signature',
-               'safety_photo', 'swms', 'sds', 'emergency_plan', 'safety_policy', 'whs_management_plan'];
+               'safety_photo', 'swms', 'sds', 'emergency_plan', 'safety_policy', 'whs_management_plan',
+               // v050 (xprojman-51 F3): handover kinds. With `certificate`, these ARE the S18.13
+               // handover pack (HandoverService.HANDOVER_KINDS).
+               'occupation_certificate', 'ba3', 'manual', 'warranty', 'as_built'];
 // Convenience only: when the client names an entity_type but no kind, this is the kind it meant.
 // The pairing is NOT enforced beyond this — a surface may legitimately attach a `general` file.
 const DEFAULT_KIND = {
@@ -53,6 +60,7 @@ const DEFAULT_KIND = {
   subcontractor_engagement: 'general',
   checklist_item: 'checklist_photo',
   signoff: 'signature',
+  client_signoff: 'signature',
   safety_event: 'safety_photo',
   safety_action: 'safety_photo',
   project: 'general',
@@ -123,6 +131,12 @@ async function upload({ orgId, actor, clientRef, kind, entityType, entityId, pro
   if (!KINDS.includes(resolvedKind)) {
     throw new ServiceError('VALIDATION_ERROR', `kind must be one of ${KINDS.join(', ')}`, 400);
   }
+  // The five handover-only kinds exist to join a project's pack, so they need the project.
+  // (`certificate` is older and may arrive before its row has synced; without a project_id it
+  // simply isn't in any pack until re-filed.)
+  if (resolvedKind !== 'certificate' && handover().HANDOVER_KINDS.includes(resolvedKind) && !projectId) {
+    throw new ServiceError('VALIDATION_ERROR', 'A handover document needs a project_id (it joins that project\'s pack)', 400);
+  }
 
   // The idempotency check comes BEFORE writing bytes, so a retry costs no storage.
   const [[existing]] = await pool.query(
@@ -178,6 +192,9 @@ async function upload({ orgId, actor, clientRef, kind, entityType, entityId, pro
     storage.remove(storageKey);
     throw err;
   }
+
+  // A new handover document changes the pack the client signs (S18.13/S18.14).
+  if (handover().HANDOVER_KINDS.includes(resolvedKind)) await handover().refreshPack(orgId, projectId);
 
   return {
     document_id: id, client_ref: clientRef, status: 'stored', duplicate: false,
@@ -325,7 +342,7 @@ async function getForStream({ orgId, actor, id }) {
 }
 
 /**
- * DELETE /documents/:id — soft delete (`quality.write` OR `documents.write`, per the directive).
+ * DELETE /documents/:id — soft delete (`documents.delete`, v049).
  *
  * Soft, not hard: the row is the evidentiary record that a document existed and was removed, and
  * `is_deleted` is what the list read already filters on. The BYTES are deliberately left in
@@ -337,11 +354,13 @@ async function softDelete({ orgId, actor, id }) {
     throw new ServiceError('FORBIDDEN', 'Requires permission: documents.delete', 403);
   }
   const [[doc]] = await pool.query(
-    'SELECT id, is_deleted FROM documents WHERE id = ? AND org_id = ? LIMIT 1', [id, orgId]);
+    'SELECT id, is_deleted, kind, project_id FROM documents WHERE id = ? AND org_id = ? LIMIT 1', [id, orgId]);
   if (!doc) throw new ServiceError('NOT_FOUND', 'Document not found', 404);
   if (doc.is_deleted) return { id, status: 'already_deleted' };
 
   await pool.query('UPDATE documents SET is_deleted = 1 WHERE id = ? AND org_id = ?', [id, orgId]);
+  // Removing a handover document changes the pack (and so re-opens a signed S18.14).
+  if (handover().HANDOVER_KINDS.includes(doc.kind)) await handover().refreshPack(orgId, doc.project_id);
   return { id, status: 'deleted' };
 }
 

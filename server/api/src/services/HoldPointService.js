@@ -14,8 +14,11 @@
 // to auto-trigger from, so it can never be more than a manual flag today), S16.7
 // (energisation certificate — NEW blocking, jurisdiction-specific), S17.2
 // (driveway/crossover — PM-checked, non-blocking, same jurisdiction field), S18.11/
-// S18.12 (the accountant tax.approve gate — NEW blocking, additional to Stage 18's
-// existing Inspector-driven is_validated check, not instead of it).
+// S18.12 (the accountant tax.approve gate — NON-blocking since v050, xprojman-43 §14 O1:
+// "asset register exported to the accountant"), S18.14 (client final sign-off —
+// blocking since v050, xprojman-51; `auto_source: 'client_signoff'` means the SERVER
+// satisfies it from a counted, accepted sign-off on the current handover pack, never the
+// manual satisfy endpoint).
 
 const { v4: uuidv4 } = require('uuid');
 const pool = require('../db/pool');
@@ -54,7 +57,9 @@ const SEED_DEFINITIONS = {
   ],
   18: [
     { label: 'Fixed-asset/depreciation draft approval (S18.12)', required_role: 'accountant',
-      inspection_type: 'statutory', blocks_progress: true },
+      inspection_type: 'statutory', blocks_progress: false },
+    { label: 'Client final sign-off (S18.14)', required_role: 'projectManager',
+      inspection_type: 'internal_qa', blocks_progress: true, auto_source: 'client_signoff' },
   ],
 };
 
@@ -72,10 +77,11 @@ async function seedForStage({ conn, orgId, projectId, stageId, seq, orgState }) 
   for (const def of defs) {
     await conn.query(
       `INSERT INTO hold_point_requirements
-         (id, org_id, project_id, stage_id, label, required_role, inspection_type, jurisdiction, blocks_progress)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, org_id, project_id, stage_id, label, required_role, inspection_type, jurisdiction, blocks_progress,
+          auto_source)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [uuidv4(), orgId, projectId, stageId, def.label, def.required_role, def.inspection_type,
-       def.jurisdiction ? (orgState || null) : null, def.blocks_progress ? 1 : 0]
+       def.jurisdiction ? (orgState || null) : null, def.blocks_progress ? 1 : 0, def.auto_source || null]
     );
   }
 }
@@ -107,6 +113,10 @@ async function satisfy({ orgId, projectId, stageId, requirementId, actor }) {
   if (!req) throw new ServiceError('NOT_FOUND', 'Hold-point requirement not found', 404);
   if (req.status === 'satisfied') {
     throw new ServiceError('ALREADY_SATISFIED', 'This requirement is already satisfied', 409);
+  }
+  if (req.auto_source) {
+    throw new ServiceError('AUTO_REQUIREMENT',
+      'This requirement is satisfied by the server (client sign-off), not by hand', 409);
   }
 
   const perm = PERMISSION_BY_ROLE[req.required_role];

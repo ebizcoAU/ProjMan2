@@ -22,6 +22,7 @@ const SiteOpsService = require('./SiteOpsService');
 const QualityOpsService = require('./QualityOpsService');
 const ChecklistService = require('./ChecklistService');
 const SafetyService = require('./SafetyService');
+const HandoverService = require('./HandoverService');
 const TaskProgressService = require('./TaskProgressService');
 const mqttClient = require('../mqtt/client');
 
@@ -178,6 +179,15 @@ async function pushRecord({ orgId, userId, deviceUid, role, surface, wireName, o
       wireName, operation, id: incoming.id, safe, actor: { orgId, userId, role },
     });
   }
+  // Client final sign-off (xprojman-51, v050): create-only, frozen at the DB. The guard
+  // writes the server-owned columns into `safe`; a retried create that already landed is
+  // acknowledged without a second write (the freeze trigger would refuse the upsert).
+  if (HandoverService.isHandoverOps(wireName)) {
+    const g = await HandoverService.guardPush({
+      wireName, operation, id: incoming.id, safe, actor: { orgId, userId, role },
+    });
+    if (g?.duplicate) return { serverId: incoming.id, applied: false };
+  }
   // Tick-then-verify (DIRECTIVE 1 Step A): a completion-field change on `tasks`
   // needs progress.tick, and a `self`-scope tradie may only tick their own task. A
   // no-op for every other table/field.
@@ -287,6 +297,11 @@ async function pushRecord({ orgId, userId, deviceUid, role, surface, wireName, o
       await ChecklistService.afterPush({
         wireName, operation, id: incoming.id, safe, actor: { orgId, userId, role },
       });
+    }
+    // S18.14: re-evaluate the Stage 18 gate; a row on a stale pack is kept but answered
+    // PACK_CHANGED (409, terminal for that row) so the device asks for a new signature.
+    if (HandoverService.isHandoverOps(wireName)) {
+      await HandoverService.afterPush({ wireName, id: incoming.id, actor: { orgId, userId, role } });
     }
 
     await logSync(actor, 'push', wireName, 1);
