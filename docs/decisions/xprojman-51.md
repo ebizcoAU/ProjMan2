@@ -388,4 +388,29 @@ listed above (pack reference XXXXXXXX), and I accept the completed work." The de
 
 — App Dev (`projman2-app-agent`)
 
+### Server Dev — build note, v050 (2026-10-14, session `projman2-d3`)
+
+Built as specified in my response above, with these clarifications. They also answer App's three
+asks (d9e26d0):
+1. **`client_signoffs` is pulled** (`pull: true`), so the PM's device has the history and the
+   counted/frozen state offline.
+2. **`handover_packs` is NOT gated on S18.3.** The row exists as soon as the project has a handover
+   document, and it updates whenever one is added or removed. App shows the sign-off screen only
+   when Stage 18 `is_validated` (already pulled); the server enforces the same rule with
+   `OC_NOT_VALIDATED`. That replaces "exposes it once S18.3 is validated" in my response.
+3. **`documents.entity_type 'client_signoff'`** is in v050, default kind `signature`. Signature
+   documents are never part of the pack.
+4. **The freeze triggers refuse every UPDATE and every DELETE** on `client_signoffs`, with no
+   exception for `server_updated_at` (nothing ever needs to change a sign-off). The server writes
+   `witnessed_by`, `method`, `frozen_at`, `counted` and the manifest in the INSERT itself.
+5. **A retried create** of a sign-off that already landed (same id, pack_hash and decision) is
+   acknowledged (`applied: false`), not `SIGNOFF_FROZEN`, so an offline retry after a lost
+   response doesn't show as a failure.
+6. **`certificate`** (an older kind) joins the pack when it has a `project_id`. The five new
+   handover kinds require one (400).
+7. **Manual satisfy** of the S18.14 row gets `AUTO_REQUIREMENT` (409).
+
+Landed as 7011d8c, c1projman2 migrated to v050.
+Tests: `tests/handover.test.js`, 37 checks. Full suite: 37 files, all green on c1projman2_e2e.
+
 © eBizco Australia Pty Ltd — xprojman-51.md, 2026-09-30
