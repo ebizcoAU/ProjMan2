@@ -39,6 +39,18 @@ const td = { padding: '8px 12px', color: 'var(--text)', fontSize: 13, borderTop:
 const tdR = { ...td, textAlign: 'right', fontFamily: 'var(--fm)' };
 const lbl = { display: 'block', fontSize: 11, color: 'var(--dim)', fontWeight: 700, marginBottom: 4 };
 
+// Non-blocking server warnings from the envelope (e.g. DEPOSIT_CAP_UNVERIFIED: the state's
+// cap isn't legally verified yet, so it was shown but not enforced).
+function Warnings({ list }) {
+  if (!list?.length) return null;
+  return list.map((w) => (
+    <div key={w.code + w.message} style={{ fontSize: 12, color: 'var(--text)', background: 'var(--s2)', borderLeft: '3px solid var(--amber)',
+      borderRadius: 4, padding: '6px 10px', margin: '8px 0' }}>{w.message}</div>
+  ));
+}
+const capText = (cap, state) => (!cap ? `no deposit cap on file for ${state || 'this site'}`
+  : `deposit cap ${cap.rule}${cap.verified ? '' : ' (unverified, not enforced)'}`);
+
 export function ClientInvoicesMockBanner() {
   if (!CLIENT_INVOICES_MOCK) return null;
   return (
@@ -87,7 +99,7 @@ export function InvoiceTable({ rows, showProject }) {
                 </Link>
                 <span style={{ color: 'var(--dim)', fontSize: 12 }}> · {Number(inv.percentage_of_contract)}%</span>
               </td>
-              <td style={{ ...td, fontFamily: 'var(--fm)' }}>{inv.invoice_number || '—'}</td>
+              <td style={{ ...td, fontFamily: 'var(--fm)', color: inv.invoice_number ? 'var(--text)' : 'var(--dim)' }}>{inv.invoice_number || 'Draft'}</td>
               <td style={td}><StatusPill inv={inv} /></td>
               <td style={tdR}>{money(inv.amount_inc_gst)}</td>
               <td style={td}>{d(inv.issued_at)}</td>
@@ -102,13 +114,14 @@ export function InvoiceTable({ rows, showProject }) {
 
 // The project's milestone percentages (x43 §5). Seeded with the jurisdiction default;
 // the PM confirms or edits it at Job Award. It must sum to 100%, and the deposit is
-// capped by the site's state (x43 §2.1). A milestone that has been invoiced is locked:
-// its invoice froze the percentage it was billed at.
+// capped by the site's state (x43 §2.1; only a verified cap blocks). An issued or paid
+// milestone is locked (SCHEDULE_LOCKED): its invoice froze the % it was billed at. Drafts re-price.
 export function PaymentScheduleCard({ projectId, canWrite, onSaved }) {
   const [data, setData] = useState(null);
   const [draft, setDraft] = useState(null);
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [warnings, setWarnings] = useState([]);
 
   const load = useCallback(async () => {
     setErr(null);
@@ -126,11 +139,15 @@ export function PaymentScheduleCard({ projectId, canWrite, onSaved }) {
 
   const total = MILESTONES.reduce((s, m) => s + (Number(draft[m]) || 0), 0);
   const dirty = data.schedule.some((r) => String(r.percentage) !== draft[r.milestone]);
-  const depositOver = data.deposit_cap_pct != null && Number(draft.deposit) > data.deposit_cap_pct;
+  const cap = data.deposit_cap;
+  const depositIncGst = (data.contract_value * 1.1 * (Number(draft.deposit) || 0)) / 100;
+  const depositOver = cap?.amount_inc_gst != null && depositIncGst > cap.amount_inc_gst + 0.005;
+  const blocked = depositOver && cap.verified;
   const save = async () => {
     setBusy(true); setErr(null);
     try {
-      await clientInvoicesApi.saveSchedule(projectId, MILESTONES.map((m) => ({ milestone: m, percentage: Number(draft[m]) })));
+      const res = await clientInvoicesApi.saveSchedule(projectId, MILESTONES.map((m) => ({ milestone: m, percentage: Number(draft[m]) })));
+      setWarnings(res?.data?.warnings || []);
       await load();
       onSaved?.();
     } catch (e) { setErr(errMsg(e)); }
@@ -141,7 +158,7 @@ export function PaymentScheduleCard({ projectId, canWrite, onSaved }) {
     <div>
       <div style={{ fontSize: 12, color: 'var(--dim)', marginBottom: 10 }}>
         Contract {money(data.contract_value)} ex GST · site in {data.site_state || '—'}
-        {data.deposit_cap_pct != null && <> · deposit capped at {data.deposit_cap_pct}%</>}
+ · {capText(cap, data.site_state)}
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead><tr><th style={th}>Milestone</th><th style={th}>Fires on</th><th style={thR}>%</th><th style={thR}>Amount (ex GST)</th></tr></thead>
@@ -150,7 +167,7 @@ export function PaymentScheduleCard({ projectId, canWrite, onSaved }) {
             const locked = r.invoiced || !canWrite;
             return (
               <tr key={r.milestone}>
-                <td style={td}>{MILESTONE_LABEL[r.milestone]}{r.invoiced && <span style={{ color: 'var(--dim)', fontSize: 11 }}> · invoiced</span>}</td>
+                <td style={td}>{MILESTONE_LABEL[r.milestone]}{r.invoiced && <span style={{ color: 'var(--dim)', fontSize: 11 }}> · billed, locked</span>}</td>
                 <td style={{ ...td, color: 'var(--dim)', fontSize: 12 }}>{MILESTONE_TRIGGER[r.milestone]}</td>
                 <td style={tdR}>
                   {locked ? `${r.percentage}%` : (
@@ -170,12 +187,14 @@ export function PaymentScheduleCard({ projectId, canWrite, onSaved }) {
           </tr>
         </tbody>
       </table>
-      {depositOver && <div style={{ color: 'var(--red)', fontSize: 12, marginTop: 8 }}>
-        The deposit is over the {data.site_state} cap of {data.deposit_cap_pct}%.</div>}
+      {depositOver && <div style={{ color: blocked ? 'var(--red)' : 'var(--amber)', fontSize: 12, marginTop: 8 }}>
+        The deposit ({money(depositIncGst)} inc GST) is over the cap of {money(cap.amount_inc_gst)}: {cap.rule}.
+        {!cap.verified && ' This cap isn’t verified yet, so it won’t block saving.'}</div>}
+      <Warnings list={warnings} />
       {err && <div style={{ marginTop: 8 }}><PortalError message={err} /></div>}
       {canWrite && dirty && (
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-          <button className="btn btn-primary" disabled={busy || Math.abs(total - 100) > 0.001 || depositOver} onClick={save}>Save schedule</button>
+          <button className="btn btn-primary" disabled={busy || Math.abs(total - 100) > 0.001 || blocked} onClick={save}>Save schedule</button>
           <button className="btn btn-ghost" disabled={busy} onClick={load}>Discard</button>
         </div>
       )}
@@ -184,7 +203,8 @@ export function PaymentScheduleCard({ projectId, canWrite, onSaved }) {
 }
 
 // One invoice: the tax-invoice facts (x43 §2.4), and the PM's actions by status:
-// draft → edit amount (variation) / issue; issued → record payment / void; paid, void → read-only.
+// draft → edit amount (variation) / issue / void; issued → record payment / void; paid, void →
+// read-only. Voiding keeps the row and the server opens a replacement draft (supersedes_id).
 export function InvoiceDetail({ invoiceId, canWrite }) {
   const { confirm } = usePortalDialog();
   const [inv, setInv] = useState(null);
@@ -194,6 +214,8 @@ export function InvoiceDetail({ invoiceId, canWrite }) {
   const [edit, setEdit] = useState(null);       // { amount_ex_gst, variation_note } while editing a draft
   const [pay, setPay] = useState(null);         // { paid_at, payment_reference } while recording
   const [voidReason, setVoidReason] = useState(null);
+  const [warnings, setWarnings] = useState([]);
+  const [replacement, setReplacement] = useState(null);
 
   const load = useCallback(async () => {
     setErr(null);
@@ -206,7 +228,13 @@ export function InvoiceDetail({ invoiceId, canWrite }) {
 
   const run = async (fn) => {
     setBusy(true); setActionErr(null);
-    try { await fn(); setEdit(null); setPay(null); setVoidReason(null); await load(); }
+    try {
+      const res = await fn();
+      setWarnings(res?.data?.warnings || []);
+      setReplacement(res?.data?.data?.replacement || null);
+      setEdit(null); setPay(null); setVoidReason(null);
+      await load();
+    }
     catch (e) { setActionErr(errMsg(e)); }
     finally { setBusy(false); }
   };
@@ -255,10 +283,21 @@ export function InvoiceDetail({ invoiceId, canWrite }) {
       {inv.status === 'paid' && (
         <div style={{ fontSize: 13, color: 'var(--text)', marginBottom: 12 }}>
           Paid {d(inv.paid_at)}{inv.payment_reference && <> · ref {inv.payment_reference}</>}
-          {inv.recorded_by && <> · recorded by {inv.recorded_by.name}</>}
+          {inv.payment_recorded_by && <> · recorded by {inv.payment_recorded_by.name}</>}
         </div>
       )}
-      {inv.status === 'void' && <div style={{ fontSize: 13, color: 'var(--red)', marginBottom: 12 }}>Voided: {inv.void_reason}</div>}
+      {inv.status === 'void' && (
+        <div style={{ fontSize: 13, color: 'var(--red)', marginBottom: 12 }}>
+          Voided {d(inv.voided_at)}{inv.voided_by && <> by {inv.voided_by.name}</>}: {inv.void_reason}
+          {replacement && <> · <Link href={`/finance/client-invoices/${replacement.id}`} style={{ color: 'var(--brand)' }}>open the replacement draft</Link></>}
+        </div>
+      )}
+      {inv.supersedes_id && (
+        <div style={{ fontSize: 12, color: 'var(--dim)', marginBottom: 12 }}>
+          Replaces a <Link href={`/finance/client-invoices/${inv.supersedes_id}`} style={{ color: 'var(--brand)' }}>voided invoice</Link>.
+        </div>
+      )}
+      <Warnings list={warnings} />
       {inv.journal_entry_id && inv.status !== 'draft' && (
         <div style={{ fontSize: 12, color: 'var(--dim)', marginBottom: 12 }}>
           Revenue posted to the journal on issue (accrual). See <Link href="/finance/sales" style={{ color: 'var(--brand)' }}>Sales</Link>.
@@ -267,16 +306,17 @@ export function InvoiceDetail({ invoiceId, canWrite }) {
 
       {actionErr && <div style={{ marginBottom: 12 }}><PortalError message={actionErr} /></div>}
 
-      {canWrite && inv.status === 'draft' && !edit && (
+      {canWrite && inv.status === 'draft' && !edit && voidReason == null && (
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-primary" disabled={busy} onClick={issue}>Issue invoice</button>
           <button className="btn btn-ghost" disabled={busy}
             onClick={() => setEdit({ amount_ex_gst: String(inv.amount_ex_gst), variation_note: inv.variation_note || '' })}>Adjust amount</button>
+          <button className="btn btn-ghost" disabled={busy} onClick={() => setVoidReason('')}>Void</button>
         </div>
       )}
       {edit && (
         <div style={{ display: 'grid', gap: 10, maxWidth: 420 }}>
-          <label><span style={lbl}>Amount ex GST (GST is added at 10%)</span>
+          <label><span style={lbl}>Amount ex GST{inv.supplier?.gst_registered ? ' (GST is added at 10%)' : ' (not GST-registered, no GST)'}</span>
             <input className="input" type="number" min="0" step="0.01" value={edit.amount_ex_gst}
               onChange={(e) => setEdit((x) => ({ ...x, amount_ex_gst: e.target.value }))} /></label>
           <label><span style={lbl}>Variation note (why the amount differs from the schedule)</span>
@@ -316,6 +356,10 @@ export function InvoiceDetail({ invoiceId, canWrite }) {
       )}
       {voidReason != null && (
         <div style={{ display: 'grid', gap: 10, maxWidth: 420 }}>
+          <div style={{ fontSize: 12, color: 'var(--dim)' }}>
+            {inv.status === 'issued' ? 'Voiding posts a reversing entry (an adjustment note) and opens a new draft for this milestone.'
+              : 'A new draft for this milestone is opened in its place.'}
+          </div>
           <label><span style={lbl}>Why is this invoice being voided?</span>
             <input className="input" value={voidReason} maxLength={200} onChange={(e) => setVoidReason(e.target.value)} /></label>
           <div style={{ display: 'flex', gap: 8 }}>

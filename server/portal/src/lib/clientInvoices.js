@@ -22,7 +22,7 @@ export const MILESTONE_TRIGGER = {
 };
 
 // ── mock ─────────────────────────────────────────────────────────────────────
-const ok = (data) => Promise.resolve({ data: { success: true, data } });
+const ok = (data, warnings) => Promise.resolve({ data: { success: true, data, ...(warnings?.length ? { warnings } : {}) } });
 const fail = (status, code, message, details) => {
   const err = new Error(message);
   err.code = code;
@@ -38,18 +38,39 @@ const round2 = (v) => Math.round(v * 100) / 100;
 
 // x43 §2.2 canonical AIA schedule — the seed for a project with no schedule yet.
 const DEFAULT_SCHEDULE = { deposit: 5, base: 10, frame: 15, lock_up: 35, fixing: 20, completion: 15 };
-// x43 §2.1 deposit caps. Mock-only: the real cap check is Server's, on issue, and uses
-// projects.site_state (falling back to organisations.state, §8 #5).
-function depositCap(state, contract) {
+// x43 §2.1 deposit caps, shaped per Server's §11 review + the PM ruling: Server holds them
+// in a data table, and only VIC and WA are verified. The rest are unverified until the
+// Owner's legal check. Shape { pct|null, amount_inc_gst|null, rule, source, verified } or null
+// (no row). Only a VERIFIED cap blocks (DEPOSIT_CAP_EXCEEDED); unverified or missing just
+// adds a DEPOSIT_CAP_UNVERIFIED warning to the envelope. Mock-only, display-only.
+function depositCap(state, contractExGst) {
+  const price = contractExGst * 1.1; // the caps are on the contract price the client pays
+  const cap = (pct, amount, rule, source, verified) => ({
+    pct, amount_inc_gst: amount ?? (pct == null ? null : round2((price * pct) / 100)), rule, source, verified });
   switch (state) {
-    case 'VIC': return contract >= 20000 ? 5 : 10;
-    case 'NSW': return contract > 20000 ? 10 : null;
-    case 'WA':  return contract >= 7500 && contract <= 500000 ? 6.5 : null;
-    case 'SA':  return contract >= 20000 ? 5 : null;
-    case 'QLD': return contract <= 20000 ? 10 : null;
+    case 'VIC': return cap(price >= 20000 ? 5 : 10, null, `VIC: ${price >= 20000 ? '5% (contract ≥ $20k)' : '10% (contract < $20k)'}`, 'Domestic Building Contracts Act 1995', true);
+    case 'WA':  return price >= 7500 && price <= 500000 ? cap(6.5, null, 'WA: 6.5% ($7.5k–$500k)', 'Home Building Contracts Act 1991', true) : null;
+    case 'NSW': return price > 20000 ? cap(10, null, 'NSW: 10% (contract > $20k)', 'Home Building Act 1989', false) : null;
+    case 'SA':  return price >= 12000 ? cap(null, 1000, 'SA: $1,000 flat (contract ≥ $12k)', 'SA domestic building law', false) : null;
+    case 'QLD': return price <= 20000 ? cap(10, null, 'QLD: 10% (contract ≤ $20k)', 'QBCC', false) : null;
     default:    return null;
   }
 }
+// Applies the cap to a deposit (inc GST). Returns { error } for a verified breach, else { warnings }.
+function checkDeposit(p, depositIncGst) {
+  const c = depositCap(p.site_state, p.contract_value);
+  if (c?.verified) {
+    return c.amount_inc_gst != null && depositIncGst > c.amount_inc_gst + 0.005 ? { error: capError(c) } : { warnings: [] };
+  }
+  const over = c?.amount_inc_gst != null && depositIncGst > c.amount_inc_gst + 0.005;
+  return { warnings: [{ code: 'DEPOSIT_CAP_UNVERIFIED', message: c
+    ? `The ${p.site_state} deposit cap (${c.rule}) isn't verified yet, so it wasn't enforced${over ? '. This deposit is over it' : ''}.`
+    : `No deposit cap is on file for ${p.site_state || 'this site'}, so none was enforced.` }] };
+}
+const capError = (cap) => fail(409, 'DEPOSIT_CAP_EXCEEDED', `The deposit is over the cap: ${cap.rule}`,
+  { cap_pct: cap.pct, cap_amount_inc_gst: cap.amount_inc_gst, rule: cap.rule });
+const GST_REGISTERED = true; // organisations.gst_registered — the mock org is registered
+const gstOn = (exGst) => (GST_REGISTERED ? round2(exGst * 0.1) : 0);
 
 const projects = {}; // projectId → { id, code, name, contract_value, site_state }
 const schedules = {}; // projectId → { milestone: pct }
@@ -61,21 +82,21 @@ const nid = (p) => `${p}-mock-${++seq}`;
 function makeInvoice(p, milestone, status, issuedDaysAgo) {
   const pct = (schedules[p.id] || DEFAULT_SCHEDULE)[milestone];
   const exGst = round2((p.contract_value * pct) / 100);
-  const gst = round2(exGst * 0.1);
+  const gst = gstOn(exGst);
   const issued = issuedDaysAgo == null ? null : daysAgo(issuedDaysAgo);
   const inv = {
     id: nid('inv'), project_id: p.id, project_code: p.code, project_name: p.name, milestone,
     invoice_number: status === 'draft' ? null : `INV-2026-${String(++invNo).padStart(4, '0')}`,
     status, amount_ex_gst: exGst, gst_amount: gst, amount_inc_gst: round2(exGst + gst), percentage_of_contract: pct,
     issued_at: issued, due_at: issued ? addDays(issued, 14) : null,
-    paid_at: null, payment_reference: null, recorded_by: null, void_reason: null,
+    paid_at: null, payment_reference: null, payment_recorded_by: null, void_reason: null, voided_at: null, voided_by: null,
     has_pdf: status !== 'draft', journal_entry_id: status === 'draft' ? null : nid('je'),
     supersedes_id: null, created_at: issued || daysAgo(1),
     created_by: { id: 'sys', name: 'System (milestone trigger)' },
   };
   if (status === 'paid') {
     Object.assign(inv, { paid_at: addDays(issued, 9), payment_reference: 'EFT 88213',
-      recorded_by: { id: 'u-office', name: 'Office admin' } });
+      payment_recorded_by: { id: 'u-office', name: 'Office admin' } });
   }
   invoices.push(inv);
   return inv;
@@ -102,6 +123,9 @@ export function seedMockProjects(list) {
 }
 
 const today = () => now().slice(0, 10);
+// Milestones whose % is frozen: an issued or paid invoice was billed at it.
+const lockedMilestones = (pid) => new Set(invoices
+  .filter((i) => i.project_id === pid && !i.is_deleted && (i.status === 'issued' || i.status === 'paid')).map((i) => i.milestone));
 const withAging = (inv) => {
   const overdueDays = inv.status === 'issued' && inv.due_at && inv.due_at.slice(0, 10) < today()
     ? Math.floor((Date.now() - new Date(inv.due_at.replace(' ', 'T')).getTime()) / 86400000) : 0;
@@ -134,7 +158,7 @@ const mock = {
     if (!inv) return fail(404, 'NOT_FOUND', 'Invoice not found');
     const p = projects[inv.project_id];
     return ok({ client_invoice: { ...withAging(inv), contract_value: p.contract_value, site_state: p.site_state,
-      supplier: { name: 'Your organisation', abn: '12 345 678 901' } } });
+      supplier: { name: 'Your organisation', abn: '12 345 678 901', gst_registered: GST_REGISTERED } } });
   },
   patch: (iid, body) => {
     const inv = findInv(iid);
@@ -142,7 +166,7 @@ const mock = {
     if (inv.status !== 'draft') return fail(409, 'INVOICE_FROZEN', 'Only a draft invoice can be edited');
     const exGst = round2(Number(body.amount_ex_gst));
     if (!(exGst > 0)) return fail(400, 'VALIDATION_ERROR', 'amount_ex_gst must be greater than 0');
-    const gst = round2(exGst * 0.1);
+    const gst = gstOn(exGst);
     Object.assign(inv, { amount_ex_gst: exGst, gst_amount: gst, amount_inc_gst: round2(exGst + gst),
       variation_note: body.variation_note || null });
     return ok(inv);
@@ -156,41 +180,44 @@ const mock = {
     if (Math.abs(total - 100) > 0.001) {
       return fail(409, 'SCHEDULE_NOT_100', `The project's payment schedule sums to ${total}%, not 100%`);
     }
-    const cap = depositCap(p.site_state, p.contract_value);
-    if (inv.milestone === 'deposit' && cap != null && inv.amount_ex_gst > (p.contract_value * cap) / 100 + 0.005) {
-      return fail(409, 'DEPOSIT_CAP_EXCEEDED',
-        `A ${p.site_state} deposit can't exceed ${cap}% of the contract price`, { cap_pct: cap, site_state: p.site_state });
-    }
+    const dep = inv.milestone === 'deposit' ? checkDeposit(p, inv.amount_inc_gst) : { warnings: [] };
+    if (dep.error) return dep.error;
     const issued = now();
     Object.assign(inv, { status: 'issued', invoice_number: `INV-2026-${String(++invNo).padStart(4, '0')}`,
       issued_at: issued, due_at: addDays(issued, 14), has_pdf: true, journal_entry_id: nid('je'),
       percentage_of_contract: round2((inv.amount_ex_gst / p.contract_value) * 100) });
-    return ok(withAging(inv));
+    return ok(withAging(inv), dep.warnings);
   },
   recordPayment: (iid, body) => {
     const inv = findInv(iid);
     if (!inv) return fail(404, 'NOT_FOUND', 'Invoice not found');
     if (inv.status !== 'issued') return fail(409, 'INVOICE_NOT_ISSUED', 'Only an issued invoice can be marked paid');
     Object.assign(inv, { status: 'paid', paid_at: body.paid_at || now(), payment_reference: body.payment_reference || null,
-      recorded_by: { id: 'me', name: 'You' } });
+      payment_recorded_by: { id: 'me', name: 'You' } });
     return ok(withAging(inv));
   },
+  // Voiding keeps the row (status 'void') and the server opens a fresh draft for the same
+  // milestone, supersedes_id → the voided one. An issued void also posts a reversing
+  // journal entry (an adjustment note); a draft void posts nothing.
   void: (iid, reason) => {
     const inv = findInv(iid);
     if (!inv) return fail(404, 'NOT_FOUND', 'Invoice not found');
     if (inv.status === 'paid') return fail(409, 'INVOICE_PAID', 'A paid invoice can’t be voided');
+    if (inv.status === 'void') return fail(409, 'INVOICE_FROZEN', 'Invoice already voided');
     if (!reason) return fail(400, 'VALIDATION_ERROR', 'A reason is required');
-    Object.assign(inv, { status: 'void', void_reason: reason });
-    return ok(withAging(inv));
+    Object.assign(inv, { status: 'void', void_reason: reason, voided_at: now(), voided_by: { id: 'me', name: 'You' } });
+    const replacement = makeInvoice(projects[inv.project_id], inv.milestone, 'draft', null);
+    replacement.supersedes_id = inv.id;
+    return ok({ client_invoice: withAging(inv), replacement: withAging(replacement) });
   },
   schedule: (pid) => {
     const p = projects[pid];
     if (!p) return fail(404, 'NOT_FOUND', 'Project not found');
     const s = schedules[pid];
-    const invoiced = new Set(invoices.filter((i) => i.project_id === pid && !i.is_deleted && i.status !== 'void').map((i) => i.milestone));
+    const invoiced = lockedMilestones(pid);
     return ok({
       schedule: MILESTONES.map((m) => ({ milestone: m, percentage: s[m], invoiced: invoiced.has(m) })),
-      contract_value: p.contract_value, site_state: p.site_state, deposit_cap_pct: depositCap(p.site_state, p.contract_value),
+      contract_value: p.contract_value, site_state: p.site_state, deposit_cap: depositCap(p.site_state, p.contract_value),
     });
   },
   saveSchedule: (pid, rows) => {
@@ -198,13 +225,23 @@ const mock = {
     if (!p) return fail(404, 'NOT_FOUND', 'Project not found');
     const total = rows.reduce((s, r) => s + Number(r.percentage || 0), 0);
     if (Math.abs(total - 100) > 0.001) return fail(400, 'SCHEDULE_NOT_100', `The schedule must sum to 100% (it sums to ${round2(total)}%)`);
-    const cap = depositCap(p.site_state, p.contract_value);
-    const dep = Number(rows.find((r) => r.milestone === 'deposit')?.percentage || 0);
-    if (cap != null && dep > cap) {
-      return fail(409, 'DEPOSIT_CAP_EXCEEDED', `A ${p.site_state} deposit can't exceed ${cap}% of the contract price`, { cap_pct: cap });
+    const locked = lockedMilestones(pid);
+    const changedLocked = rows.filter((r) => locked.has(r.milestone) && Number(r.percentage) !== Number(schedules[pid][r.milestone]))
+      .map((r) => r.milestone);
+    if (changedLocked.length) {
+      return fail(409, 'SCHEDULE_LOCKED', 'An issued or paid milestone keeps the percentage it was billed at', { milestones: changedLocked });
     }
+    const depPct = Number(rows.find((r) => r.milestone === 'deposit')?.percentage || 0);
+    const dep = checkDeposit(p, (p.contract_value * 1.1 * depPct) / 100);
+    if (dep.error) return dep.error;
     rows.forEach((r) => { schedules[pid][r.milestone] = Number(r.percentage); });
-    return mock.schedule(pid);
+    // Open drafts are re-priced from the new percentages.
+    invoices.filter((i) => i.project_id === pid && i.status === 'draft').forEach((i) => {
+      const exGst = round2((p.contract_value * schedules[pid][i.milestone]) / 100);
+      const gst = gstOn(exGst);
+      Object.assign(i, { amount_ex_gst: exGst, gst_amount: gst, amount_inc_gst: round2(exGst + gst), percentage_of_contract: schedules[pid][i.milestone] });
+    });
+    return mock.schedule(pid).then((res) => ok(res.data.data, dep.warnings));
   },
 };
 
