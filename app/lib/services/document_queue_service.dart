@@ -50,6 +50,7 @@ class DocumentQueueService {
     'checklist_item': 'checklist_photo', // xprojman-46, server v047
     'signoff': 'signature',
     'safety_event': 'safety_photo', // xprojman-48, server v048
+    'client_signoff': 'signature', // xprojman-51, server v050
   };
 
   /// entity_type → (owning table, id column, the plural cache columns that may
@@ -65,6 +66,7 @@ class DocumentQueueService {
     'checklist_item': ('checklist_instance_items', 'id', ['photo_ids']),
     'signoff': ('signoffs', 'id', ['signature_ids']),
     'safety_event': ('safety_events', 'id', ['photo_ids']),
+    'client_signoff': ('client_signoffs', 'id', ['signature_ids']),
   };
 
   /// Called with the entity type after each successful upload, so an owner
@@ -142,6 +144,19 @@ class DocumentQueueService {
     });
     unawaited(flush());
     return clientRef;
+  }
+
+  /// The server `document_id` of an upload for this owner once it is stored,
+  /// else null. For owners whose row must reference the document (the
+  /// S18.14 sign-off pushes `signature_document_id`, xprojman-51).
+  Future<String?> storedDocumentIdFor(String entityType, String entityId) async {
+    final rows = await _db.query('upload_queue',
+        columns: ['document_id'],
+        where: "entity_type = ? AND entity_id = ? AND status = 'stored' "
+            'AND document_id IS NOT NULL',
+        whereArgs: [entityType, entityId],
+        limit: 1);
+    return rows.isEmpty ? null : rows.first['document_id'] as String?;
   }
 
   /// The local file for a cache id — a `client_ref` (pre-upload) or a

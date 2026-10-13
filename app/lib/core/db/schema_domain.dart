@@ -541,6 +541,60 @@ class DomainSchema {
     )
   ''';
 
+  // S18.14 client final sign-off (xprojman-51, server migration_v050).
+  // `handover_packs` is a pull-only mirror (one row per project, id = project
+  // id). The app never computes `pack_hash`; `manifest` is the server's JSON.
+  static const String handoverPacks = '''
+    CREATE TABLE IF NOT EXISTS handover_packs (
+      id                TEXT PRIMARY KEY NOT NULL,
+      org_id            TEXT,
+      project_id        TEXT NOT NULL,
+      pack_hash         TEXT,
+      manifest          TEXT,
+      document_count    INTEGER DEFAULT 0,
+      computed_at       TEXT,
+      is_deleted        INTEGER DEFAULT 0,
+      updated_at        INTEGER,
+      server_updated_at TEXT
+    )
+  ''';
+
+  // Create-only and frozen on arrival. `witnessed_by`/`frozen_at`/`counted`/
+  // `method` are server-stamped (display only). Local-only: `signature_ids`
+  // (the queue's cache for the signature document, entity_type
+  // 'client_signoff'), `sync_error`.
+  static const String clientSignoffs = '''
+    CREATE TABLE IF NOT EXISTS client_signoffs (
+      id                    TEXT PRIMARY KEY NOT NULL,
+      org_id                TEXT,
+      project_id            TEXT NOT NULL,
+      step_code             TEXT DEFAULT 'S18.14',
+      method                TEXT DEFAULT 'assisted_device',
+      pack_hash             TEXT NOT NULL,
+      manifest              TEXT,
+      decision              TEXT NOT NULL,
+      decline_reasons       TEXT,
+      signer_user_id        TEXT,
+      signer_name           TEXT NOT NULL,
+      witnessed_by          TEXT,
+      signature_document_id TEXT,
+      signed_at             TEXT NOT NULL,
+      counted               INTEGER,
+      frozen_at             TEXT,
+      supersedes_id         TEXT,
+      signature_ids         TEXT,
+      sync_error            TEXT,
+      device_id             TEXT,
+      is_deleted            INTEGER DEFAULT 0,
+      is_dirty              INTEGER DEFAULT 0,
+      pending_op            TEXT,
+      ever_synced           INTEGER DEFAULT 0,
+      created_at            TEXT,
+      updated_at            INTEGER,
+      server_updated_at     TEXT
+    )
+  ''';
+
   /// v2 upgrade step (P5, servdesignspec §11).
   static const List<String> v2 = [siteDiary, siteAttendance, deliveries];
 
@@ -571,5 +625,10 @@ class DomainSchema {
   /// v8 upgrade step (xprojman-48 F5/F6 — site inductions, SWMS sign-on).
   static const List<String> v8 = [siteInductions, swmsDocuments];
 
-  static const List<String> all = [...v2, ...v3, ...v4, ...v5, ...v6, ...v7, ...v8];
+  /// v9 upgrade step (xprojman-51, server migration_v050 — S18.14 sign-off).
+  static const List<String> v9 = [handoverPacks, clientSignoffs];
+
+  static const List<String> all = [
+    ...v2, ...v3, ...v4, ...v5, ...v6, ...v7, ...v8, ...v9,
+  ];
 }

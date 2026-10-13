@@ -21,7 +21,8 @@ class DatabaseManager {
   ///   v7 — safety/OHS: safety_events, safety_actions, incident_details outbox
   ///        (xprojman-48, server migration_v048)
   ///   v8 — site_inductions mirror + swms_documents cache (xprojman-48 F5/F6)
-  static const int currentVersion = 8;
+  ///   v9 — handover_packs mirror + client_signoffs (xprojman-51, server v050)
+  static const int currentVersion = 9;
 
   static Database? _instance;
 
@@ -61,6 +62,7 @@ class DatabaseManager {
       await _createChecklistIndexes(txn);
       await _createSafetyIndexes(txn);
       await _createInductionIndexes(txn);
+      await _createHandoverIndexes(txn);
     });
     // ignore: avoid_print
     print('✅ [DB] Created projman2.db v$version '
@@ -138,6 +140,14 @@ class DatabaseManager {
         await _createInductionIndexes(txn);
       });
     }
+    if (oldVersion < 9) {
+      await db.transaction((txn) async {
+        for (final stmt in DomainSchema.v9) {
+          await txn.execute(stmt);
+        }
+        await _createHandoverIndexes(txn);
+      });
+    }
     // ignore: avoid_print
     print('ℹ️ [DB] upgrade $oldVersion → $newVersion');
   }
@@ -202,6 +212,15 @@ class DatabaseManager {
     for (final stmt in const [
       'CREATE INDEX IF NOT EXISTS idx_si_project ON site_inductions(project_id, user_id)',
       'CREATE INDEX IF NOT EXISTS idx_swms_project ON swms_documents(project_id)',
+    ]) {
+      await txn.execute(stmt);
+    }
+  }
+
+  static Future<void> _createHandoverIndexes(Transaction txn) async {
+    for (final stmt in const [
+      'CREATE INDEX IF NOT EXISTS idx_hp_project ON handover_packs(project_id)',
+      'CREATE INDEX IF NOT EXISTS idx_cs_project ON client_signoffs(project_id)',
     ]) {
       await txn.execute(stmt);
     }
