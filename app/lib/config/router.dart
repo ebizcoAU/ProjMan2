@@ -16,6 +16,7 @@ import '../screens/projects/create_project_screen.dart';
 import '../screens/projects/project_detail_screen.dart';
 import '../screens/projects/programme_screen.dart';
 import '../screens/home_screen.dart';
+import '../screens/client_home_screen.dart';
 
 class AppRoutes {
   static const String welcome = '/welcome';
@@ -29,6 +30,7 @@ class AppRoutes {
   static const String jobInvitations = '/job-invitations'; // S9.7 accept/decline
   static const String veritradeLogin = '/veritrade-login'; // §8 scan-to-sign-in
   static const String home = '/home';
+  static const String clientHome = '/client-home'; // xprojman-50 F7
   static const String projectCreate = '/project/create'; // Stage 1
   static const String projectDetail = '/project/detail'; // 18-stage tracker
   static const String projectProgramme = '/project/programme'; // schedule view
@@ -39,6 +41,19 @@ class AppRoutes {
 /// the CCCD / BANOI / MAOI-secondary branches — ProjMan2 registers by ABN+email
 /// (development.md §6), so the "no userCCCD → welcome" gate becomes
 /// "no session → welcome". The device-role secondary boot returns later.
+/// Where a signed-in user lands: a `client` gets [ClientHomeScreen], never the
+/// staff shell (xprojman-50 §10/§11 F7). Applied on every route into home —
+/// boot, password/OAuth login and pairing all `go(home)` — not only after a
+/// customer invite is redeemed.
+String homeRouteForRole(String? role) =>
+    role == 'client' ? AppRoutes.clientHome : AppRoutes.home;
+
+Future<String?> _redirectByRole(GoRouterState state) async {
+  final user = await SessionService.currentUser();
+  final target = homeRouteForRole(user?['role']?.toString());
+  return target == state.matchedLocation ? null : target;
+}
+
 final bootRouteProvider = FutureProvider<String>((ref) async {
   try {
     final hasSession = await SessionService.hasSession();
@@ -117,7 +132,14 @@ final goRouterProvider = FutureProvider<GoRouter>((ref) async {
       GoRoute(
         path: AppRoutes.home,
         name: 'home',
+        redirect: (context, state) => _redirectByRole(state),
         builder: (context, state) => const HomeScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.clientHome,
+        name: 'clientHome',
+        redirect: (context, state) => _redirectByRole(state),
+        builder: (context, state) => const ClientHomeScreen(),
       ),
       GoRoute(
         path: AppRoutes.projectCreate,
