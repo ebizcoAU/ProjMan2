@@ -8,11 +8,13 @@
 #   make run-dev API_BASE_URL=http://10.1.1.20:4100/api/v1
 
 # ── Devices (from `flutter devices`) ─────────────────────────────────────────
-IPHONE_XS   = 00008020-00166CC42E6A002E
+IPHONE_XS   = 00008020-00166CC42E6A002E   # NOT for ProjMan2 (shared rig)
 IPHONE_NEW  = 00008101-00111C191146001E   # "vphan" (wireless)
 IPHONE_PROX = 00008020-0005642E1198003A   # (wireless)
 IPAD        = 7f0447624251c8af3ca9080641c3fe43ab7d1ff8
-DEVICE     ?= $(IPHONE_XS)
+# Owner 2026-10-14: the rig is shared with other projects. ProjMan2 deploys ONLY
+# to the vphan iPhone 12 Pro Max (IPHONE_NEW) and the iPad. Never the iPhone XS.
+DEVICE     ?= $(IPHONE_NEW)
 
 # ── Server endpoint ──────────────────────────────────────────────────────────
 # LAN_IP: this Mac on the wifi/ethernet the phone shares. API_BASE_URL is derived
@@ -27,7 +29,7 @@ DART_DEFINES = --dart-define=API_BASE_URL=$(API_BASE_URL)
 
 # ── Run ──────────────────────────────────────────────────────────────────────
 .PHONY: run-dev
-run-dev: ## Build + run on DEVICE (default iPhone XS) against the LAN server
+run-dev: ## Build + run on DEVICE (default vphan iPhone 12 Pro Max) against the LAN server
 	@echo "▶ $(DEVICE)  →  $(API_BASE_URL)"
 	flutter run -d $(DEVICE) $(DART_DEFINES)
 
