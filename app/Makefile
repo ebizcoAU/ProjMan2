@@ -4,8 +4,8 @@
 # The phone can't reach `localhost` — it must hit the Mac's LAN IP. LAN_IP is
 # auto-detected; override any of these on the command line:
 #   make run-dev DEVICE=<udid>
-#   make run-dev LAN_IP=10.1.1.20
-#   make run-dev API_BASE_URL=http://10.1.1.20:4100/api/v1
+#   make run-dev LAN_IP=10.1.1.42
+#   make run-dev API_BASE_URL=http://10.1.1.42:5100/api/v1
 
 # ── Devices (from `flutter devices`) ─────────────────────────────────────────
 IPHONE_XS   = 00008020-00166CC42E6A002E   # NOT for ProjMan2 (shared rig)
@@ -95,4 +95,4 @@ help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 	  | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 	@echo ""
-	@echo "Override: make run-dev DEVICE=<udid> | LAN_IP=10.1.1.20 | API_BASE_URL=<url>"
+	@echo "Override: make run-dev DEVICE=<udid> | LAN_IP=10.1.1.42 | API_BASE_URL=<url>"

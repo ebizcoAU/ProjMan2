@@ -42,15 +42,17 @@ const double GST_RATE = 0.10;
 
 // ── API ───────────────────────────────────────────────────────────────────────
 
-// NOTE: the dev base URL is provisional — NEXUSPM-BRIEF.md §2 asks NexusPM to
-// confirm it. Proposed there: http://10.1.1.20:4100/api/v1 (own service, own
-// database `c1projman2`). Override with --dart-define until it is confirmed.
+// Dev: the lab API on the dev Mac (10.1.1.42:5100, database `c1projman2`),
+// which the PM runs. `make run-dev` passes the Mac's detected LAN IP via
+// --dart-define, so this default only applies to a bare `flutter run`.
+// Prod is still a placeholder until the Owner confirms the domain
+// (xprojman-roles §1).
 
-/// Nexus API base URL. Override with --dart-define=API_BASE_URL=...
+/// ProjMan API base URL. Override with --dart-define=API_BASE_URL=...
 const String API_BASE_URL = String.fromEnvironment(
   'API_BASE_URL',
   defaultValue: IS_DEV
-      ? 'http://10.1.1.20:4100/api/v1'
+      ? 'http://10.1.1.42:5100/api/v1'
       : 'https://ebizco.com.au/projman/api/v1',
 );
 
@@ -72,14 +74,17 @@ String? resolveImageUrl(String? url) {
 // ── MQTT ──────────────────────────────────────────────────────────────────────
 //
 // Carries pairing, handoff and sync nudges — not orders. Same broker as ftpos.
+// ProjMan2 is only ever a CLIENT on a shared broker (topic prefix
+// `projman2/...`). Never start, stop or replace a broker for it.
 //
-// dev:           ws://10.1.1.20:9001/mqtt   — local Mosquitto, no auth, no TLS
+// dev:           ws://10.1.1.42:9001/mqtt   — the shared Mosquitto on the dev Mac
+//                (it also serves real hardware), no auth, no TLS
 // preview/prod:  wss://mqtt.ebizco.com.au:8884/mqtt — auth required, TLS
 
 /// Hostname only (no ws:// prefix). Override with --dart-define=MQTT_BROKER_URL=...
 const String MQTT_BROKER_URL = String.fromEnvironment(
   'MQTT_BROKER_URL',
-  defaultValue: IS_DEV ? '10.1.1.20' : 'mqtt.ebizco.com.au',
+  defaultValue: IS_DEV ? '10.1.1.42' : 'mqtt.ebizco.com.au',
 );
 
 /// WebSocket port: 9001 for dev Mosquitto, 8884 for preview/prod.
