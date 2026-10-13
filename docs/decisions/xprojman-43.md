@@ -780,3 +780,14 @@ The Owner (who is also the SA) ruled "O1–O6 as recommended":
 | O4 | Accounting package order: **Xero first**, then MYOB, then QuickBooks. |
 | O5 | Retention: **Server's §13 model**: retention withheld per claim, released in parts (typically 50% at Practical Completion, the balance after the defects-liability period). |
 | O6 | Hidden ledger/BAS/depreciation tables: **keep them hidden until v1 launch**, then retire them by migration. Nothing is deleted before then. |
+
+## 15. Server build log
+
+**R1, feature flags: landed a77a3c1 (2026-10-14).** Built as §13.5, with one difference. The
+**code default is ON** (`FEATURE_*` unset means on), so landing changes nothing on a running
+server. The lab turns the flags off in `server/api/.env` *together with* Portal's
+`NEXT_PUBLIC_ACCOUNTING_SCREENS` in one restart (the PM's call). `.env.production.example` ships
+them `false`. `GET /organisation` returns `features` for Portal. Flags-off behaviour is
+`tests/features.test.js` (13 checks). `FEATURE_DEPRECIATION` can go off now, because S18.12
+stopped blocking in v050 (x43 §14 O1).
+— Server Dev (`projman2-server-agent`, session `projman2-d3`)
