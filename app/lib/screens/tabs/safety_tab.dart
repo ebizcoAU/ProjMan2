@@ -4,19 +4,15 @@ import '../../config/app_theme.dart';
 import '../../config/providers.dart';
 import '../../models/domain.dart';
 import '../../services/project_service.dart';
-import '../../services/safety_ops_service.dart';
 import '../safety/safety_entries_view.dart';
 
 /// Safety — hazard capture, incident capture, inductions (development.md §4:
 /// incident entry must be reachable in two taps from anywhere — the tab
-/// itself + Raise is exactly two). **Hazards/Incidents subpages are a UI
-/// mockup** (`SafetyOpsService`, in-memory, no schema/API) per the owner's
-/// 2026-09-03 "mockup before wiring" directive — see that service's header
-/// and `appdesignspecification.md` §9 module 5 / `xprojman-28.md` §5 for why
-/// (no `hazards`/`incidents` table exists anywhere yet). Inductions
-/// (toolbox talks / JSA / SWMS sign-on) is a separate, still-unscoped concept
-/// — left as a placeholder, not part of this pass. Same project-scoped shell
-/// pattern as [QualityTab]/[SiteTab].
+/// itself + Raise is exactly two). Hazards/near misses and Incidents are
+/// wired to sync (`SafetyOpsService`, xprojman-48, server v048). Inductions
+/// and SWMS sign-on are server-ready in v048 but not yet built in the App, so
+/// that page stays a placeholder. Toolbox talks run as a checklist category.
+/// Same project-scoped shell pattern as [QualityTab]/[SiteTab].
 class SafetyTab extends ConsumerStatefulWidget {
   final int subPage;
   const SafetyTab({super.key, required this.subPage});
@@ -77,11 +73,11 @@ class _SafetyTabState extends ConsumerState<SafetyTab> {
   Widget _subPage(Project p) {
     switch (widget.subPage % 3) {
       case 1:
-        return SafetyEntriesView(project: p, kind: SafetyKind.incident);
+        return SafetyEntriesView(project: p, incidents: true);
       case 2:
         return const _InductionsPlaceholder();
       default:
-        return SafetyEntriesView(project: p, kind: SafetyKind.hazard);
+        return SafetyEntriesView(project: p, incidents: false);
     }
   }
 
@@ -183,8 +179,8 @@ class _InductionsPlaceholder extends StatelessWidget {
         SizedBox(height: 8),
         Center(
           child: Text(
-            'Toolbox talks, JSA/SWMS sign-on. Not scoped yet — a separate '
-            'design pass from hazard/incident capture, out of this mockup.',
+            'Site inductions and SWMS sign-on are coming in an update. '
+            'Run toolbox talks from Quality → Checklists.',
             textAlign: TextAlign.center,
             style: TextStyle(color: Op.muted, fontSize: 13),
           ),

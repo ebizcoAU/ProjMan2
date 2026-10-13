@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'nexus_service.dart';
 
 /// The client side of "roles as data" (projman-05 §6.3, §10.1 item 2). The app
@@ -27,6 +28,12 @@ class PermissionsService {
   /// (projman-05 §6.3: "the app's UI should gate actions based on permissions,
   /// not roles" — the check itself always still happens server-side too).
   bool has(String permission) => _permissions.contains(permission);
+
+  @visibleForTesting
+  void setForTest({String? role, Set<String> permissions = const {}}) {
+    this.role = role;
+    _permissions = permissions;
+  }
 
   /// Loads once and caches; safe to call from every screen's `initState` —
   /// concurrent callers share the one in-flight request.

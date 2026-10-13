@@ -1,0 +1,4 @@
+# The sync tests open the app's real SQLite file (sqflite ffi), and test files
+# run in separate processes, so running files in parallel lets one clear the
+# other's rows mid-test. Run them one at a time.
+concurrency: 1
