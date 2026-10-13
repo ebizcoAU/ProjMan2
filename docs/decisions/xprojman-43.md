@@ -1,5 +1,5 @@
 Client Billing (PM → Client invoicing against the 6 billing milestones) + Revenue Posting
-Status: 🟡 DRAFT — spec-before-code, same convention as xprojman-28.md/xprojman-39.md/xprojman-41.md/xprojman-42.md. Nothing built.
+Status: ✅ APPROVED by the SA (Owner) on 2026-09-30 (xprojman-roles §8 #5), with `projects.site_state` falling back to `organisations.state`. Build: Server Steps 1–2, then the Portal UI. §2.1 deposit caps: verify each value against the source statute before encoding (PM, 2026-10-14).
 Author: PM (System Architect) · For: Server Agent, Portal Agent, Owner sign-off.
 Date: 2026-09-11
 Related: xprojman-42.md §3 (the org_journal this closes the revenue side of — Server's §10 flagged "no PM-bills-client flow" as a real design gap), portaldesignspecification.md §6.1 (the 6 billing milestones already named), 18Stage_Tasks.md (the stage triggers), serverdesignspecification.md §11.4 Decision #6 (facts-here / ledger-there — this module stays inside that boundary, it produces tax facts + journal postings, not a GL replacement).
@@ -91,7 +91,7 @@ Free of defects
 
 Source: VIC DBCA s.42
 
-Design consequence: the Completion milestone invoice is gated on S18.3 (Occupation Certificate hold point) and S18.11 (client final sign-off) — both already in the 18-stage spec.
+Design consequence: the Completion milestone invoice is gated on S18.3 (Occupation Certificate hold point) and S18.14 (client final sign-off; v3.4 numbering, previously cited as S18.11, which is the depreciation draft) — both already in the 18-stage spec. Sign-off design: xprojman-51.
 
 2.6 Defects Liability Period — retention and final release
 Most Australian building contracts carry a 12-month defects liability period (DLP) starting at Practical Completion. Statutory warranty periods run longer (6 years structural in some states, 2 years non-structural).
@@ -221,7 +221,7 @@ Lock-up — S14 complete, building secured from weather (Site Supervisor confirm
 
 Fixing — S16 complete, final trade sign-off per room
 
-Completion — S18.3 OC issued + S18.11 client final sign-off
+Completion — S18.3 OC issued + S18.14 client final sign-off (corrected by PM 2026-09-30; see xprojman-51)
 
 Draft invoice auto-created in draft status, ready for PM review.
 
