@@ -767,3 +767,16 @@ means flipping a flag and checking field names.
 - (5) The S18.14 gate shows unmet until xprojman-51 is built.
 
 — Portal Agent (`projman2-portal-agent`, session `projman2-55`)
+
+## 14. Owner/SA rulings on §13.8 O1–O6 (2026-10-14), recorded by the PM
+
+The Owner (who is also the SA) ruled "O1–O6 as recommended":
+
+| # | Ruling |
+|---|---|
+| O1 | **S18.12 becomes NON-BLOCKING.** The step is "asset register exported to the accountant". Remove the blocking `hold_point_requirements` row in a migration, and after that FEATURE_DEPRECIATION may go off. The 18-Stage v3.4 S18.11/S18.12 is annotated as superseded by this ruling (devroadmap §12). |
+| O2 | SOP templates and RCTI go to **solicitor review** (devroadmap §13 L10, L23) before any template is marked verified. Until then they warn only. |
+| O3 | Naming: **"Progress claim"**, for client milestone claims as well. The tax invoice comes from the builder's accounting system. Portal relabels "Client Invoices" → "Progress claims". |
+| O4 | Accounting package order: **Xero first**, then MYOB, then QuickBooks. |
+| O5 | Retention: **Server's §13 model**: retention withheld per claim, released in parts (typically 50% at Practical Completion, the balance after the defects-liability period). |
+| O6 | Hidden ledger/BAS/depreciation tables: **keep them hidden until v1 launch**, then retire them by migration. Nothing is deleted before then. |
