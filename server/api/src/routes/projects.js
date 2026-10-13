@@ -565,6 +565,45 @@ router.get(
   }
 );
 
+// ── POST /projects/:id/defects  office-raised defect (Portal) ─────────────────────
+// Same quality.write gate and columns as the App's sync create; raised open, raised_by/at
+// server-stamped. Used for a client's S18.14 decline reasons (xprojman-51 F5). `id` optional
+// (Portal-minted → an idempotent retry).
+router.post(
+  '/:id/defects',
+  canWriteQuality,
+  [
+    body('id').optional().isUUID(),
+    body('description').isString().trim().notEmpty().withMessage('description is required'),
+    body('stage_id').optional({ nullable: true }).isString(),
+    body('location').optional({ nullable: true }).isString(),
+    body('trade').optional({ nullable: true }).isString(),
+    body('assigned_to').optional({ nullable: true }).isString(),
+    body('assigned_to_name').optional({ nullable: true }).isString(),
+    body('due_date').optional({ nullable: true }).isISO8601(),
+    body('severity').optional().isIn(['low', 'medium', 'high']),
+    body('status').optional().isIn(['open']).withMessage('A defect is raised open'),
+    body('photo_id').optional({ nullable: true }).isString(),
+  ],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const { defect, duplicate } = await InspectionService.createDefect({
+        orgId: req.auth.orgId, projectId: req.params.id,
+        actor: { role: req.auth.role, userId: req.auth.userId }, fields: req.body,
+      });
+      if (!duplicate) {
+        await audit(req, 'defect.create', {
+          entity: 'defects', entityId: defect.id, detail: { project_id: req.params.id, source: 'portal' },
+        });
+      }
+      return res.status(duplicate ? 200 : 201).json({ success: true, data: { defect, duplicate } });
+    } catch (err) {
+      return sendError(res, err);
+    }
+  }
+);
+
 // ── PATCH /projects/:id/defects/:defectId  Portal management ────────────────────
 // A second door onto the same row the App reaches via /sync/push — same
 // quality.write gate, same writable-column set (InspectionService.js header).

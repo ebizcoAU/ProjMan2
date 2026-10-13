@@ -207,6 +207,28 @@ async function pull(tok, table) {
   const unknownDefect = await call('PATCH', `/projects/${projId}/defects/00000000-0000-4000-8000-000000000000`, { status: 'open' }, pm);
   ok('PATCHing an unknown defect id is refused (404)', unknownDefect.status === 404, JSON.stringify(unknownDefect.json));
 
+  // ── 5c. POST /projects/:id/defects — office-raised (Portal), e.g. from S18.14 decline reasons ──
+  const officeId = require('crypto').randomUUID();
+  const tradieCreate = await call('POST', `/projects/${projId}/defects`, { description: 'x' }, tradieTok);
+  ok('tradie cannot raise a defect via REST (no quality.write, 403)', tradieCreate.status === 403, JSON.stringify(tradieCreate.json));
+  const noDesc = await call('POST', `/projects/${projId}/defects`, { location: 'Kitchen' }, pm);
+  ok('a REST defect needs a description (422)', noDesc.status === 422, JSON.stringify(noDesc.json));
+  const raisedClosed = await call('POST', `/projects/${projId}/defects`, { description: 'x', status: 'closed' }, pm);
+  ok('a REST defect cannot be raised closed (422)', raisedClosed.status === 422, JSON.stringify(raisedClosed.json));
+  const office = await call('POST', `/projects/${projId}/defects`, {
+    id: officeId, description: 'Client sign-off decline: scratched benchtop', location: 'Kitchen', severity: 'low',
+  }, pm);
+  const spoof = await call('POST', `/projects/${projId}/defects`, { description: 'x', raised_by: pmUser }, pm);
+  ok('raised_by is server-owned: sending it is refused (422, same as PATCH)', spoof.status === 422, JSON.stringify(spoof.json));
+  ok('PM raises a defect from the Portal (201, open, raised_by = the PM, server-stamped)',
+    office.status === 201 && office.json.data.defect?.status === 'open' && office.json.data.defect?.raised_by === pmUser
+      && !!office.json.data.defect?.raised_at, JSON.stringify(office.json));
+  const officeRetry = await call('POST', `/projects/${projId}/defects`, { id: officeId, description: 'Client sign-off decline: scratched benchtop' }, pm);
+  ok('a retried POST with the same id returns the existing defect (200, duplicate)',
+    officeRetry.status === 200 && officeRetry.json.data.duplicate === true, JSON.stringify(officeRetry.json));
+  const pulledOffice = (await pull(supTok, 'defects')).some((c) => c.data.id === officeId);
+  ok('the office-raised defect reaches the App on the next pull', pulledOffice);
+
   // ── 6. Certificates: both app (inspector) and web (PM) surfaces may push ──
   const certApp = await push(inspTok, 'certificates', 'create', {
     id: `cert-${s}-app`, project_id: projId, type: 'BA2', reference: 'BA2-001',

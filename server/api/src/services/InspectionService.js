@@ -224,6 +224,54 @@ async function updateDefect({ orgId, projectId, actor, defectId, fields }) {
   return { id: defectId, ...Object.fromEntries(keys.map((k) => [k, fields[k]])) };
 }
 
+/**
+ * POST /projects/:id/defects — an office-raised defect (Portal), e.g. from a client's S18.14
+ * decline reasons (xprojman-51 F5). The App raises defects on site through /sync/push; this is a
+ * second door with the same quality.write gate and the same writable columns. A defect is always
+ * raised `open`; raised_by/raised_at are server-stamped. `id` is optional: when Portal mints it,
+ * a retried POST returns the existing row instead of a duplicate.
+ */
+async function createDefect({ orgId, projectId, actor, fields }) {
+  if (!access.hasPermission(actor.role, 'quality.write')) {
+    throw new ServiceError('FORBIDDEN', 'Requires permission: quality.write', 403);
+  }
+  const allowed = [...DEFECT_WRITABLE_FIELDS.filter((k) => k !== 'status' && k !== 'photo_after_id'), 'stage_id'];
+  const { id: clientId, status, ...rest } = fields || {};
+  const keys = Object.keys(rest).filter((k) => rest[k] !== undefined);
+  const badKeys = keys.filter((k) => !allowed.includes(k));
+  if (badKeys.length) throw new ServiceError('VALIDATION_ERROR', `Cannot set: ${badKeys.join(', ')}`, 422);
+  if (status !== undefined && status !== 'open') {
+    throw new ServiceError('VALIDATION_ERROR', 'A defect is raised open', 422);
+  }
+  if (!String(rest.description || '').trim()) {
+    throw new ServiceError('VALIDATION_ERROR', 'description is required', 422);
+  }
+  if (rest.severity !== undefined && !['low', 'medium', 'high'].includes(rest.severity)) {
+    throw new ServiceError('VALIDATION_ERROR', 'severity must be one of low, medium, high', 422);
+  }
+  await assertReachable({ orgId, projectId, actor });
+  if (rest.stage_id) {
+    const [[stage]] = await pool.query(
+      'SELECT id FROM project_stages WHERE id = ? AND project_id = ? AND org_id = ? AND is_deleted = 0 LIMIT 1',
+      [rest.stage_id, projectId, orgId]);
+    if (!stage) throw new ServiceError('VALIDATION_ERROR', 'stage_id is not a stage of this project', 422);
+  }
+  const id = clientId || uuidv4();
+  const [[existing]] = await pool.query(
+    'SELECT * FROM defects WHERE id = ? AND org_id = ? LIMIT 1', [id, orgId]);
+  if (existing) {
+    if (existing.project_id !== projectId) throw new ServiceError('CONFLICT', 'That defect id is already in use', 409);
+    return { defect: existing, duplicate: true };
+  }
+  const cols = keys;
+  await pool.query(
+    `INSERT INTO defects (id, org_id, project_id, raised_by, raised_at, status${cols.map((c) => `, \`${c}\``).join('')}, updated_at)
+     VALUES (?, ?, ?, ?, NOW(), 'open'${cols.map(() => ', ?').join('')}, ?)`,
+    [id, orgId, projectId, actor.userId, ...cols.map((c) => rest[c]), Date.now()]);
+  const [[row]] = await pool.query('SELECT * FROM defects WHERE id = ? LIMIT 1', [id]);
+  return { defect: row, duplicate: false };
+}
+
 /** GET /projects/:id/certificates — the register + expiry (portal review). */
 async function listCertificates({ orgId, projectId, actor }) {
   await assertReachable({ orgId, projectId, actor });
@@ -237,4 +285,4 @@ async function listCertificates({ orgId, projectId, actor }) {
   return { certificates: rows };
 }
 
-module.exports = { create, complete, listInspections, listDefects, updateDefect, listCertificates };
+module.exports = { create, complete, listInspections, listDefects, updateDefect, createDefect, listCertificates };
