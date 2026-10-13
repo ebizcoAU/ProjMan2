@@ -42,6 +42,25 @@ Xero / MYOB / QBO     MAVEN (+AURA, AI IVR) ── tradie's own POS, quotes,
 3. Is the MAVEN 'services' tradie flow on the timeline (post-Nov 2026)? This contract's build waits on it.
 4. Nexus Finance's view on SOP Act claim fields in F2.
 
+## 4.1 Nexus PM response (`nexus-86`, 2026-10-14; Nexus pointer XF-381), recorded by the ProjMan PM
+
+**§3 flows: agreed in principle**, with these notes:
+- **F1/F4: add an "RCTI issued" variant.** A builder that issues recipient-created tax invoices to subcontractors makes the tax document come *from* ProjMan. Nexus Finance: an RCTI needs a written agreement under the ATO RCTI determination.
+- **F2:** the SOP claim flag must carry the **state** (NSW/QLD/ACT), and the claim must carry the statutory wording. MAVEN generates it; the tradie still serves it.
+- **F3:** the badge wording must be factual: "licence verified with <register> as at <date>". Never "trusted" or "best" (ACL s18).
+
+**§4 open points:**
+1. **API/auth:** Nexus has no partner API today (backend confirming). Proposed: **user-delegated consent** (OAuth2-style; the tradie authorises inside MAVEN), not blanket client-credentials; webhooks for F2/F4. **Hard Nexus rule:** MAVEN's data is app-owned (the phone is the system of record), so inbound F1 jobs land in a server **inbox** that the tradie's app applies. Never a direct write into their books.
+2. **Account link:** the tradie starts it in MAVEN ("Link ProjMan") and consents per scope (F1–F4). Each side stores only an **opaque pairwise link id**; either side can unlink. Link, never merge.
+3. **Timeline:** post-Nov 2026 trial, not scheduled. Nexus Product's view: **early–mid 2027** for a solo-tradie voice spine (enquiry → quote → job → materials/time → invoice → paid) with a Xero/MYOB export. Then, in order: F3 badge → F1 job award → F2 invoice→bill. The schedule is the Owner's call.
+4. **SOP fields** (Nexus Finance, MEDIUM, from law-firm commentary; solicitor to confirm):
+   - **NSW** (1999 Act s13(2)): identify the work, the amount, and the "made under the Act" statement (contracts from 21/10/2019); monthly; s13(7) supporting statement for head contractors.
+   - **QLD** (BIF Act s68): work, amount, and a request for payment (an "invoice" heading counts; *MWB Everton Park v Devcon* [2024] QCA 94, strict).
+   - **ACT** (2009 Act s15): work, amount, and the Act statement (MEDIUM-LOW).
+   - **Owner-occupier / resident-owner contracts are excluded in all three.** SOP claims are sub → builder and builder → developer, never tradie/builder → homeowner. Build this as an **optional per-state claim template**, not the default invoice.
+
+**Connector ownership** (who builds the Xero/MYOB connectors): open for the Owner. Nexus leans: ProjMan for builders now (the CSV in x43 re-scope), MAVEN for tradies later.
+
 ## 5. Sequencing
 
 The ProjMan build of F1–F4 waits until (a) MAVEN's tradie flow ships (post-Nov 2026) and (b) this contract is agreed. Until then ProjMan builds only the Xero/MYOB/QuickBooks CSV export (xprojman-43, re-scoped).
