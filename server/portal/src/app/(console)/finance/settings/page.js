@@ -18,13 +18,14 @@
 // is the foundation §3 needs, not §3 itself.
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PortalCard }    from '@/components/portal/PortalCard';
 import { PortalEmpty }   from '@/components/portal/PortalEmpty';
 import { PortalError }   from '@/components/portal/PortalError';
 import { usePortalData } from '@/components/portal/usePortalData';
 import { organisationApi, costCentresApi, financeApi } from '@/lib/api';
 import { ACCOUNTING_SCREENS } from '@/lib/features';
+import { accountingExportApi, withExportCodes, GST_TREATMENTS, ACCOUNTING_EXPORT_MOCK } from '@/lib/accountingExport';
 
 const ACC_TYPES = ['asset', 'liability', 'equity', 'revenue', 'expense'];
 const ACC_TYPE_COLOR = {
@@ -271,6 +272,96 @@ function CostCentresCard() {
   );
 }
 
+// Accounting export codes (xprojman-43 §13.4): the builder's OWN account and tax codes from
+// Xero/MYOB/QuickBooks, so the export lands on the right accounts. Not ProjMan's chart of
+// accounts (that's the hidden ledger). A row's code is its cost centre's code, else the
+// org default for its direction; with neither, the export marks it "unmapped".
+function ExportCodesCard() {
+  const centres = usePortalData(() => costCentresApi.list());
+  const [cfg, setCfg] = useState(null);
+  const [codes, setCodes] = useState({});
+  const [err, setErr] = useState(null);
+  const [saved, setSaved] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    accountingExportApi.settings().then((res) => setCfg(res?.data?.data)).catch((e) => setErr(e?.response?.data?.message || e.message));
+  }, []);
+  const list = withExportCodes(centres.data?.data?.cost_centres || []);
+  useEffect(() => {
+    setCodes(Object.fromEntries(list.map((c) => [c.id, c.export_account_code || ''])));
+  }, [centres.data]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const save = async () => {
+    setBusy(true); setErr(null); setSaved(null);
+    try {
+      await accountingExportApi.saveSettings(cfg);
+      const changed = list.filter((c) => (c.export_account_code || '') !== (codes[c.id] || '').trim());
+      for (const c of changed) await accountingExportApi.setCostCentreCode(c.id, (codes[c.id] || '').trim() || null);
+      await centres.refetch();
+      setSaved('Saved');
+    } catch (e) { setErr(e?.response?.data?.message || e.message); }
+    finally { setBusy(false); }
+  };
+  const setMap = (dir, k, v) => setCfg((c) => ({ ...c, gst_code_map: { ...c.gst_code_map, [dir]: { ...c.gst_code_map[dir], [k]: v } } }));
+  const small = { fontSize: 11, color: 'var(--dim)', fontWeight: 700, display: 'block', marginBottom: 4 };
+
+  return (
+    <PortalCard title="Accounting export codes">
+      <div style={{ fontSize: 12.5, color: 'var(--dim)', marginBottom: 12 }}>
+        Codes from your own Xero, MYOB or QuickBooks, used by Finance → Accounting export.
+        {ACCOUNTING_EXPORT_MOCK && ' Mockup: saved in this browser tab only until the export ships.'}
+      </div>
+      {err && <div style={{ marginBottom: 10 }}><PortalError message={err} /></div>}
+      {!cfg || centres.loading ? <PortalEmpty message="Loading…" /> : (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+            <label><span style={small}>Default sales account (client claims)</span>
+              <input className="input" maxLength={20} value={cfg.sales_account_code || ''}
+                onChange={(e) => setCfg((c) => ({ ...c, sales_account_code: e.target.value }))} /></label>
+            <label><span style={small}>Default bills account (claims, supplier invoices, POs)</span>
+              <input className="input" maxLength={20} value={cfg.bills_account_code || ''}
+                onChange={(e) => setCfg((c) => ({ ...c, bills_account_code: e.target.value }))} /></label>
+          </div>
+          <span style={small}>Tax codes in your accounting package</span>
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 14, fontSize: 13 }}>
+            <thead><tr><th style={{ ...small, textAlign: 'left' }}>Treatment</th><th style={{ ...small, textAlign: 'left' }}>On sales</th><th style={{ ...small, textAlign: 'left' }}>On bills</th></tr></thead>
+            <tbody>
+              {GST_TREATMENTS.map((t) => (
+                <tr key={t.k}>
+                  <td style={{ padding: '4px 8px 4px 0' }}>{t.label}</td>
+                  {['sales', 'bills'].map((dir) => (
+                    <td key={dir} style={{ padding: '4px 8px 4px 0' }}>
+                      <input className="input" maxLength={40} value={cfg.gst_code_map?.[dir]?.[t.k] || ''} onChange={(e) => setMap(dir, t.k, e.target.value)} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <span style={small}>Account code per cost centre (overrides the bills default)</span>
+          {list.length === 0 ? <PortalEmpty message="No cost centres yet." /> : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 14 }}>
+              {list.map((c) => (
+                <div key={c.id} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 13.5 }}>
+                  <span style={{ fontFamily: 'var(--fm)', color: 'var(--brand)', fontWeight: 700, width: 90 }}>{c.code}</span>
+                  <span style={{ flex: 1 }}>{c.name}</span>
+                  <input className="input" maxLength={20} placeholder={cfg.bills_account_code ? `default ${cfg.bills_account_code}` : 'unmapped'}
+                    style={{ maxWidth: 140 }} value={codes[c.id] || ''} onChange={(e) => setCodes((x) => ({ ...x, [c.id]: e.target.value }))} />
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <button className="btn btn-primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save codes'}</button>
+            {saved && <span style={{ fontSize: 12, color: 'var(--green)' }}>{saved}</span>}
+          </div>
+        </>
+      )}
+    </PortalCard>
+  );
+}
+
 export default function FinanceSettingsPage() {
   return (
     <div style={{ padding: 20, maxWidth: 720 }}>
@@ -288,6 +379,8 @@ export default function FinanceSettingsPage() {
       <RateCardCard />
       <div style={{ height: 16 }} />
       <CostCentresCard />
+      <div style={{ height: 16 }} />
+      <ExportCodesCard />
     </div>
   );
 }

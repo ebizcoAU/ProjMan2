@@ -36,6 +36,22 @@ const round2 = (v) => Math.round(v * 100) / 100;
 const pad = (n) => String(n).padStart(2, '0');
 const dayStr = (daysAgo) => { const d = new Date(Date.now() - daysAgo * 86400000); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 
+export const GST_TREATMENTS = [
+  { k: 'gst', label: 'GST' }, { k: 'gst_free', label: 'GST-free' },
+  { k: 'input_taxed', label: 'Input taxed' }, { k: 'out_of_scope', label: 'Out of scope' },
+];
+// accounting_export_settings (§13.4). gst_code_map is split by direction here because a
+// package like Xero names sales and purchase tax codes differently ("GST on Income" vs
+// "GST on Expenses"); proposed to Server, which has it as one flat map so far.
+const settings = {
+  sales_account_code: '200', bills_account_code: '',
+  gst_code_map: {
+    sales: { gst: 'GST on Income', gst_free: 'GST Free Income', input_taxed: 'Input Taxed', out_of_scope: 'BAS Excluded' },
+    bills: { gst: 'GST on Expenses', gst_free: 'GST Free Expenses', input_taxed: 'Input Taxed', out_of_scope: 'BAS Excluded' },
+  },
+};
+const ccCodes = {}; // cost_centres.export_account_code, keyed by the real cost-centre id
+
 const exported = {}; // `${source_type}:${source_id}` → { exported_at, export_id }
 let samples = null;  // non-sales sample rows, built once from the seeded projects
 let exportSeq = 0;
@@ -49,7 +65,7 @@ function sampleRows() {
       const gst = round2(exGst * 0.1);
       samples.push({ kind, source_type, source_id: `${source_type}-${p.id}-${n}`, reference: extra.reference || `${source_type.slice(0, 3).toUpperCase()}-${p.code}-${n}`,
         date: dayStr(daysAgo), due_date: kind === 'purchase_orders' ? null : dayStr(daysAgo - 14), contact_name: contact, contact_abn: abn,
-        description, amount_ex_gst: exGst, gst_amount: gst, amount_inc_gst: round2(exGst + gst), gst_code: 'GST',
+        description, amount_ex_gst: exGst, gst_amount: gst, amount_inc_gst: round2(exGst + gst), gst_treatment: 'gst',
         account_code: extra.account_code ?? '', tracking, project_id: p.id, rcti: extra.rcti || 0, sop_state: extra.sop_state || null });
     };
     row('bills', 'progress_claim', 1, 20 + i, 'Coastline Builders Pty Ltd', '51 824 753 556', 'Progress claim 3: frame', 84000 + i * 5000, { account_code: '310', sop_state: 'NSW' });
@@ -69,7 +85,7 @@ function salesRows() {
         date: inv.issued_at.slice(0, 10), due_date: inv.due_at?.slice(0, 10) || null, contact_name: `Client, ${p.name}`, contact_abn: '',
         description: `${inv.milestone.replace('_', '-')} milestone claim (${Number(inv.percentage_of_contract)}% of contract)`,
         amount_ex_gst: inv.amount_ex_gst, gst_amount: inv.gst_amount, amount_inc_gst: inv.amount_inc_gst,
-        gst_code: inv.gst_amount > 0 ? 'GST' : 'FRE', account_code: '200', tracking: `${p.code} ${p.name}`, project_id: p.id, rcti: 0, sop_state: null };
+        gst_treatment: inv.gst_amount > 0 ? 'gst' : 'gst_free', account_code: '', tracking: `${p.code} ${p.name}`, project_id: p.id, rcti: 0, sop_state: null };
       if (inv.status !== 'void') return [base];
       // A voided issued claim exports as itself plus a credit row reversing it.
       return [base, { ...base, source_type: 'client_claim_void', source_id: `${inv.id}-void`, reference: `${inv.invoice_number}-CR`,
@@ -84,7 +100,15 @@ function selectRows(p) {
   if (p.project_id) rows = rows.filter((r) => r.project_id === p.project_id);
   if (p.from) rows = rows.filter((r) => r.date >= p.from);
   if (p.to) rows = rows.filter((r) => r.date <= p.to);
-  rows = rows.map((r) => ({ ...r, ...(exported[`${r.source_type}:${r.source_id}`] || { exported_at: null, export_id: null }) }));
+  // account_code: the cost centre's export code (sample rows carry one already, standing in
+  // for it), then the org default for the direction; blank means unmapped.
+  const dir = p.kind === 'sales' ? 'sales' : 'bills';
+  rows = rows.map(({ gst_treatment, ...r }) => ({
+    ...r,
+    account_code: r.account_code || settings[`${dir}_account_code`] || '',
+    gst_code: settings.gst_code_map[dir][gst_treatment] || '',
+    ...(exported[`${r.source_type}:${r.source_id}`] || { exported_at: null, export_id: null }),
+  }));
   const onlyNew = String(p.only_new ?? '1') !== '0';
   const already = rows.filter((r) => r.exported_at);
   if (onlyNew) rows = rows.filter((r) => !r.exported_at);
@@ -100,9 +124,8 @@ function toCsv(rows, format) {
     // Mock of Xero's invoice/bill import columns. O4: the real template gets checked before this ships.
     const head = ['*ContactName', '*InvoiceNumber', 'Reference', '*InvoiceDate', '*DueDate', 'Description', '*Quantity',
       '*UnitAmount', '*AccountCode', '*TaxType', 'TrackingName1', 'TrackingOption1'];
-    const tax = (r) => (r.gst_code === 'GST' ? (r.kind === 'sales' ? 'GST on Income' : 'GST on Expenses') : 'GST Free');
     return [head, ...rows.map((r) => [r.contact_name, r.reference, r.source_type, auDate(r.date), auDate(r.due_date || r.date),
-      r.description, 1, r.amount_ex_gst, r.account_code, tax(r), 'Project', r.tracking])].map((l) => l.map(csvCell).join(',')).join('\n');
+      r.description, 1, r.amount_ex_gst, r.account_code, r.gst_code, 'Project', r.tracking])].map((l) => l.map(csvCell).join(',')).join('\n');
   }
   return [ROW_COLUMNS, ...rows.map((r) => ROW_COLUMNS.map((c) => r[c]))].map((l) => l.map(csvCell).join(',')).join('\n');
 }
@@ -123,6 +146,24 @@ const mock = {
     rows.forEach((r) => { exported[`${r.source_type}:${r.source_id}`] = { exported_at: at, export_id: exportId }; });
     return Promise.resolve(new Blob([toCsv(rows, p.format)], { type: 'text/csv' }));
   },
+  settings: () => ok(JSON.parse(JSON.stringify(settings))),
+  saveSettings: (body) => {
+    Object.assign(settings, {
+      sales_account_code: (body.sales_account_code || '').trim(), bills_account_code: (body.bills_account_code || '').trim(),
+      gst_code_map: body.gst_code_map || settings.gst_code_map,
+    });
+    return mock.settings();
+  },
+  setCostCentreCode: (ccId, code) => {
+    if (code && code.length > 20) return fail(400, 'VALIDATION_ERROR', 'export_account_code is at most 20 characters');
+    ccCodes[ccId] = code || null;
+    return ok({ id: ccId, export_account_code: ccCodes[ccId] });
+  },
 };
+
+// Mock: the real GET /cost-centres has no export_account_code until R4, so overlay the
+// mock's codes. Identity once live.
+export const withExportCodes = (centres) => (ACCOUNTING_EXPORT_MOCK
+  ? centres.map((c) => ({ ...c, export_account_code: ccCodes[c.id] ?? c.export_account_code ?? null })) : centres);
 
 export const accountingExportApi = ACCOUNTING_EXPORT_MOCK ? mock : accountingExportApiReal;

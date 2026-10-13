@@ -448,6 +448,11 @@ export const clientInvoicesApiReal = {
 export const accountingExportApiReal = {
   preview:  (params) => request('GET', `/accounting-export/preview${qs(params || {})}`),
   download: (params) => fetchAuthedBlob(`/accounting-export${qs(params || {})}`),
+  // The builder's own account codes from their accounting package (§13.4), not ProjMan's
+  // chart of accounts: org defaults + GST code map, and a code per cost centre. money.write.
+  settings:          ()           => request('GET',   '/accounting-export/settings'),
+  saveSettings:      (body)       => request('PUT',   '/accounting-export/settings', body),
+  setCostCentreCode: (ccId, code) => request('PATCH', `/cost-centres/${ccId}`, { export_account_code: code }),
 };
 
 // Checklists (xprojman-46, v047). Templates are org-wide: author them here, the App
