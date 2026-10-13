@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -8,12 +7,13 @@ import '../../services/nexus_service.dart';
 import '../../services/session_service.dart';
 import '../../widgets/auth_scaffold.dart';
 import '../../widgets/auth_extras.dart';
+import 'join_qr_payload.dart';
 
 /// Joining-device side of pairing (projman-01 §1.3). This device has no session
 /// yet — the scanned nonce is its credential. Scan the primary's QR → POST
 /// `/pairing/request` → poll `/pairing/status` until confirmed → receive the
 /// role (and tokens, or a prompt to log in). Reached from Welcome → "Join with a
-/// QR code".
+/// QR code". Scans are routed by `typ` first ([JoinQrPayload]).
 class JoinDeviceScreen extends StatefulWidget {
   const JoinDeviceScreen({super.key});
 
@@ -29,6 +29,7 @@ class _JoinDeviceScreenState extends State<JoinDeviceScreen> {
   String? _requestId;
   String? _role;
   Timer? _poll;
+  String? _lastNotice;
 
   @override
   void dispose() {
@@ -39,17 +40,24 @@ class _JoinDeviceScreenState extends State<JoinDeviceScreen> {
   Future<void> _onDetect(BarcodeCapture capture) async {
     if (_handled) return;
     final raw = capture.barcodes.isEmpty ? null : capture.barcodes.first.rawValue;
-    if (raw == null || raw.isEmpty) return;
-
-    Map<String, dynamic>? payload;
-    try {
-      payload = jsonDecode(raw) as Map<String, dynamic>;
-    } catch (_) {
-      return; // not our QR — keep scanning
+    final qr = JoinQrPayload.parse(raw);
+    switch (qr.kind) {
+      case JoinQrKind.notOurs:
+        return; // keep scanning
+      case JoinQrKind.clientInvite:
+        // Preview/redeem flow lands once Server ships /client-invites/* (xprojman-50 §3).
+        _noticeOnce(raw!,
+            'This is a customer invite. Joining a project with it is coming '
+            'in an update to the app.');
+        return;
+      case JoinQrKind.otherType:
+        _noticeOnce(raw!, "This code isn't for this screen.");
+        return;
+      case JoinQrKind.devicePair:
+        break;
     }
-    final id = payload['id']?.toString();
-    final nonce = payload['nonce']?.toString();
-    if (id == null || nonce == null) return;
+    final id = qr.id!;
+    final nonce = qr.nonce!;
 
     _handled = true;
     setState(() => _phase = _Phase.waiting);
@@ -63,6 +71,13 @@ class _JoinDeviceScreenState extends State<JoinDeviceScreen> {
     }
     _requestId = id;
     _startPolling();
+  }
+
+  /// The camera reports the same code many times a second — say it once.
+  void _noticeOnce(String raw, String message) {
+    if (_lastNotice == raw) return;
+    _lastNotice = raw;
+    showAuthSnack(context, message);
   }
 
   void _startPolling() {
