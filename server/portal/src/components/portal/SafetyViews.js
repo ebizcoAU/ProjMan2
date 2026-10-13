@@ -18,10 +18,13 @@ import { safetyApi, SAFETY_MOCK, KIND_LABEL, REGISTER_KINDS, REGISTER_KIND_LABEL
 const SEV_COLOR = { high: 'var(--red)', medium: 'var(--text)', low: 'var(--dim)' };
 const STATUS_BADGE = { open: 'badge-revoked', in_progress: 'badge-pending', closed: 'badge-active' };
 const TREATMENT = { none: 'None', first_aid: 'First aid', medical: 'Medical treatment', hospital: 'Hospital', fatality: 'Fatality' };
-const dt = (v) => (v ? new Date(v).toLocaleString('en-AU', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
-const d  = (v) => (v ? new Date(v).toLocaleDateString('en-AU') : '—');
+// The API returns DATETIMEs as 'YYYY-MM-DD HH:MM:SS' wall-clock strings (dateStrings),
+// not ISO. The 'T' makes every browser parse them as local time (Safari rejects the space).
+const parse = (v) => new Date(String(v).replace(' ', 'T'));
+const dt = (v) => (v ? parse(v).toLocaleString('en-AU', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
+const d  = (v) => (v ? parse(v).toLocaleDateString('en-AU') : '—');
 const errMsg = (e) => e?.response?.data?.message || e?.message || 'Something went wrong';
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const todayIso = () => new Date().toLocaleDateString('en-CA'); // local YYYY-MM-DD (UTC lags AU by a day before 10am)
 
 export function SafetyMockBanner() {
   if (!SAFETY_MOCK) return null;
@@ -148,7 +151,7 @@ export function SafetyEventDetail({ eventId, onChanged, onClose }) {
       const res = await safetyApi.event(eventId);
       const e = res?.data?.data?.safety_event;
       setEv(e);
-      setNotif({ notified_at: e?.notified_at ? String(e.notified_at).slice(0, 16) : '', regulator_reference: e?.regulator_reference || '' });
+      setNotif({ notified_at: e?.notified_at ? String(e.notified_at).replace(' ', 'T').slice(0, 16) : '', regulator_reference: e?.regulator_reference || '' });
     } catch (e) { setErr(errMsg(e)); }
   }, [eventId]);
   useEffect(() => { setEv(null); load(); }, [load]);
@@ -218,7 +221,7 @@ export function SafetyEventDetail({ eventId, onChanged, onClose }) {
                   onChange={(e) => setNotif((n) => ({ ...n, regulator_reference: e.target.value }))} />
               </label>
               <button className="btn btn-primary" disabled={busy} onClick={() => run(() => safetyApi.setNotifiable(ev.id, {
-                notified_at: notif.notified_at ? new Date(notif.notified_at).toISOString() : null,
+                notified_at: notif.notified_at ? `${notif.notified_at.replace('T', ' ')}:00` : null, // same wall-clock form the API returns
                 regulator_reference: notif.regulator_reference.trim() || null,
               }))}>Save</button>
               <button className="btn btn-ghost" disabled={busy} onClick={async () => {
