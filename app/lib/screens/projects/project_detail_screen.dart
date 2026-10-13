@@ -4,6 +4,7 @@ import '../../config/app_theme.dart';
 import '../../config/router.dart';
 import '../../models/domain.dart';
 import '../../services/project_service.dart';
+import 'client_signoff_screen.dart';
 
 /// Project detail = the 18-stage lifecycle tracker (appspec §5.2, the Projects-
 /// tab backbone). Shows every stage's gate state (active / blocked-awaiting-
@@ -264,6 +265,17 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
               ],
             ),
           ),
+          if (s.seq == 18)
+            TextButton.icon(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => ClientSignoffScreen(
+                  projectId: widget.projectId,
+                  projectName: _project?.name ?? 'Project',
+                ),
+              )),
+              icon: const Icon(Icons.draw_outlined, size: 16),
+              label: const Text('Client sign-off'),
+            ),
           if (s.isHoldPoint)
             Tooltip(
               message: s.isValidated
