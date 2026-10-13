@@ -41,6 +41,7 @@ const suppliersRoutes = require('./routes/suppliers');
 const costCentresRoutes = require('./routes/costCentres');
 const financeRoutes = require('./routes/finance');
 const clientClaimRoutes = require('./routes/clientClaims');
+require('./services/TaskCodeService'); // registers the SYS+ task hooks (xprojman-56)
 const accountsRoutes = require('./routes/accounts');
 const documentsRoutes = require('./routes/documents');
 const adminRoutes = require('./routes/admin');

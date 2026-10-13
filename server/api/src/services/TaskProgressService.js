@@ -13,6 +13,7 @@
 const { v4: uuidv4 } = require('uuid');
 const pool = require('../db/pool');
 const { ServiceError } = require('./errors');
+const TaskCodeService = require('./TaskCodeService');
 const access = require('../lib/access');
 const { isProjectMember } = require('../lib/scope');
 const AttestationService = require('./AttestationService');
@@ -40,11 +41,12 @@ async function guardPush({ wireName, operation, id, safe, actor }) {
   let current;
   if (operation !== 'create') {
     const [[row]] = await pool.query(
-      'SELECT status, assigned_to FROM tasks WHERE id = ? AND org_id = ? LIMIT 1',
+      'SELECT status, assigned_to, auto_event FROM tasks WHERE id = ? AND org_id = ? LIMIT 1',
       [id, actor.orgId]
     );
     current = row;
   }
+  TaskCodeService.assertNotSystemStep(current); // xprojman-56: SYS+ steps are ticked by the server
   if (current && (current.status === 'cancelled' || current.status === 'n_a')) {
     delete safe.completion;
     return;
@@ -87,6 +89,7 @@ async function verify({ orgId, projectId, taskId, actor }) {
     [taskId, projectId, orgId]
   );
   if (!task) throw new ServiceError('NOT_FOUND', 'Task not found', 404);
+  TaskCodeService.assertNotSystemStep(task);
 
   if (access.scopeClassFor(actor.role) !== 'portfolio') {
     const member = await isProjectMember(pool, { orgId, userId: actor.userId, projectId });
@@ -139,10 +142,11 @@ async function updateOfficeFields({ orgId, projectId, taskId, actor, outputNote,
     throw new ServiceError('FORBIDDEN', 'Requires permission: projects.write', 403);
   }
   const [[task]] = await pool.query(
-    'SELECT id FROM tasks WHERE id = ? AND project_id = ? AND org_id = ? AND is_deleted = 0 LIMIT 1',
+    'SELECT id, auto_event FROM tasks WHERE id = ? AND project_id = ? AND org_id = ? AND is_deleted = 0 LIMIT 1',
     [taskId, projectId, orgId]
   );
   if (!task) throw new ServiceError('NOT_FOUND', 'Task not found', 404);
+  if (status !== undefined) TaskCodeService.assertNotSystemStep(task);
 
   if (access.scopeClassFor(actor.role) !== 'portfolio') {
     const member = await isProjectMember(pool, { orgId, userId: actor.userId, projectId });
@@ -203,15 +207,17 @@ async function createTask({ orgId, projectId, actor, stageId, name, predecessorI
   );
 
   const id = uuidv4();
+  // xprojman-56: a minted code, never one the library reserves and never a letter suffix.
+  const code = await TaskCodeService.mint(pool, { orgId, stageId });
   await pool.query(
     `INSERT INTO tasks
-       (id, org_id, project_id, stage_id, name, seq, status, predecessor_id, assigned_to, budget_hours,
+       (id, org_id, project_id, stage_id, name, seq, code, status, predecessor_id, assigned_to, budget_hours,
         updated_at, server_updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'not_started', ?, ?, ?, ?, NOW(3))`,
-    [id, orgId, projectId, stageId, name.trim(), nextSeq, predecessorId || null, assignedTo || null,
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'not_started', ?, ?, ?, ?, NOW(3))`,
+    [id, orgId, projectId, stageId, name.trim(), nextSeq, code, predecessorId || null, assignedTo || null,
      budgetHours || null, Date.now()]
   );
-  return { id, seq: nextSeq, code: `S${stage.seq}.${nextSeq}` };
+  return { id, seq: nextSeq, code };
 }
 
 module.exports = { guardPush, verify, updateOfficeFields, createTask };

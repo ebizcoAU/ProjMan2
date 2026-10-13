@@ -120,6 +120,10 @@ async function respond({ orgId, projectId, jobAwardId, actor, accept, surface })
           WHERE id = ? AND org_id = ?`,
         [projectId, orgId]
       );
+      // xprojman-56 SYS+ steps: S9.8 (tech docs to the crew) and S9.10 (stages 10–18 activated).
+      const TaskCodeService = require('./TaskCodeService');
+      await TaskCodeService.autoTick(orgId, projectId, 'job_award_accepted');
+      await TaskCodeService.autoTick(orgId, projectId, 'programme_activated');
     }
     // xprojman-44 Module C: the actual writer subcontractor_engagements (migration_v014)
     // never had. Consent defaults FALSE per that table's own column default — never

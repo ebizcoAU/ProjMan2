@@ -35,12 +35,12 @@ async function call(method, path, body, token) {
   return { status: res.status, json };
 }
 
-// Expected per-stage {task count, hold-point count} — the exact shape of
-// docs/researchPaper/18Stage_Tasks.md, not just a 139/15 total.
+// Expected per-stage {task count, hold-point count}: the v3.4 library after xprojman-56 (v052,
+// b43db9d's alignment), 148 rows / 15 hold points. Was v034's 139 before the re-key.
 const EXPECTED = {
-  1: [7, 0], 2: [8, 0], 3: [5, 0], 4: [4, 0], 5: [3, 0], 6: [6, 0], 7: [5, 0],
-  8: [8, 1], 9: [10, 0], 10: [7, 1], 11: [11, 3], 12: [9, 3], 13: [10, 3],
-  14: [7, 0], 15: [8, 2], 16: [10, 1], 17: [9, 0], 18: [12, 1],
+  1: [8, 0], 2: [9, 0], 3: [5, 0], 4: [4, 0], 5: [2, 0], 6: [8, 0], 7: [5, 0],
+  8: [8, 1], 9: [12, 0], 10: [6, 1], 11: [12, 3], 12: [10, 3], 13: [11, 3],
+  14: [7, 0], 15: [8, 2], 16: [10, 1], 17: [9, 0], 18: [14, 1],
 };
 
 (async () => {
@@ -61,7 +61,7 @@ const EXPECTED = {
 
   const tplDetail = await call('GET', `/stage-templates/${wa18.id}`, undefined, pm);
   const taskItems = tplDetail.json.data?.taskItems || [];
-  ok('template read returns 139 task items', taskItems.length === 139, taskItems.length);
+  ok('template read returns 148 task items (v3.4 library, v052)', taskItems.length === 148, taskItems.length);
   ok('template read returns 15 hold-point task items',
     taskItems.filter((t) => t.is_hold_point).length === 15,
     taskItems.filter((t) => t.is_hold_point).length);
@@ -76,7 +76,7 @@ const EXPECTED = {
   const detail = await call('GET', `/projects/${projId}`, undefined, pm);
   const stages = detail.json.data?.stages || [];
   const tasks = detail.json.data?.tasks || [];
-  ok('exactly 139 tasks stamped', tasks.length === 139, tasks.length);
+  ok('exactly 148 tasks stamped', tasks.length === 148, tasks.length);
 
   const byTemplateId = new Map(taskItems.map((t) => [t.id, t]));
   let shapeOk = true, shapeDetail = '';

@@ -153,10 +153,11 @@ async function getProject({ orgId, role, userId, id }) {
   // `code` NULL — "not captured", same posture as description/is_outsourced, not
   // an error. `stt` stays joined only for `actor_role` (informational template
   // metadata still worth exposing; `code`/`seq` no longer come from it).
+  // xprojman-56 (v052): `code` is stored (t.code, in t.*) — never derived from seq again. Tasks
+  // still without one (App-created before a push round-trip, or legacy collisions) are minted here.
+  await require('./TaskCodeService').ensureCodes(orgId, id);
   const [tasks] = await pool.query(
-    `SELECT t.*, u.full_name AS assigned_to_name, stt.actor_role AS template_actor_role,
-            CASE WHEN t.seq IS NOT NULL AND ps.seq IS NOT NULL
-                 THEN CONCAT('S', ps.seq, '.', t.seq) END AS code
+    `SELECT t.*, u.full_name AS assigned_to_name, stt.actor_role AS template_actor_role
        FROM tasks t
        LEFT JOIN users u ON u.id = t.assigned_to
        LEFT JOIN stage_task_templates stt ON stt.id = t.template_item_id

@@ -91,10 +91,12 @@ async function evaluateRequirement(orgId, projectId) {
     await pool.query(
       `UPDATE hold_point_requirements SET status = 'satisfied', satisfied_by = ?, satisfied_at = NOW() WHERE id = ?`,
       [latest.witnessed_by || latest.signer_user_id, req.id]);
+    await require('./TaskCodeService').autoTick(orgId, projectId, 'client_signoff'); // the S18.14 task (xprojman-56)
   } else if (!met && req.status === 'satisfied') {
     await pool.query(
       `UPDATE hold_point_requirements SET status = 'open', satisfied_by = NULL, satisfied_at = NULL WHERE id = ?`,
       [req.id]);
+    await require('./TaskCodeService').autoTick(orgId, projectId, 'client_signoff', { done: false });
   }
 }
 

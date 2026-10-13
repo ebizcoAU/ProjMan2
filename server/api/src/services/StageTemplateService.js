@@ -107,7 +107,7 @@ async function instantiate({ orgId, projectId, templateId, actorUserId }) {
       // themselves (§ decision: match current behaviour, don't open the S9.10
       // seed-timing question here — serverdesignspecification.md §14.3).
       const [taskTemplates] = await conn.query(
-        `SELECT id, seq, code, name, actor_role FROM stage_task_templates
+        `SELECT id, seq, code, name, actor_role, auto_event FROM stage_task_templates
           WHERE template_id = ? AND stage_seq = ? ORDER BY seq`,
         [templateId, it.seq]
       );
@@ -117,10 +117,12 @@ async function instantiate({ orgId, projectId, templateId, actorUserId }) {
         // MAX(seq)+1 within the stage) and an explicit `status` — going forward
         // every task gets one at creation, not just via the one-time v038
         // backfill of rows that predate this column.
+        // xprojman-56 (v052): the code is STORED (v3.4 numbering, letter suffixes allowed) and no
+        // longer baked into the name; SYS+ rows carry their auto_event (ticked by the server).
         await conn.query(
-          `INSERT INTO tasks (id, org_id, project_id, stage_id, name, template_item_id, seq, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'not_started')`,
-          [uuidv4(), orgId, projectId, stageId, `${t.code} ${t.name}`, t.id, t.seq]
+          `INSERT INTO tasks (id, org_id, project_id, stage_id, name, template_item_id, seq, code, auto_event, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'not_started')`,
+          [uuidv4(), orgId, projectId, stageId, t.name, t.id, t.seq, t.code, t.auto_event || null]
         );
       }
     }

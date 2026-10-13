@@ -23,6 +23,8 @@ const QualityOpsService = require('./QualityOpsService');
 const ChecklistService = require('./ChecklistService');
 const SafetyService = require('./SafetyService');
 const HandoverService = require('./HandoverService');
+const TaskCodeService = require('./TaskCodeService');
+const stageHooks = require('./stageHooks');
 const TaskProgressService = require('./TaskProgressService');
 const mqttClient = require('../mqtt/client');
 
@@ -297,6 +299,19 @@ async function pushRecord({ orgId, userId, deviceUid, role, surface, wireName, o
       await ChecklistService.afterPush({
         wireName, operation, id: incoming.id, safe, actor: { orgId, userId, role },
       });
+    }
+    // xprojman-56: an App-created task gets its server-minted code on push.
+    if (wireName === 'tasks' && operation === 'create') {
+      const [[t]] = await pool.query('SELECT stage_id, code FROM tasks WHERE id = ? AND org_id = ? LIMIT 1', [incoming.id, orgId]);
+      if (t && !t.code && t.stage_id) {
+        const code = await TaskCodeService.mint(pool, { orgId, stageId: t.stage_id });
+        if (code) await pool.query('UPDATE tasks SET code = ?, server_updated_at = NOW(3) WHERE id = ?', [code, incoming.id]);
+      }
+    }
+    // A stage completed over sync fires the same onStageCompleted hook as the REST /advance.
+    if (wireName === 'project_stages' && safe.status === 'complete') {
+      const [[st]] = await pool.query('SELECT * FROM project_stages WHERE id = ? AND org_id = ? LIMIT 1', [incoming.id, orgId]);
+      if (st) await stageHooks.fire('onStageCompleted', { orgId, projectId: st.project_id, stage: st, actor: { orgId, userId, role } });
     }
     // S18.14: re-evaluate the Stage 18 gate; a row on a stale pack is kept but answered
     // PACK_CHANGED (409, terminal for that row) so the device asks for a new signature.

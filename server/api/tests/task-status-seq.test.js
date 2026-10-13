@@ -74,10 +74,10 @@ async function pairAs(admin, userId, role, uid) {
   // ── 1. Seeded tasks: status + code at instantiation, no migration needed ──
   ok('seeded tasks all start not_started', stage1Tasks.every((t) => t.status === 'not_started'),
     JSON.stringify(stage1Tasks.map((t) => t.status)));
-  ok('Stage 1 has exactly 7 seeded tasks S1.1-S1.7', stage1Tasks.length === 7, stage1Tasks.length);
+  ok('Stage 1 has exactly 8 seeded tasks (v3.4 library, v052)', stage1Tasks.length === 8, stage1Tasks.length);
   const codes = stage1Tasks.map((t) => t.code).sort();
-  ok('codes are S1.1..S1.7, computed from own seq + stage seq (no template join needed)',
-    JSON.stringify(codes) === JSON.stringify(['S1.1', 'S1.2', 'S1.3', 'S1.4', 'S1.5', 'S1.6', 'S1.7']),
+  ok('codes are the STORED v3.4 codes, letter suffixes included (xprojman-56)',
+    JSON.stringify(codes) === JSON.stringify(['S1.1', 'S1.1a', 'S1.2', 'S1.2a', 'S1.3', 'S1.4', 'S1.6', 'S1.7']),
     JSON.stringify(codes));
 
   const s1_1 = stage1Tasks.find((t) => t.code === 'S1.1');
@@ -160,11 +160,11 @@ async function pairAs(admin, userId, role, uid) {
   // ── 5. POST /projects/:id/tasks — continues the same Sx.y numbering ──
   const add1 = await call('POST', `/projects/${projId}/tasks`, { stage_id: stage1.id, name: 'Other custom Task1' }, pm);
   ok('custom task created (201)', add1.status === 201, JSON.stringify(add1.json));
-  ok('custom task gets seq=8, continuing after the 7 seeded tasks', add1.json.data?.seq === 8, JSON.stringify(add1.json));
-  ok('custom task code is S1.8', add1.json.data?.code === 'S1.8', JSON.stringify(add1.json));
+  ok('custom task gets seq=9, ordered after the 8 seeded tasks', add1.json.data?.seq === 9, JSON.stringify(add1.json));
+  ok('custom task code is minted S1.8 (above the library\'s highest S1.7)', add1.json.data?.code === 'S1.8', JSON.stringify(add1.json));
 
   const add2 = await call('POST', `/projects/${projId}/tasks`, { stage_id: stage1.id, name: 'Task2' }, pm);
-  ok('a second custom task continues at seq=9 (S1.9)', add2.json.data?.seq === 9 && add2.json.data?.code === 'S1.9',
+  ok('a second custom task continues at seq=10 (S1.9)', add2.json.data?.seq === 10 && add2.json.data?.code === 'S1.9',
     JSON.stringify(add2.json));
 
   after = await call('GET', `/projects/${projId}`, undefined, pm);
