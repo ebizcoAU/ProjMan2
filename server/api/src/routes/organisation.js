@@ -28,6 +28,7 @@ const { audit } = require('../lib/audit');
 const { validateAbn } = require('../lib/abn');
 const access = require('../lib/access');
 const { sendError } = require('../services/errors');
+const { publicFeatures } = require('../lib/features');
 const CostingService = require('../services/CostingService');
 
 // Assignability lives in the roles table now (§9.2): a role a user may be given must
@@ -76,7 +77,8 @@ router.get('/', async (req, res) => {
       [req.auth.orgId, req.auth.orgId]
     );
 
-    return res.json({ success: true, data: { organisation: org, counts } });
+    // features: which accounting surfaces are on (xprojman-43 §13.5), so Portal hides the nav.
+    return res.json({ success: true, data: { organisation: org, counts, features: publicFeatures() } });
   } catch (err) {
     console.error('[ORG/GET] Error:', err.message);
     return res.status(500).json({ success: false, message: 'Failed to load organisation' });

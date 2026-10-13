@@ -26,6 +26,7 @@ const { validationResult } = require('express-validator');
 
 const { authenticate, requirePermission } = require('../middleware/auth');
 const { sendError } = require('../services/errors');
+const { requireFeature } = require('../lib/features');
 const { audit } = require('../lib/audit');
 const TaxService = require('../services/TaxService');
 const TparService = require('../services/TparService');
@@ -48,6 +49,11 @@ function validation(req, res) {
 }
 
 const actorOf = (req) => ({ role: req.auth.role, userId: req.auth.userId, isOrgOwner: req.auth.isOrgOwner });
+
+// xprojman-43 §13.5: BAS and depreciation are hidden when their flags are off; TPAR keeps its
+// register and export, and only "lodge" is hidden.
+router.use('/bas', requireFeature('bas'));
+router.use('/depreciation', requireFeature('depreciation'));
 
 router.get('/bas', canReadAccounts, async (req, res) => {
   try {
@@ -144,7 +150,7 @@ router.get('/tpar/:id', canReadAccounts, async (req, res) => {
   } catch (err) { return sendError(res, err); }
 });
 
-router.post('/tpar/:id/lodge', canApproveTax, async (req, res) => {
+router.post('/tpar/:id/lodge', requireFeature('tparLodge'), canApproveTax, async (req, res) => {
   try {
     const result = await TparService.lodge({
       orgId: req.auth.orgId, reportId: req.params.id, actor: actorOf(req) });

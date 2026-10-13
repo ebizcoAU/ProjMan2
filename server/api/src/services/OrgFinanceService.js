@@ -24,6 +24,7 @@
 
 const { v4: uuidv4 } = require('uuid');
 const pool = require('../db/pool');
+const { isOn } = require('../lib/features');
 const { ServiceError } = require('./errors');
 const access = require('../lib/access');
 
@@ -302,6 +303,8 @@ async function resolveExpenseAccount({ orgId, taskId }) {
  * is a no-op, not a duplicate posting.
  */
 async function postEntry({ orgId, projectId, debitAccountId, creditAccountId, amount, refType, refId, memo, entryDate }) {
+  // xprojman-43 §13.5: with the tenant ledger off, the auto-posting hooks do nothing.
+  if (!isOn('tenantLedger')) return;
   if (!debitAccountId || !creditAccountId || !(Number(amount) > 0)) return;
   const [[dup]] = await pool.query(
     'SELECT id FROM org_journal WHERE org_id = ? AND ref_type = ? AND ref_id = ? LIMIT 1',

@@ -44,6 +44,7 @@ const StageTemplateService = require('../services/StageTemplateService');
 const StageProgressionService = require('../services/StageProgressionService');
 const InspectionService = require('../services/InspectionService');
 const HandoverService = require('../services/HandoverService');
+const { requireFeature } = require('../lib/features');
 const TaskProgressService = require('../services/TaskProgressService');
 const JobAwardService = require('../services/JobAwardService');
 const HoldPointService = require('../services/HoldPointService');
@@ -1392,6 +1393,8 @@ router.get('/:id/brief-snapshots/:sid', async (req, res) => {
 });
 
 // ── Accounting P8a — Fixed assets & depreciation (serverdesignspec §11.2, v022) ─────
+// Hidden when FEATURE_DEPRECIATION is off (xprojman-43 §13.5; S18.12 stopped blocking in v050).
+router.use('/:id/fixed-assets', requireFeature('depreciation'));
 // S18.11 = the system-prepared draft; S18.12 = the accountant's tax.approve write.
 // Asset entry is an explicit declaration (money.write) — see the decision note at the top
 // of DepreciationService for why deriving from capital supplier_invoices is not buildable yet.

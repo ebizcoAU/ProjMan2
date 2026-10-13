@@ -17,11 +17,14 @@ const router = require('express').Router();
 const { body, validationResult } = require('express-validator');
 
 const { authenticate } = require('../middleware/auth');
+const { requireFeature } = require('../lib/features');
 const { sendError } = require('../services/errors');
 const { audit } = require('../lib/audit');
 const OrgFinanceService = require('../services/OrgFinanceService');
 
 router.use(authenticate);
+// Hidden when FEATURE_TENANT_LEDGER is off (xprojman-43 §13.5): books live in Xero/MYOB/QuickBooks.
+router.use(requireFeature('tenantLedger'));
 
 function validation(req, res) {
   const errors = validationResult(req);

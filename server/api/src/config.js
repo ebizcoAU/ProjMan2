@@ -187,4 +187,16 @@ module.exports = {
   googleMaps: {
     apiKey: process.env.GOOGLE_MAPS_API_KEY || null,
   },
+
+  // Accounting features hidden by the Owner's scope ruling (xprojman-43 §13.5): builders' books
+  // live in Xero/MYOB/QuickBooks, so ProjMan exports instead of keeping a ledger. Nothing is
+  // deleted; a flag that's off makes its routes 404 FEATURE_DISABLED and its hooks no-ops.
+  // Defaults are ON here so landing the code changes nothing: the lab and production turn them
+  // off in .env, together with Portal's NEXT_PUBLIC_ACCOUNTING_SCREENS (one coordinated restart).
+  features: {
+    tenantLedger: process.env.FEATURE_TENANT_LEDGER !== 'false', // org_journal posting + /finance/*
+    bas:          process.env.FEATURE_BAS !== 'false',           // /accounts/bas*
+    tparLodge:    process.env.FEATURE_TPAR_LODGE !== 'false',    // POST /accounts/tpar/:id/lodge (export stays)
+    depreciation: process.env.FEATURE_DEPRECIATION !== 'false',  // fixed-asset routes + depreciation export
+  },
 };
