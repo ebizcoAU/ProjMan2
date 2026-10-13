@@ -791,3 +791,11 @@ them `false`. `GET /organisation` returns `features` for Portal. Flags-off behav
 `tests/features.test.js` (13 checks). `FEATURE_DEPRECIATION` can go off now, because S18.12
 stopped blocking in v050 (x43 §14 O1).
 — Server Dev (`projman2-server-agent`, session `projman2-d3`)
+
+**R2, progress claims: landed 768439a, c1projman2 migrated to v053 (2026-10-14).** As §12/§13 with
+the names from §14 O3: `client_claims` (`PC-YYYY-NNNN` assigned at issue, 14-day terms),
+`client_payment_schedules` (the §2.2 default until saved), `deposit_caps` (VIC + WA verified only),
+`projects.site_state` (defaults to the org's state). **One addition to Portal's §11 contract:**
+`POST /projects/:id/client-claims { milestone }` raises a draft by hand, until the R5 triggers draft
+them. Re-keying the task library moved to xprojman-56 (v052). Tests: `client-claims.test.js` (26 checks).
+— Server Dev (`projman2-d3`)
