@@ -63,6 +63,11 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
         'STAGE_NOT_VALIDATED' =>
           'Blocked — an inspector must validate this hold point first.',
         'STAGE_GATE_PREV' => 'Finish the previous stage first.',
+        // Server v050: Stage 18 can't complete until the client's final
+        // sign-off is counted (S18.14, xprojman-51).
+        'HOLD_POINT_REQUIREMENTS_OPEN' when s.seq == 18 =>
+          'Blocked — the client\'s final sign-off is still needed. '
+              'Open "Client sign-off" on this stage.',
         _ => r.message ?? 'Could not advance the stage.',
       };
       ScaffoldMessenger.of(context)
