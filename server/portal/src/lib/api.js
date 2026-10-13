@@ -443,6 +443,13 @@ export const clientInvoicesApiReal = {
   saveSchedule:  (pid, schedule) => request('PUT',   `/projects/${pid}/payment-schedule`, { schedule }),
 };
 
+// Accounting export (xprojman-43 §13.4): construction money records out to Xero/MYOB/QBO.
+// Screens go through lib/accountingExport.js, which serves a mock until Server's R4.
+export const accountingExportApiReal = {
+  preview:  (params) => request('GET', `/accounting-export/preview${qs(params || {})}`),
+  download: (params) => fetchAuthedBlob(`/accounting-export${qs(params || {})}`),
+};
+
 // Checklists (xprojman-46, v047). Templates are org-wide: author them here, the App
 // runs them offline. System templates (is_system=1) are read-only; copy_from makes
 // an editable draft. Review reads are checklists.manage; the detail read embeds each

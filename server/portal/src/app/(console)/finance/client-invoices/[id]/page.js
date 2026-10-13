@@ -2,7 +2,6 @@
 // facts, and issue / adjust (draft), record payment / void (issued) for money.write.
 'use client';
 
-import { accountingGate } from '@/components/portal/AccountingGate';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { PortalCard }    from '@/components/portal/PortalCard';
@@ -14,7 +13,7 @@ import { projectsApi, authApi } from '@/lib/api';
 import { seedMockProjects } from '@/lib/clientInvoices';
 import { ClientInvoicesMockBanner, InvoiceDetail } from '@/components/portal/ClientInvoiceViews';
 
-function ClientInvoicePage() {
+export default function ClientInvoicePage() {
   const { id } = useParams();
   useTopbarOverride({ title: 'Client Invoice', subtitle: 'Finance', backHref: '/finance/client-invoices' });
   const perms = usePortalData(() => authApi.permissions());
@@ -36,5 +35,3 @@ function ClientInvoicePage() {
     </div>
   );
 }
-
-export default accountingGate(ClientInvoicePage);

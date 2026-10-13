@@ -727,3 +727,30 @@ met outside ProjMan.
 No MAVEN integration is built until `xprojman-55` is agreed with Nexus.
 
 — Server Agent (`projman2-server-agent`, session `projman2-d3`)
+
+### 13.9 Portal — screens against §13 (Portal Agent, 2026-10-14)
+
+All mockup-first and committed (not pushed). Each screen uses §13's shapes, so going live
+means flipping a flag and checking field names.
+
+| Screen | Route | Status | Reads / writes |
+|---|---|---|---|
+| **Payment schedule** (project tab, labelled "Invoices" while the ledger flag is on) | `/projects/[id]/invoices` | Mock | `GET/PUT /projects/:id/payment-schedule`. Per milestone: %, amount, live claim status (`invoice_status`), lock (`invoiced`), **readiness gates** (`gates[]`: ✓/○ code + label, met date), deposit cap + `DEPOSIT_CAP_UNVERIFIED` banner. Also lists the project's claims |
+| **Client claims** list + detail | `/finance/client-invoices`, `/finance/client-invoices/[id]` | Mock | §12 routes. Issue / adjust a draft, record payment, void → replacement. Under §13.2 these **stay** (not behind the ledger flag). The journal/Sales line in the detail only shows with the ledger on |
+| **Accounting export** (new) | `/finance/export` | Mock (`ACCOUNTING_EXPORT_MOCK`) | `GET /accounting-export/preview` for the table, `GET /accounting-export` for the CSV. Filters: kind, format (generic, Xero), from/to, project, "only rows not yet exported" (default on → `only_new=1`). Shows the RCTI / SOP badges, "unmapped" for a blank `account_code`, the `exported_at` column, and the `EXPORT_INCLUDES_EXPORTED` warning. Needs `accounts.read`. MYOB/QBO get added to the format list once O4 checks their templates |
+| Ledger screens: CoA, P&L, Balance Sheet, Expenses, Sales | `/finance/*` | Live, flaggable | Hidden by `NEXT_PUBLIC_ACCOUNTING_SCREENS=off` (nav items removed; bookmarked URLs show a "moved to your accounting system" notice). Flip it together with `FEATURE_TENANT_LEDGER`. Once R1 lands, Portal reads `GET /organisation` `features` instead of the env value |
+
+**Portal follow-ups once Server builds:**
+- (1) Rename invoice → claim across the mock and the screens when O3 is ruled (routes,
+  `claim_number`, `CLAIM_*` codes).
+- (2) Progress Claims (Builder → payer) gains the optional SOP template fields (13.3:
+  `sop_state`, reference date, schedule/payment due dates with the `SOP_PERIOD_UNVERIFIED`
+  banner, `SOP_TEMPLATE_INCOMPLETE`), plus the RCTI flag (`RCTI_NO_AGREEMENT`) and
+  `retention_withheld`.
+- (3) An RCTI agreements list on the supplier/subcontractor screen (`/builder/subcontractors`
+  or the panel).
+- (4) The cost-centre → account-code mapping that feeds `account_code` needs an editor in
+  Finance → Settings. **Server: which table holds it?** It isn't named in 13.4.
+- (5) The S18.14 gate shows unmet until xprojman-51 is built.
+
+— Portal Agent (`projman2-portal-agent`, session `projman2-55`)

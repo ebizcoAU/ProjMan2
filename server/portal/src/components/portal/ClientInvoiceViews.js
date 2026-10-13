@@ -11,6 +11,7 @@ import { PortalKpi }   from '@/components/portal/PortalKpi';
 import { PortalEmpty } from '@/components/portal/PortalEmpty';
 import { PortalError } from '@/components/portal/PortalError';
 import { usePortalDialog } from '@/components/portal/PortalDialog';
+import { ACCOUNTING_SCREENS } from '@/lib/features';
 import {
   clientInvoicesApi, CLIENT_INVOICES_MOCK, MILESTONES, MILESTONE_LABEL, MILESTONE_TRIGGER,
 } from '@/lib/clientInvoices';
@@ -161,14 +162,22 @@ export function PaymentScheduleCard({ projectId, canWrite, onSaved }) {
  · {capText(cap, data.site_state)}
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead><tr><th style={th}>Milestone</th><th style={th}>Fires on</th><th style={thR}>%</th><th style={thR}>Amount (ex GST)</th></tr></thead>
+        <thead><tr><th style={th}>Milestone</th><th style={th}>Ready when</th><th style={thR}>%</th><th style={thR}>Amount (ex GST)</th></tr></thead>
         <tbody>
           {data.schedule.map((r) => {
             const locked = r.invoiced || !canWrite;
             return (
               <tr key={r.milestone}>
                 <td style={td}>{MILESTONE_LABEL[r.milestone]}{r.invoice_status && <span style={{ color: 'var(--dim)', fontSize: 11 }}> · {r.invoice_status}{r.invoiced ? ', locked' : ''}</span>}</td>
-                <td style={{ ...td, color: 'var(--dim)', fontSize: 12 }}>{MILESTONE_TRIGGER[r.milestone]}</td>
+                <td style={{ ...td, fontSize: 12 }}>
+                  {(r.gates || []).map((g) => (
+                    <div key={g.code} style={{ color: g.met ? 'var(--green)' : 'var(--dim)' }}
+                      title={g.met ? `Met ${d(g.met_at)}` : 'Not met yet'}>
+                      {g.met ? '✓' : '○'} <span style={{ fontFamily: 'var(--fm)' }}>{g.code}</span> {g.label}
+                    </div>
+                  ))}
+                  {!r.gates && <span style={{ color: 'var(--dim)' }}>{MILESTONE_TRIGGER[r.milestone]}</span>}
+                </td>
                 <td style={tdR}>
                   {locked ? `${r.percentage}%` : (
                     <input className="input" type="number" min="0" max="100" step="0.5" value={draft[r.milestone]}
@@ -298,7 +307,7 @@ export function InvoiceDetail({ invoiceId, canWrite }) {
         </div>
       )}
       <Warnings list={warnings} />
-      {inv.journal_entry_id && inv.status !== 'draft' && (
+      {ACCOUNTING_SCREENS && inv.journal_entry_id && inv.status !== 'draft' && (
         <div style={{ fontSize: 12, color: 'var(--dim)', marginBottom: 12 }}>
           Revenue posted to the journal on issue (accrual). See <Link href="/finance/sales" style={{ color: 'var(--brand)' }}>Sales</Link>.
         </div>

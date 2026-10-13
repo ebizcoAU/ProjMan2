@@ -118,8 +118,10 @@ export const CONSOLE_NAV = [
         { k: 'finance-bs',       href: '/finance/balance-sheet', label: 'Balance Sheet' },
         { k: 'finance-expenses', href: '/finance/expenses', label: 'Expenses' },
         { k: 'finance-sales',    href: '/finance/sales', label: 'Sales' },
-        { k: 'finance-invoices', href: '/finance/client-invoices', label: 'Client Invoices' },
       ] : []),
+      // Client claims stay either way: the construction record, exported to the books (x43 §13.2).
+      { k: 'finance-invoices', href: '/finance/client-invoices', label: 'Client Invoices' },
+      { k: 'finance-export',   href: '/finance/export', label: 'Accounting export' },
     ],
   },
 ];
@@ -184,6 +186,7 @@ const ICONS = {
   'finance-expenses': <><circle cx="7.5" cy="7.5" r="6" stroke="currentColor" strokeWidth="1.3" fill="none"/><path d="M7.5 4v7M9.6 5.8c0-.9-.9-1.4-2.1-1.4-1.2 0-2.1.6-2.1 1.4 0 1.9 4.2.9 4.2 2.8 0 .9-.9 1.4-2.1 1.4-1.2 0-2.1-.5-2.1-1.4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" fill="none"/></>,
   'finance-sales':    <><circle cx="7.5" cy="7.5" r="6" stroke="currentColor" strokeWidth="1.3" fill="none"/><path d="M7.5 4v7M9.6 5.8c0-.9-.9-1.4-2.1-1.4-1.2 0-2.1.6-2.1 1.4 0 1.9 4.2.9 4.2 2.8 0 .9-.9 1.4-2.1 1.4-1.2 0-2.1-.5-2.1-1.4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" fill="none"/></>,
   'finance-invoices': <><circle cx="7.5" cy="7.5" r="6" stroke="currentColor" strokeWidth="1.3" fill="none"/><path d="M7.5 4v7M9.6 5.8c0-.9-.9-1.4-2.1-1.4-1.2 0-2.1.6-2.1 1.4 0 1.9 4.2.9 4.2 2.8 0 .9-.9 1.4-2.1 1.4-1.2 0-2.1-.5-2.1-1.4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" fill="none"/></>,
+  'finance-export':   <><circle cx="7.5" cy="7.5" r="6" stroke="currentColor" strokeWidth="1.3" fill="none"/><path d="M7.5 4v7M9.6 5.8c0-.9-.9-1.4-2.1-1.4-1.2 0-2.1.6-2.1 1.4 0 1.9 4.2.9 4.2 2.8 0 .9-.9 1.4-2.1 1.4-1.2 0-2.1-.5-2.1-1.4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" fill="none"/></>,
 };
 
 function NavIcon({ k }) {

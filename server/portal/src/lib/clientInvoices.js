@@ -15,6 +15,16 @@ export const MILESTONES = ['deposit', 'base', 'frame', 'lock_up', 'fixing', 'com
 export const MILESTONE_LABEL = {
   deposit: 'Deposit', base: 'Base', frame: 'Frame', lock_up: 'Lock-up', fixing: 'Fixing', completion: 'Completion',
 };
+// Readiness gates per milestone (x43 §13.4): the statutory/stage events that must be met
+// before the claim is ready. S18.14 stays unmet until xprojman-51 (client sign-off) is built.
+const GATES = {
+  deposit: [['S9.7', 'Job Award accepted'], ['S9.9', 'Cost Plan locked']],
+  base: [['S12.10', 'Slab hold points cleared']],
+  frame: [['S13.11', 'Frame validated (engineer, surveyor, certificate)']],
+  lock_up: [['S14.7', 'Secured from weather (Site Supervisor)']],
+  fixing: [['S16.10', 'Final trade sign-off']],
+  completion: [['S18.3', 'Occupation certificate issued'], ['S18.14', 'Client final sign-off']],
+};
 // The stage that fires each milestone's draft (x43 §5, v3.4 codes per roles §8 #19).
 export const MILESTONE_TRIGGER = {
   deposit: 'Job Award accepted (S9.7)', base: 'S12 complete, slab validated', frame: 'S13 complete, frame approved',
@@ -217,8 +227,14 @@ const mock = {
     const invoiced = lockedMilestones(pid);
     return ok({
       // invoiced = the lock flag (issued or paid); invoice_status = the live invoice, voids excluded.
-      schedule: MILESTONES.map((m) => ({ milestone: m, percentage: s[m], invoiced: invoiced.has(m),
-        invoice_status: invoices.find((i) => i.project_id === pid && i.milestone === m && !i.is_deleted && i.status !== 'void')?.status || null })),
+      schedule: MILESTONES.map((m) => {
+        const live = invoices.find((i) => i.project_id === pid && i.milestone === m && !i.is_deleted && i.status !== 'void');
+        // Mock: a milestone with a claim has had its gates met (that's what drafted it).
+        const gates = GATES[m].map(([code, label]) => ({ code, label,
+          met: !!live && code !== 'S18.14', met_at: live && code !== 'S18.14' ? live.created_at : null }));
+        return { milestone: m, percentage: s[m], invoiced: invoiced.has(m), invoice_status: live?.status || null,
+          gates, ready: gates.every((g) => g.met) };
+      }),
       contract_value: p.contract_value, site_state: p.site_state, deposit_cap: depositCap(p.site_state, p.contract_value),
     });
   },
@@ -246,5 +262,9 @@ const mock = {
     return mock.schedule(pid).then((res) => ok(res.data.data, dep.warnings));
   },
 };
+
+// Read access for the accounting-export mock (lib/accountingExport.js), so its `sales` rows
+// are the same claims the Client Invoices screens show. Mock-only.
+export const mockStore = { projects, invoices };
 
 export const clientInvoicesApi = CLIENT_INVOICES_MOCK ? mock : clientInvoicesApiReal;
