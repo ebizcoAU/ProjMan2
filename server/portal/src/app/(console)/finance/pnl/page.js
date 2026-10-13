@@ -5,6 +5,7 @@
 // org with real expenses but zero recorded revenue is expected, not a bug.
 'use client';
 
+import { accountingGate } from '@/components/portal/AccountingGate';
 import { useState } from 'react';
 import { PortalCard }    from '@/components/portal/PortalCard';
 import { PortalKpi }     from '@/components/portal/PortalKpi';
@@ -17,7 +18,7 @@ import { financeApi } from '@/lib/api';
 const money = (v) => (v == null ? '—'
   : Number(v).toLocaleString('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }));
 
-export default function ProfitAndLossPage() {
+function ProfitAndLossPage() {
   const [range, setRange] = useState({ from: '', to: '' });
   const { data, loading, error } = usePortalData(
     () => financeApi.pnl(range.from || undefined, range.to || undefined),
@@ -64,3 +65,5 @@ export default function ProfitAndLossPage() {
     </div>
   );
 }
+
+export default accountingGate(ProfitAndLossPage);

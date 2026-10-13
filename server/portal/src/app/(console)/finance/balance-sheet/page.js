@@ -5,6 +5,7 @@
 // figure, cumulative net P&L to date — not a separate posted account.
 'use client';
 
+import { accountingGate } from '@/components/portal/AccountingGate';
 import { useState } from 'react';
 import { PortalCard }    from '@/components/portal/PortalCard';
 import { PortalKpi }     from '@/components/portal/PortalKpi';
@@ -17,7 +18,7 @@ import { financeApi } from '@/lib/api';
 const money = (v) => (v == null ? '—'
   : Number(v).toLocaleString('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }));
 
-export default function BalanceSheetPage() {
+function BalanceSheetPage() {
   const [asOf, setAsOf] = useState('');
   const { data, loading, error } = usePortalData(() => financeApi.balanceSheet(asOf || undefined), [asOf]);
   const report = data?.data;
@@ -56,3 +57,5 @@ export default function BalanceSheetPage() {
     </div>
   );
 }
+
+export default accountingGate(BalanceSheetPage);

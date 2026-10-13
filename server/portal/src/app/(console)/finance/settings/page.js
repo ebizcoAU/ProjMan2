@@ -24,6 +24,7 @@ import { PortalEmpty }   from '@/components/portal/PortalEmpty';
 import { PortalError }   from '@/components/portal/PortalError';
 import { usePortalData } from '@/components/portal/usePortalData';
 import { organisationApi, costCentresApi, financeApi } from '@/lib/api';
+import { ACCOUNTING_SCREENS } from '@/lib/features';
 
 const ACC_TYPES = ['asset', 'liability', 'equity', 'revenue', 'expense'];
 const ACC_TYPE_COLOR = {
@@ -283,8 +284,7 @@ export default function FinanceSettingsPage() {
         </div>
       </div>
 
-      <ChartOfAccountsCard />
-      <div style={{ height: 16 }} />
+      {ACCOUNTING_SCREENS && <><ChartOfAccountsCard /><div style={{ height: 16 }} /></>}
       <RateCardCard />
       <div style={{ height: 16 }} />
       <CostCentresCard />

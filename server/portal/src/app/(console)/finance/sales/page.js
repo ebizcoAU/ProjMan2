@@ -4,10 +4,11 @@
 // flagged gap) — this is the report's honest state, not a bug.
 'use client';
 
+import { accountingGate } from '@/components/portal/AccountingGate';
 import { JournalEntriesReport } from '@/components/portal/JournalEntriesReport';
 import { financeApi } from '@/lib/api';
 
-export default function SalesPage() {
+function SalesPage() {
   return (
     <JournalEntriesReport
       title="Sales"
@@ -18,3 +19,5 @@ export default function SalesPage() {
     />
   );
 }
+
+export default accountingGate(SalesPage);

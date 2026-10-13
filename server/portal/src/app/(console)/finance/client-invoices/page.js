@@ -3,6 +3,7 @@
 // money.read; the per-project view of the same rows is the project's Invoices tab.
 'use client';
 
+import { accountingGate } from '@/components/portal/AccountingGate';
 import { useEffect, useState } from 'react';
 import { PortalCard }    from '@/components/portal/PortalCard';
 import { PortalEmpty }   from '@/components/portal/PortalEmpty';
@@ -17,7 +18,7 @@ const FILTERS = [
   { k: 'overdue', label: 'Overdue' }, { k: 'paid', label: 'Paid' }, { k: 'void', label: 'Void' },
 ];
 
-export default function ClientInvoicesPage() {
+function ClientInvoicesPage() {
   const perms = usePortalData(() => authApi.permissions());
   const canRead = (perms.data?.data?.permissions || []).includes('money.read');
   const projects = usePortalData(() => projectsApi.list());
@@ -71,3 +72,5 @@ export default function ClientInvoicesPage() {
     </div>
   );
 }
+
+export default accountingGate(ClientInvoicesPage);

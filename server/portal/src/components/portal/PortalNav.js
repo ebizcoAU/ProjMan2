@@ -12,6 +12,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import { ACCOUNTING_SCREENS } from '@/lib/features';
 
 // ── Responsive font scale ─────────────────────────────────────────────────────
 function useScreenTier() {
@@ -111,11 +112,14 @@ export const CONSOLE_NAV = [
     group: 'FINANCE',
     items: [
       { k: 'finance-settings', href: '/finance/settings', label: 'Settings' },
-      { k: 'finance-pl',       href: '/finance/pnl', label: 'Profit & Loss' },
-      { k: 'finance-bs',       href: '/finance/balance-sheet', label: 'Balance Sheet' },
-      { k: 'finance-expenses', href: '/finance/expenses', label: 'Expenses' },
-      { k: 'finance-sales',    href: '/finance/sales', label: 'Sales' },
-      { k: 'finance-invoices', href: '/finance/client-invoices', label: 'Client Invoices' },
+      // User-accounting screens, hidden behind ACCOUNTING_SCREENS (lib/features.js).
+      ...(ACCOUNTING_SCREENS ? [
+        { k: 'finance-pl',       href: '/finance/pnl', label: 'Profit & Loss' },
+        { k: 'finance-bs',       href: '/finance/balance-sheet', label: 'Balance Sheet' },
+        { k: 'finance-expenses', href: '/finance/expenses', label: 'Expenses' },
+        { k: 'finance-sales',    href: '/finance/sales', label: 'Sales' },
+        { k: 'finance-invoices', href: '/finance/client-invoices', label: 'Client Invoices' },
+      ] : []),
     ],
   },
 ];

@@ -12,6 +12,7 @@ import { usePortalData } from '@/components/portal/usePortalData';
 import { projectsApi, authApi } from '@/lib/api';
 import { clientInvoicesApi, seedMockProjects } from '@/lib/clientInvoices';
 import { ProjectTabs } from '../_ProjectTabs';
+import { ACCOUNTING_SCREENS } from '@/lib/features';
 import {
   ClientInvoicesMockBanner, InvoiceTotals, InvoiceTable, PaymentScheduleCard,
 } from '@/components/portal/ClientInvoiceViews';
@@ -49,13 +50,14 @@ export default function ProjectInvoicesPage() {
       <ProjectTabs id={id} seesMoney={canRead} />
       {!canRead ? <PortalError message="Client invoices need the money.read permission." /> : (
         <>
-          <ClientInvoicesMockBanner />
-          <InvoiceTotals totals={data?.totals} />
+          {ACCOUNTING_SCREENS && <><ClientInvoicesMockBanner /><InvoiceTotals totals={data?.totals} /></>}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: 16 }}>
-            <PortalCard title="Invoices">
-              {err ? <PortalError message={err} /> : !data ? <PortalEmpty message="Loading…" />
-                : <InvoiceTable rows={data.client_invoices || []} />}
-            </PortalCard>
+            {ACCOUNTING_SCREENS && (
+              <PortalCard title="Invoices">
+                {err ? <PortalError message={err} /> : !data ? <PortalEmpty message="Loading…" />
+                  : <InvoiceTable rows={data.client_invoices || []} />}
+              </PortalCard>
+            )}
             <PortalCard title="Payment schedule">
               <PaymentScheduleCard projectId={id} canWrite={list.includes('money.write')} onSaved={load} />
             </PortalCard>
