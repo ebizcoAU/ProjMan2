@@ -1,6 +1,7 @@
 // safety.js — the Safety/OHS client the screens use (xprojman-48, v048).
 //
-// SAFETY_MOCK = true until Server's v048 routes are live. The mock is an in-memory
+// SAFETY_MOCK = false since 2026-10-14: v048 is live on the lab (c1projman2 migrated, routes
+// answer). The mock below is kept for offline design review: set it back to true to use it. It is an in-memory
 // store with the SAME response shapes as the contract (Server's §8 response), so
 // going live is flipping this flag and checking field names against the real
 // responses. Mutations work in the mock (add/close actions, close an event,
@@ -8,7 +9,7 @@
 // Nothing in the mock is persisted; a page reload resets it.
 import { safetyApiReal } from './api';
 
-export const SAFETY_MOCK = true;
+export const SAFETY_MOCK = false;
 
 export const REGISTER_KINDS = ['swms', 'sds', 'emergency_plan', 'safety_policy', 'whs_management_plan'];
 export const REGISTER_KIND_LABEL = {
