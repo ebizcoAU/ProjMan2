@@ -120,7 +120,7 @@ export const CONSOLE_NAV = [
         { k: 'finance-sales',    href: '/finance/sales', label: 'Sales' },
       ] : []),
       // Client claims stay either way: the construction record, exported to the books (x43 §13.2).
-      { k: 'finance-invoices', href: '/finance/client-invoices', label: 'Client Invoices' },
+      { k: 'finance-invoices', href: '/finance/progress-claims', label: 'Progress claims' },
       { k: 'finance-export',   href: '/finance/export', label: 'Accounting export' },
     ],
   },

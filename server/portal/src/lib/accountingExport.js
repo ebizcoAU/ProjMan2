@@ -3,23 +3,24 @@
 // ProjMan keeps the construction money records and exports them; the accounting system
 // (Xero/MYOB/QuickBooks) issues the tax invoice and keeps the books. ACCOUNTING_EXPORT_MOCK
 // stays true until Server's R4 (AccountingExportService). The mock follows §13.4's row shape
-// and double-post guard exactly; `sales` rows are the Client Invoices mock's issued claims,
+// and double-post guard exactly; `sales` rows are the progress-claims mock's issued claims,
 // the other kinds are sample rows on the org's real projects. Nothing is persisted.
 import { accountingExportApiReal } from './api';
-import { mockStore } from './clientInvoices';
+import { mockStore } from './clientClaims';
 
 export const ACCOUNTING_EXPORT_MOCK = true;
 
 export const EXPORT_KINDS = [
-  { k: 'sales', label: 'Client claims (sales)', hint: 'Issued client claims, raised as sales invoices in your accounting system. A void exports as a credit.' },
+  { k: 'sales', label: 'Progress claims to clients (sales)', hint: 'Issued progress claims to clients, raised as sales invoices in your accounting system. A void exports as a credit.' },
   { k: 'bills', label: 'Bills', hint: 'Approved Builder progress claims and approved supplier invoices.' },
   { k: 'purchase_orders', label: 'Purchase orders', hint: 'Issued purchase orders.' },
   { k: 'contractor_payments', label: 'Contractor payments (TPAR)', hint: 'Payments to contractors for your Taxable Payments Annual Report.' },
 ];
-// Generic ships first, then Xero (§13.4, O4). MYOB/QBO wait for their import templates to be checked.
+// Generic ships first, then Xero (§13.4; O4 ruled Xero → MYOB → QuickBooks).
 export const EXPORT_FORMATS = [
   { k: 'generic', label: 'Generic CSV' },
   { k: 'xero', label: 'Xero (preset, template not yet checked)' },
+  // O4: MYOB next, then QuickBooks Online, once their import templates are checked.
 ];
 export const ROW_COLUMNS = ['kind', 'source_type', 'source_id', 'reference', 'date', 'due_date', 'contact_name', 'contact_abn',
   'description', 'amount_ex_gst', 'gst_amount', 'amount_inc_gst', 'gst_code', 'account_code', 'tracking', 'project_id', 'rcti', 'sop_state'];
@@ -78,17 +79,17 @@ function sampleRows() {
 }
 
 function salesRows() {
-  return mockStore.invoices.filter((inv) => inv.status === 'issued' || inv.status === 'paid' || (inv.status === 'void' && inv.invoice_number))
+  return mockStore.invoices.filter((inv) => inv.status === 'issued' || inv.status === 'paid' || (inv.status === 'void' && inv.claim_number))
     .flatMap((inv) => {
       const p = mockStore.projects[inv.project_id];
-      const base = { kind: 'sales', source_type: 'client_claim', source_id: inv.id, reference: inv.invoice_number,
+      const base = { kind: 'sales', source_type: 'client_claim', source_id: inv.id, reference: inv.claim_number,
         date: inv.issued_at.slice(0, 10), due_date: inv.due_at?.slice(0, 10) || null, contact_name: `Client, ${p.name}`, contact_abn: '',
         description: `${inv.milestone.replace('_', '-')} milestone claim (${Number(inv.percentage_of_contract)}% of contract)`,
         amount_ex_gst: inv.amount_ex_gst, gst_amount: inv.gst_amount, amount_inc_gst: inv.amount_inc_gst,
         gst_treatment: inv.gst_amount > 0 ? 'gst' : 'gst_free', account_code: '', tracking: `${p.code} ${p.name}`, project_id: p.id, rcti: 0, sop_state: null };
       if (inv.status !== 'void') return [base];
       // A voided issued claim exports as itself plus a credit row reversing it.
-      return [base, { ...base, source_type: 'client_claim_void', source_id: `${inv.id}-void`, reference: `${inv.invoice_number}-CR`,
+      return [base, { ...base, source_type: 'client_claim_void', source_id: `${inv.id}-void`, reference: `${inv.claim_number}-CR`,
         date: (inv.voided_at || inv.issued_at).slice(0, 10), description: `Credit: ${inv.void_reason || 'voided claim'}`,
         amount_ex_gst: -inv.amount_ex_gst, gst_amount: -inv.gst_amount, amount_inc_gst: -inv.amount_inc_gst }];
     });

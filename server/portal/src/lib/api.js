@@ -430,15 +430,16 @@ export const safetyApiReal = {
   registerDocs:  (id, kinds)        => request('GET',   `/documents${qs({ project_id: id, kind: kinds.join(',') })}`),
 };
 
-// Client Billing (xprojman-43). Portal's proposed routes (x43 §11); the screens go
-// through lib/clientInvoices.js, which serves a mock until Server builds Steps 1–3.
-export const clientInvoicesApiReal = {
-  list:          (params)        => request('GET',   `/client-invoices${qs(params || {})}`),
-  detail:        (iid)           => request('GET',   `/client-invoices/${iid}`),
-  patch:         (iid, body)     => request('PATCH', `/client-invoices/${iid}`, body),
-  issue:         (iid)           => request('POST',  `/client-invoices/${iid}/issue`),
-  recordPayment: (iid, body)     => request('POST',  `/client-invoices/${iid}/payment`, body),
-  void:          (iid, reason)   => request('POST',  `/client-invoices/${iid}/void`, { reason }),
+// Progress claims to the client at the 6 billing milestones (xprojman-43 §11/§12, renamed
+// from invoices by §13.2 + O3). The screens go through lib/clientClaims.js, which serves a
+// mock until Server builds R2.
+export const clientClaimsApiReal = {
+  list:          (params)        => request('GET',   `/client-claims${qs(params || {})}`),
+  detail:        (iid)           => request('GET',   `/client-claims/${iid}`),
+  patch:         (iid, body)     => request('PATCH', `/client-claims/${iid}`, body),
+  issue:         (iid)           => request('POST',  `/client-claims/${iid}/issue`),
+  recordPayment: (iid, body)     => request('POST',  `/client-claims/${iid}/payment`, body),
+  void:          (iid, reason)   => request('POST',  `/client-claims/${iid}/void`, { reason }),
   schedule:      (pid)           => request('GET',   `/projects/${pid}/payment-schedule`),
   saveSchedule:  (pid, schedule) => request('PUT',   `/projects/${pid}/payment-schedule`, { schedule }),
 };

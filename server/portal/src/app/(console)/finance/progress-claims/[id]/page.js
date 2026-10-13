@@ -1,5 +1,5 @@
-// /finance/client-invoices/:id — one client invoice (xprojman-43 §6): the tax-invoice
-// facts, and issue / adjust (draft), record payment / void (issued) for money.write.
+// /finance/progress-claims/:id — one client progress claim (xprojman-43 §6/§13): its facts,
+// and issue / adjust (draft), record payment / void (issued) for money.write.
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -10,12 +10,12 @@ import { PortalError }   from '@/components/portal/PortalError';
 import { usePortalData } from '@/components/portal/usePortalData';
 import { useTopbarOverride } from '@/components/portal/chrome';
 import { projectsApi, authApi } from '@/lib/api';
-import { seedMockProjects } from '@/lib/clientInvoices';
-import { ClientInvoicesMockBanner, InvoiceDetail } from '@/components/portal/ClientInvoiceViews';
+import { seedMockProjects } from '@/lib/clientClaims';
+import { ClaimsMockBanner, ClaimDetail } from '@/components/portal/ClientClaimViews';
 
-export default function ClientInvoicePage() {
+export default function ProgressClaimPage() {
   const { id } = useParams();
-  useTopbarOverride({ title: 'Client Invoice', subtitle: 'Finance', backHref: '/finance/client-invoices' });
+  useTopbarOverride({ title: 'Progress claim', subtitle: 'Finance', backHref: '/finance/progress-claims' });
   const perms = usePortalData(() => authApi.permissions());
   const list = perms.data?.data?.permissions || [];
   const projects = usePortalData(() => projectsApi.list());
@@ -24,13 +24,13 @@ export default function ClientInvoicePage() {
   useEffect(() => { if (projectList) { seedMockProjects(projectList); setSeeded(true); } }, [projectList]);
 
   if ((perms.loading && !perms.data) || !seeded) return <div style={{ padding: 20 }}><PortalEmpty message="Loading…" /></div>;
-  if (!list.includes('money.read')) return <div style={{ padding: 20 }}><PortalError message="Client invoices need the money.read permission." /></div>;
+  if (!list.includes('money.read')) return <div style={{ padding: 20 }}><PortalError message="Progress claims need the money.read permission." /></div>;
 
   return (
     <div style={{ padding: 20, maxWidth: 900 }}>
-      <ClientInvoicesMockBanner />
-      <PortalCard title="Invoice">
-        <InvoiceDetail invoiceId={id} canWrite={list.includes('money.write')} />
+      <ClaimsMockBanner />
+      <PortalCard title="Claim">
+        <ClaimDetail claimId={id} canWrite={list.includes('money.write')} />
       </PortalCard>
     </div>
   );

@@ -1,6 +1,6 @@
-// /projects/:id/invoices — this project's client billing (xprojman-43 §6, Portal §10 ask):
-// the milestone payment schedule (set at Job Award, sums to 100%, deposit capped by the
-// site's state) and the invoices raised against it. money.read; edits are money.write.
+// /projects/:id/payment-schedule — this project's client billing (xprojman-43 §6/§13): the
+// milestone payment schedule (set at Job Award, sums to 100%, deposit capped by the site's
+// state, readiness gates) and the progress claims raised against it. money.read; edits money.write.
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
@@ -10,13 +10,13 @@ import { PortalEmpty }   from '@/components/portal/PortalEmpty';
 import { PortalError }   from '@/components/portal/PortalError';
 import { usePortalData } from '@/components/portal/usePortalData';
 import { projectsApi, authApi } from '@/lib/api';
-import { clientInvoicesApi, seedMockProjects } from '@/lib/clientInvoices';
+import { clientClaimsApi, seedMockProjects } from '@/lib/clientClaims';
 import { ProjectTabs } from '../_ProjectTabs';
 import {
-  ClientInvoicesMockBanner, InvoiceTotals, InvoiceTable, PaymentScheduleCard,
-} from '@/components/portal/ClientInvoiceViews';
+  ClaimsMockBanner, ClaimTotals, ClaimTable, PaymentScheduleCard,
+} from '@/components/portal/ClientClaimViews';
 
-export default function ProjectInvoicesPage() {
+export default function PaymentSchedulePage() {
   const { id } = useParams();
   const project = usePortalData(() => projectsApi.detail(id), [id]);
   const perms = usePortalData(() => authApi.permissions());
@@ -30,7 +30,7 @@ export default function ProjectInvoicesPage() {
     seedMockProjects([proj]);
     setErr(null);
     try {
-      const res = await clientInvoicesApi.list({ project_id: id });
+      const res = await clientClaimsApi.list({ project_id: id });
       setData(res?.data?.data || null);
     } catch (e) { setErr(e?.response?.data?.message || e.message); }
   }, [id, proj]);
@@ -47,14 +47,14 @@ export default function ProjectInvoicesPage() {
         <span style={{ fontFamily: 'var(--fm)', color: 'var(--brand)' }}>{proj.code}</span>{'  '}{proj.name}
       </div>
       <ProjectTabs id={id} seesMoney={canRead} />
-      {!canRead ? <PortalError message="Client invoices need the money.read permission." /> : (
+      {!canRead ? <PortalError message="Progress claims need the money.read permission." /> : (
         <>
-          <ClientInvoicesMockBanner />
-          <InvoiceTotals totals={data?.totals} />
+          <ClaimsMockBanner />
+          <ClaimTotals totals={data?.totals} />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: 16 }}>
-            <PortalCard title="Invoices">
+            <PortalCard title="Progress claims to the client">
               {err ? <PortalError message={err} /> : !data ? <PortalEmpty message="Loading…" />
-                : <InvoiceTable rows={data.client_invoices || []} />}
+                : <ClaimTable rows={data.client_claims || []} />}
             </PortalCard>
             <PortalCard title="Payment schedule">
               <PaymentScheduleCard projectId={id} canWrite={list.includes('money.write')} onSaved={load} />

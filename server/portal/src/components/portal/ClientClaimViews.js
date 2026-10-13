@@ -1,5 +1,7 @@
-// ClientInvoiceViews.js — Client Billing building blocks (xprojman-43 §6), shared by the
-// global /finance/client-invoices list, its detail page and the project Invoices tab.
+// ClientClaimViews.js — client progress claims (xprojman-43 §6/§13, "Progress claims" per O3),
+// shared by the /finance/progress-claims list, its detail page and the project's Payment
+// schedule tab. ProjMan records the claim; the tax invoice comes from the builder's
+// accounting system via the export.
 // Reads are money.read; drafting, issuing, recording a payment, voiding and the payment
 // schedule are money.write (x43 §3 Parameters). Revenue posting (x43 §4) is server-side:
 // the Portal only shows the journal link the server returns.
@@ -13,8 +15,8 @@ import { PortalError } from '@/components/portal/PortalError';
 import { usePortalDialog } from '@/components/portal/PortalDialog';
 import { ACCOUNTING_SCREENS } from '@/lib/features';
 import {
-  clientInvoicesApi, CLIENT_INVOICES_MOCK, MILESTONES, MILESTONE_LABEL, MILESTONE_TRIGGER,
-} from '@/lib/clientInvoices';
+  clientClaimsApi, CLIENT_CLAIMS_MOCK, MILESTONES, MILESTONE_LABEL, MILESTONE_TRIGGER,
+} from '@/lib/clientClaims';
 
 export const money = (v) => (v == null || v === '' ? '—'
   : Number(v).toLocaleString('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 2 }));
@@ -52,18 +54,18 @@ function Warnings({ list }) {
 const capText = (cap, state) => (!cap ? `no deposit cap on file for ${state || 'this site'}`
   : `deposit cap ${cap.rule}${cap.verified ? '' : ' (unverified, not enforced)'}`);
 
-export function ClientInvoicesMockBanner() {
-  if (!CLIENT_INVOICES_MOCK) return null;
+export function ClaimsMockBanner() {
+  if (!CLIENT_CLAIMS_MOCK) return null;
   return (
     <div style={{ fontSize: 12, color: 'var(--muted)', background: 'var(--s2)', border: '1px dashed var(--b2)',
       borderRadius: 4, padding: '6px 10px', marginBottom: 12 }}>
-      Design mockup: sample invoices on your real projects, nothing is saved. Goes live when Server builds
-      client billing (xprojman-43 Steps 1–3).
+      Design mockup: sample claims on your real projects, nothing is saved. Goes live when Server builds
+      progress claims (xprojman-43 §13, R2).
     </div>
   );
 }
 
-export function InvoiceTotals({ totals }) {
+export function ClaimTotals({ totals }) {
   if (!totals) return null;
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, marginBottom: 16 }}>
@@ -76,15 +78,15 @@ export function InvoiceTotals({ totals }) {
   );
 }
 
-export function InvoiceTable({ rows, showProject }) {
-  if (!rows.length) return <PortalEmpty message="No client invoices yet. A draft appears when a billing milestone is reached." />;
+export function ClaimTable({ rows, showProject }) {
+  if (!rows.length) return <PortalEmpty message="No progress claims yet. A draft appears when a billing milestone is reached." />;
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr>
             {showProject && <th style={th}>Project</th>}
-            <th style={th}>Milestone</th><th style={th}>Invoice #</th><th style={th}>Status</th>
+            <th style={th}>Milestone</th><th style={th}>Claim #</th><th style={th}>Status</th>
             <th style={thR}>Amount (inc GST)</th><th style={th}>Issued</th><th style={th}>Due</th>
           </tr>
         </thead>
@@ -95,12 +97,12 @@ export function InvoiceTable({ rows, showProject }) {
                 <td style={td}><span style={{ fontFamily: 'var(--fm)', color: 'var(--brand)' }}>{inv.project_code}</span>{' '}{inv.project_name}</td>
               )}
               <td style={td}>
-                <Link href={`/finance/client-invoices/${inv.id}`} style={{ color: 'var(--text)', fontWeight: 600 }}>
+                <Link href={`/finance/progress-claims/${inv.id}`} style={{ color: 'var(--text)', fontWeight: 600 }}>
                   {MILESTONE_LABEL[inv.milestone]}
                 </Link>
                 <span style={{ color: 'var(--dim)', fontSize: 12 }}> · {Number(inv.percentage_of_contract)}%</span>
               </td>
-              <td style={{ ...td, fontFamily: 'var(--fm)', color: inv.invoice_number ? 'var(--text)' : 'var(--dim)' }}>{inv.invoice_number || 'Draft'}</td>
+              <td style={{ ...td, fontFamily: 'var(--fm)', color: inv.claim_number ? 'var(--text)' : 'var(--dim)' }}>{inv.claim_number || 'Draft'}</td>
               <td style={td}><StatusPill inv={inv} /></td>
               <td style={tdR}>{money(inv.amount_inc_gst)}</td>
               <td style={td}>{d(inv.issued_at)}</td>
@@ -116,7 +118,7 @@ export function InvoiceTable({ rows, showProject }) {
 // The project's milestone percentages (x43 §5). Seeded with the jurisdiction default;
 // the PM confirms or edits it at Job Award. It must sum to 100%, and the deposit is
 // capped by the site's state (x43 §2.1; only a verified cap blocks). An issued or paid
-// milestone is locked (SCHEDULE_LOCKED): its invoice froze the % it was billed at. Drafts re-price.
+// milestone is locked (SCHEDULE_LOCKED): its claim froze the % it was billed at. Drafts re-price.
 export function PaymentScheduleCard({ projectId, canWrite, onSaved }) {
   const [data, setData] = useState(null);
   const [draft, setDraft] = useState(null);
@@ -127,7 +129,7 @@ export function PaymentScheduleCard({ projectId, canWrite, onSaved }) {
   const load = useCallback(async () => {
     setErr(null);
     try {
-      const res = await clientInvoicesApi.schedule(projectId);
+      const res = await clientClaimsApi.schedule(projectId);
       const s = res?.data?.data;
       setData(s);
       setDraft(Object.fromEntries((s?.schedule || []).map((r) => [r.milestone, String(r.percentage)])));
@@ -147,7 +149,7 @@ export function PaymentScheduleCard({ projectId, canWrite, onSaved }) {
   const save = async () => {
     setBusy(true); setErr(null);
     try {
-      const res = await clientInvoicesApi.saveSchedule(projectId, MILESTONES.map((m) => ({ milestone: m, percentage: Number(draft[m]) })));
+      const res = await clientClaimsApi.saveSchedule(projectId, MILESTONES.map((m) => ({ milestone: m, percentage: Number(draft[m]) })));
       setWarnings(res?.data?.warnings || []);
       await load();
       onSaved?.();
@@ -211,10 +213,10 @@ export function PaymentScheduleCard({ projectId, canWrite, onSaved }) {
   );
 }
 
-// One invoice: the tax-invoice facts (x43 §2.4), and the PM's actions by status:
+// One progress claim: its facts, and the PM's actions by status:
 // draft → edit amount (variation) / issue / void; issued → record payment / void; paid, void →
 // read-only. Voiding keeps the row and the server opens a replacement draft (supersedes_id).
-export function InvoiceDetail({ invoiceId, canWrite }) {
+export function ClaimDetail({ claimId, canWrite }) {
   const { confirm } = usePortalDialog();
   const [inv, setInv] = useState(null);
   const [err, setErr] = useState(null);
@@ -229,10 +231,10 @@ export function InvoiceDetail({ invoiceId, canWrite }) {
   const load = useCallback(async () => {
     setErr(null);
     try {
-      const res = await clientInvoicesApi.detail(invoiceId);
-      setInv(res?.data?.data?.client_invoice || null);
+      const res = await clientClaimsApi.detail(claimId);
+      setInv(res?.data?.data?.client_claim || null);
     } catch (e) { setErr(errMsg(e)); }
-  }, [invoiceId]);
+  }, [claimId]);
   useEffect(() => { load(); }, [load]);
 
   const run = async (fn) => {
@@ -256,22 +258,22 @@ export function InvoiceDetail({ invoiceId, canWrite }) {
   );
   const issue = async () => {
     if (!(await confirm(
-      `Issue this ${MILESTONE_LABEL[inv.milestone]} invoice for ${money(inv.amount_inc_gst)}? An issued invoice is a tax invoice: it can't be edited afterwards, only voided and re-issued.`,
-      { title: 'Issue invoice', confirmLabel: 'Issue' }))) return;
-    run(() => clientInvoicesApi.issue(inv.id));
+      `Issue this ${MILESTONE_LABEL[inv.milestone]} claim for ${money(inv.amount_inc_gst)}? An issued claim can't be edited afterwards, only voided and replaced. Your accounting system raises the tax invoice from the export.`,
+      { title: 'Issue claim', confirmLabel: 'Issue' }))) return;
+    run(() => clientClaimsApi.issue(inv.id));
   };
 
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
         <div style={{ fontFamily: 'var(--fh)', fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>
-          {MILESTONE_LABEL[inv.milestone]} · {inv.invoice_number || 'Draft'}
+          {MILESTONE_LABEL[inv.milestone]} · {inv.claim_number || 'Draft'}
         </div>
         <StatusPill inv={inv} />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14, marginBottom: 18 }}>
-        {fact('Project', <Link href={`/projects/${inv.project_id}/invoices`} style={{ color: 'var(--text)' }}>
+        {fact('Project', <Link href={`/projects/${inv.project_id}/payment-schedule`} style={{ color: 'var(--text)' }}>
           <span style={{ fontFamily: 'var(--fm)', color: 'var(--brand)' }}>{inv.project_code}</span> {inv.project_name}</Link>)}
         {fact('Supplier', `${inv.supplier?.name || '—'} · ABN ${inv.supplier?.abn || '—'}`)}
         {fact('Billed', `${Number(inv.percentage_of_contract)}% of ${money(inv.contract_value)}`)}
@@ -298,12 +300,12 @@ export function InvoiceDetail({ invoiceId, canWrite }) {
       {inv.status === 'void' && (
         <div style={{ fontSize: 13, color: 'var(--red)', marginBottom: 12 }}>
           Voided {d(inv.voided_at)}{inv.voided_by && <> by {inv.voided_by.name}</>}: {inv.void_reason}
-          {replacement && <> · <Link href={`/finance/client-invoices/${replacement.id}`} style={{ color: 'var(--brand)' }}>open the replacement draft</Link></>}
+          {replacement && <> · <Link href={`/finance/progress-claims/${replacement.id}`} style={{ color: 'var(--brand)' }}>open the replacement draft</Link></>}
         </div>
       )}
       {inv.supersedes_id && (
         <div style={{ fontSize: 12, color: 'var(--dim)', marginBottom: 12 }}>
-          Replaces a <Link href={`/finance/client-invoices/${inv.supersedes_id}`} style={{ color: 'var(--brand)' }}>voided invoice</Link>.
+          Replaces a <Link href={`/finance/progress-claims/${inv.supersedes_id}`} style={{ color: 'var(--brand)' }}>voided claim</Link>.
         </div>
       )}
       <Warnings list={warnings} />
@@ -317,7 +319,7 @@ export function InvoiceDetail({ invoiceId, canWrite }) {
 
       {canWrite && inv.status === 'draft' && !edit && voidReason == null && (
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-primary" disabled={busy} onClick={issue}>Issue invoice</button>
+          <button className="btn btn-primary" disabled={busy} onClick={issue}>Issue claim</button>
           <button className="btn btn-ghost" disabled={busy}
             onClick={() => setEdit({ amount_ex_gst: String(inv.amount_ex_gst), variation_note: inv.variation_note || '' })}>Adjust amount</button>
           <button className="btn btn-ghost" disabled={busy} onClick={() => setVoidReason('')}>Void</button>
@@ -333,7 +335,7 @@ export function InvoiceDetail({ invoiceId, canWrite }) {
               onChange={(e) => setEdit((x) => ({ ...x, variation_note: e.target.value }))} /></label>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn btn-primary" disabled={busy || !(Number(edit.amount_ex_gst) > 0)}
-              onClick={() => run(() => clientInvoicesApi.patch(inv.id, {
+              onClick={() => run(() => clientClaimsApi.patch(inv.id, {
                 amount_ex_gst: Number(edit.amount_ex_gst), variation_note: edit.variation_note.trim() || null }))}>Save draft</button>
             <button className="btn btn-ghost" disabled={busy} onClick={() => setEdit(null)}>Cancel</button>
           </div>
@@ -357,7 +359,7 @@ export function InvoiceDetail({ invoiceId, canWrite }) {
               onChange={(e) => setPay((x) => ({ ...x, payment_reference: e.target.value }))} /></label>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn btn-primary" disabled={busy || !pay.paid_at}
-              onClick={() => run(() => clientInvoicesApi.recordPayment(inv.id, {
+              onClick={() => run(() => clientClaimsApi.recordPayment(inv.id, {
                 paid_at: `${pay.paid_at} 00:00:00`, payment_reference: pay.payment_reference.trim() || null }))}>Mark paid</button>
             <button className="btn btn-ghost" disabled={busy} onClick={() => setPay(null)}>Cancel</button>
           </div>
@@ -366,14 +368,14 @@ export function InvoiceDetail({ invoiceId, canWrite }) {
       {voidReason != null && (
         <div style={{ display: 'grid', gap: 10, maxWidth: 420 }}>
           <div style={{ fontSize: 12, color: 'var(--dim)' }}>
-            {inv.status === 'issued' ? 'Voiding posts a reversing entry (an adjustment note) and opens a new draft for this milestone.'
+            {inv.status === 'issued' ? 'Voiding adds a credit row to the next export and opens a new draft for this milestone.'
               : 'A new draft for this milestone is opened in its place.'}
           </div>
-          <label><span style={lbl}>Why is this invoice being voided?</span>
+          <label><span style={lbl}>Why is this claim being voided?</span>
             <input className="input" value={voidReason} maxLength={200} onChange={(e) => setVoidReason(e.target.value)} /></label>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn btn-primary" style={{ background: 'var(--red)' }} disabled={busy || !voidReason.trim()}
-              onClick={() => run(() => clientInvoicesApi.void(inv.id, voidReason.trim()))}>Void invoice</button>
+              onClick={() => run(() => clientClaimsApi.void(inv.id, voidReason.trim()))}>Void claim</button>
             <button className="btn btn-ghost" disabled={busy} onClick={() => setVoidReason(null)}>Cancel</button>
           </div>
         </div>

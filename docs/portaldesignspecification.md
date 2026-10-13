@@ -285,7 +285,7 @@ earlier status notes. Legend:
 | 1a | Cost Plan + Forecast at completion | Live | `/projects/[id]/cost-plan`; forecast = budget-weighted % complete (xprojman-42 §9) | — |
 | 1b | Progress Claims (Builder → PM) | Built | `/projects/[id]/claims`: submit / approve / decline / pay, CLAIM_BLOCKED freeze | Live test |
 | 1c | Finance: chart of accounts, P&L, Balance Sheet, Expenses, Sales | Live | `/finance/*`, `7ecacc4` (xprojman-42 §2/§3) | — |
-| 1d | **Client Invoices** (PM → Client, 6 milestones) | Mock | `/finance/client-invoices`, `/finance/client-invoices/[id]`, project **Invoices** tab with the payment-schedule editor; `CLIENT_INVOICES_MOCK` in `lib/clientInvoices.js`. Contract: xprojman-43 §11 (Portal proposal) as corrected by Server's §12 — see §6.1 below | Server builds x43 Steps 1–3 (after v048, the TZ fix and the v047 copy migration) |
+| 1d | **Progress claims to the client** (6 milestones; "Client Invoices" until O3, x43 §14) + **Accounting export** + export codes | Mock | `/finance/progress-claims`, `/finance/progress-claims/[id]`, project **Payment schedule** tab (milestones, readiness gates, claims), `/finance/export` (CSV, Xero first), Finance → Settings "Accounting export codes". `CLIENT_CLAIMS_MOCK` / `ACCOUNTING_EXPORT_MOCK`. Contract: x43 §12–§14; see §6.1. Ledger screens (CoA, P&L, BS, Expenses, Sales) sit behind `NEXT_PUBLIC_ACCOUNTING_SCREENS`, paired with Server's `FEATURE_TENANT_LEDGER` | Server's x43 R1–R5 (after v048, inspector, dashboard security) |
 | 2a | Builder Programme (stages, authoring) | Built | `/builder/programme`, `/builder/programme/[id]` (`a2287db`) | Live test |
 | 2b | Gantt / Job Scheduler (read-only) | Built | `/projects/[id]/schedule` (`b6d7846`, xprojman-39 §4 v1) | Live test. Drag-write: not started |
 | 2c | Line-of-Balance renderer (unit count > 1) | Not started | §9 #3 | — |
@@ -314,7 +314,7 @@ earlier status notes. Legend:
 
 **Cross-cutting, 14 October 2026:**
 - The API returns DATETIMEs as `'YYYY-MM-DD HH:MM:SS'` wall-clock strings (mysql2
-  `dateStrings`), not ISO. Safety and Client Invoices normalise to `'T'` before parsing
+  `dateStrings`), not ISO. Safety and Progress claims normalise to `'T'` before parsing
   (Safari rejects the space form). About 18 older pages still call `new Date(v)`
   directly; Safari is on the live-test list.
 - Until Server's TZ fix lands with v048, the lab API runs in UTC, so expiry times are
@@ -524,22 +524,26 @@ coarse status view, never cost or schedule internals (§1.9 of the 18-Stage spec
 `18Stage_Tasks.md` still uses older codes (S9.8 / S13.10 / S18.12; roles §8 #19).
 Triggers must use the v3.4 codes above.
 
-**Client Billing (xprojman-43, approved by the SA 2026-09-30).** Each milestone produces
-one tax-invoice-grade `client_invoices` row. Portal screens are built mockup-first (§3.5
-1d). Contract: x43 §11 (Portal proposal) + §12 (Server's corrections, confirmed
-2026-10-14):
+**Progress claims to the client (xprojman-43; re-scoped by §13, ruled by §14 on
+2026-10-14).** ProjMan is project management: it **records** one `client_claims` row per
+milestone and **exports** it. The builder's accounting system (Xero first, then MYOB, then
+QuickBooks) issues the tax invoice and keeps the books. ProjMan posts no ledger and issues
+no tax invoice of its own. Portal screens are built mockup-first (§3.5 1d). Contract:
+x43 §11 (Portal proposal) + §12 (Server's corrections) + §13 (re-scope, export) + §14
+(rulings):
 - **Lifecycle.** The milestone fires → the server creates a **draft** → the PM reviews
-  and may adjust the amount with a variation note → the PM **issues** it. The invoice
+  and may adjust the amount with a variation note → the PM **issues** it. The claim
   number is assigned at issue, so drafts don't consume numbers.
-- **On issue:** due date = issue + 14 days, a PDF is generated, and revenue posts to
-  `org_journal` (accrual only in v1; Server §9).
+- **On issue:** due date = issue + 14 days, and the claim becomes exportable as a `sales`
+  row. Revenue posting to `org_journal` (old §4) is superseded and sits behind
+  `FEATURE_TENANT_LEDGER`.
 - **Payment** is recorded by PM/office with a date and bank reference
-  (`payment_recorded_by`); this posts Cash / AR. It's full payment only in v1; there's
-  no gateway.
+  (`payment_recorded_by`). It's full payment only in v1; there's no gateway, and the
+  payment itself is reconciled in the accounting system.
 - **Void** (draft or issued) keeps the row. The server opens a replacement draft with
-  `supersedes_id`. An issued void posts a reversing entry (an adjustment note). A paid
-  invoice can't be voided.
-- **GST** is 10% only if the org is GST-registered. Otherwise the invoice carries no GST.
+  `supersedes_id`. An issued void exports as a credit row, so the accounting system
+  raises the adjustment note. A paid claim can't be voided.
+- **GST** is 10% only if the org is GST-registered. Otherwise the claim carries no GST.
 - **Payment schedule.** Per project, six percentages summing to 100%, seeded with the
   jurisdiction default and confirmed by the PM at Job Award. An issued or paid milestone
   is locked at the % it was billed at (`SCHEDULE_LOCKED`). Open drafts re-price when the
@@ -552,8 +556,14 @@ one tax-invoice-grade `client_invoices` row. Portal screens are built mockup-fir
   - **Unverified** caps (NSW, QLD, SA) and states with no row (TAS, ACT, NT) **don't
     block**. The call succeeds with a `DEPOSIT_CAP_UNVERIFIED` warning, shown as an amber
     banner, until the Owner's legal check (§9 #16).
-- **Not in v1:** retention (§2.6 of x43), a payment gateway, interest on late payment,
-  and partial payments. The client-side invoice view waits on customer pairing
+- **Retention** (O5): withheld per claim and released in parts (typically 50% at
+  Practical Completion, the balance after the defects-liability period). Server §13.1 R3.
+- **Accounting export** (§13.4): `sales` / `bills` / `purchase_orders` /
+  `contractor_payments`. Account code = the cost centre's `export_account_code`, else the
+  org default; tax codes come from `gst_code_map.{sales|bills}`. Rows already exported are
+  skipped unless re-included (`EXPORT_INCLUDES_EXPORTED`).
+- **Not in v1:** a payment gateway, interest on late payment, and partial payments. The
+  client-side claim view waits on customer pairing
   (xprojman-50).
 
 ### 6.2 Self-Registration → Introduction → Job Award — Portal touchpoints
@@ -695,7 +705,7 @@ Full detail lives in `appdesignspecification.md` §2.7–2.12. Portal's share:
 | 24 | ⚖ **Legal:** audio/video capture of people, and cost-plus / referral disclosure | Open per the 18-Stage spec's legal list. Not touched by Portal yet |
 | 25 | ⛔ **Blocking:** test logins for the lab | Blocks every live test in §3.5 (Built → Live), the checklists E2E with App, and the Safari date check. Owner to supply |
 | 26 | ⛔ **Blocking:** v048 migrated on the lab | Blocks Safety going live (`SAFETY_MOCK`). The Owner OK'd it 2026-10-14; Server is in progress |
-| 27 | ⛔ **Blocking:** x43 Steps 1–3 + `projects.site_state` | Blocks Client Invoices going live. Server's queue: v048 → TZ fix → v047 copy migration → x43 |
+| 27 | ⛔ **Blocking:** x43 R1–R5 (flags, `client_claims` + `projects.site_state`, SOP/RCTI, export, triggers) | Blocks progress claims, the export and the ledger flag going live. Server's queue: v048 → inspector → dashboard security → x43 R1–R5 |
 
 ---
 

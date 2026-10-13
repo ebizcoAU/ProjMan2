@@ -1,15 +1,16 @@
-// clientInvoices.js — the Client Billing client the screens use (xprojman-43, approved
-// 2026-09-30 per xprojman-roles §8 #5).
+// clientClaims.js — client progress claims at the 6 billing milestones + the payment
+// schedule (xprojman-43 §11/§12, re-scoped by §13 and renamed from "invoices" by O3, §14).
+// ProjMan records the claim; the builder's accounting system issues the tax invoice from
+// the export (lib/accountingExport.js).
 //
-// CLIENT_INVOICES_MOCK = true until Server builds x43 Steps 1–2 (+ 3 for the schedule).
-// x43 §6 names the Portal pages but not the REST shapes, so the routes in
-// clientInvoicesApiReal (lib/api.js) and the response shapes below are Portal's proposal (x43 §11).
+// CLIENT_CLAIMS_MOCK = true until Server builds x43 R2. The routes in clientClaimsApiReal
+// (lib/api.js) and the response shapes below follow §12 as renamed by §13.2.
 // Going live is flipping this flag and checking field names against the real responses.
 // Dates follow the API's wall-clock form ('YYYY-MM-DD HH:MM:SS', mysql2 dateStrings).
 // Nothing in the mock is persisted; a page reload resets it.
-import { clientInvoicesApiReal } from './api';
+import { clientClaimsApiReal } from './api';
 
-export const CLIENT_INVOICES_MOCK = true;
+export const CLIENT_CLAIMS_MOCK = true;
 
 export const MILESTONES = ['deposit', 'base', 'frame', 'lock_up', 'fixing', 'completion'];
 export const MILESTONE_LABEL = {
@@ -96,7 +97,7 @@ function makeInvoice(p, milestone, status, issuedDaysAgo) {
   const issued = issuedDaysAgo == null ? null : daysAgo(issuedDaysAgo);
   const inv = {
     id: nid('inv'), project_id: p.id, project_code: p.code, project_name: p.name, milestone,
-    invoice_number: status === 'draft' ? null : `INV-2026-${String(++invNo).padStart(4, '0')}`,
+    claim_number: status === 'draft' ? null : `INV-2026-${String(++invNo).padStart(4, '0')}`,
     status, amount_ex_gst: exGst, gst_amount: gst, amount_inc_gst: round2(exGst + gst), percentage_of_contract: pct,
     issued_at: issued, due_at: issued ? addDays(issued, 14) : null,
     paid_at: null, payment_reference: null, payment_recorded_by: null, void_reason: null, voided_at: null, voided_by: null,
@@ -114,7 +115,7 @@ function makeInvoice(p, milestone, status, issuedDaysAgo) {
 
 // Called by the pages with the real project list, so the mock bills real projects.
 export function seedMockProjects(list) {
-  if (!CLIENT_INVOICES_MOCK) return;
+  if (!CLIENT_CLAIMS_MOCK) return;
   (list || []).forEach((src, i) => {
     if (projects[src.id]) return;
     const p = { id: src.id, code: src.code || `P-${i + 1}`, name: src.name || 'Project',
@@ -133,7 +134,7 @@ export function seedMockProjects(list) {
 }
 
 const today = () => now().slice(0, 10);
-// Milestones whose % is frozen: an issued or paid invoice was billed at it.
+// Milestones whose % is frozen: an issued or paid claim was billed at it.
 const lockedMilestones = (pid) => new Set(invoices
   .filter((i) => i.project_id === pid && !i.is_deleted && (i.status === 'issued' || i.status === 'paid')).map((i) => i.milestone));
 const withAging = (inv) => {
@@ -154,7 +155,7 @@ const mock = {
     const live = invoices.filter((i) => !i.is_deleted && (!p.project_id || i.project_id === p.project_id)).map(withAging);
     const sum = (arr) => round2(arr.reduce((s, i) => s + i.amount_inc_gst, 0));
     return ok({
-      client_invoices: rows,
+      client_claims: rows,
       totals: {
         draft_count: live.filter((i) => i.status === 'draft').length,
         outstanding_inc_gst: sum(live.filter((i) => i.status === 'issued')),
@@ -165,15 +166,15 @@ const mock = {
   },
   detail: (iid) => {
     const inv = findInv(iid);
-    if (!inv) return fail(404, 'NOT_FOUND', 'Invoice not found');
+    if (!inv) return fail(404, 'NOT_FOUND', 'Claim not found');
     const p = projects[inv.project_id];
-    return ok({ client_invoice: { ...withAging(inv), contract_value: p.contract_value, site_state: p.site_state,
+    return ok({ client_claim: { ...withAging(inv), contract_value: p.contract_value, site_state: p.site_state,
       supplier: { name: 'Your organisation', abn: '12 345 678 901', gst_registered: GST_REGISTERED } } });
   },
   patch: (iid, body) => {
     const inv = findInv(iid);
-    if (!inv) return fail(404, 'NOT_FOUND', 'Invoice not found');
-    if (inv.status !== 'draft') return fail(409, 'INVOICE_FROZEN', 'Only a draft invoice can be edited');
+    if (!inv) return fail(404, 'NOT_FOUND', 'Claim not found');
+    if (inv.status !== 'draft') return fail(409, 'CLAIM_FROZEN', 'Only a draft claim can be edited');
     const exGst = round2(Number(body.amount_ex_gst));
     if (!(exGst > 0)) return fail(400, 'VALIDATION_ERROR', 'amount_ex_gst must be greater than 0');
     const gst = gstOn(exGst);
@@ -183,8 +184,8 @@ const mock = {
   },
   issue: (iid) => {
     const inv = findInv(iid);
-    if (!inv) return fail(404, 'NOT_FOUND', 'Invoice not found');
-    if (inv.status !== 'draft') return fail(409, 'INVOICE_FROZEN', 'Invoice already issued');
+    if (!inv) return fail(404, 'NOT_FOUND', 'Claim not found');
+    if (inv.status !== 'draft') return fail(409, 'CLAIM_FROZEN', 'Claim already issued');
     const p = projects[inv.project_id];
     const total = Object.values(schedules[p.id]).reduce((s, v) => s + Number(v), 0);
     if (Math.abs(total - 100) > 0.001) {
@@ -193,15 +194,15 @@ const mock = {
     const dep = inv.milestone === 'deposit' ? checkDeposit(p, inv.amount_inc_gst) : { warnings: [] };
     if (dep.error) return dep.error;
     const issued = now();
-    Object.assign(inv, { status: 'issued', invoice_number: `INV-2026-${String(++invNo).padStart(4, '0')}`,
+    Object.assign(inv, { status: 'issued', claim_number: `INV-2026-${String(++invNo).padStart(4, '0')}`,
       issued_at: issued, due_at: addDays(issued, 14), has_pdf: true, journal_entry_id: nid('je'),
       percentage_of_contract: round2((inv.amount_ex_gst / p.contract_value) * 100) });
     return ok(withAging(inv), dep.warnings);
   },
   recordPayment: (iid, body) => {
     const inv = findInv(iid);
-    if (!inv) return fail(404, 'NOT_FOUND', 'Invoice not found');
-    if (inv.status !== 'issued') return fail(409, 'INVOICE_NOT_ISSUED', 'Only an issued invoice can be marked paid');
+    if (!inv) return fail(404, 'NOT_FOUND', 'Claim not found');
+    if (inv.status !== 'issued') return fail(409, 'CLAIM_NOT_ISSUED', 'Only an issued claim can be marked paid');
     Object.assign(inv, { status: 'paid', paid_at: body.paid_at || now(), payment_reference: body.payment_reference || null,
       payment_recorded_by: { id: 'me', name: 'You' } });
     return ok(withAging(inv));
@@ -211,14 +212,14 @@ const mock = {
   // journal entry (an adjustment note); a draft void posts nothing.
   void: (iid, reason) => {
     const inv = findInv(iid);
-    if (!inv) return fail(404, 'NOT_FOUND', 'Invoice not found');
-    if (inv.status === 'paid') return fail(409, 'INVOICE_PAID', 'A paid invoice can’t be voided');
-    if (inv.status === 'void') return fail(409, 'INVOICE_FROZEN', 'Invoice already voided');
+    if (!inv) return fail(404, 'NOT_FOUND', 'Claim not found');
+    if (inv.status === 'paid') return fail(409, 'CLAIM_PAID', 'A paid claim can’t be voided');
+    if (inv.status === 'void') return fail(409, 'CLAIM_FROZEN', 'Claim already voided');
     if (!reason) return fail(400, 'VALIDATION_ERROR', 'A reason is required');
     Object.assign(inv, { status: 'void', void_reason: reason, voided_at: now(), voided_by: { id: 'me', name: 'You' } });
     const replacement = makeInvoice(projects[inv.project_id], inv.milestone, 'draft', null);
     replacement.supersedes_id = inv.id;
-    return ok({ client_invoice: withAging(inv), replacement: withAging(replacement) });
+    return ok({ client_claim: withAging(inv), replacement: withAging(replacement) });
   },
   schedule: (pid) => {
     const p = projects[pid];
@@ -267,4 +268,4 @@ const mock = {
 // are the same claims the Client Invoices screens show. Mock-only.
 export const mockStore = { projects, invoices };
 
-export const clientInvoicesApi = CLIENT_INVOICES_MOCK ? mock : clientInvoicesApiReal;
+export const clientClaimsApi = CLIENT_CLAIMS_MOCK ? mock : clientClaimsApiReal;

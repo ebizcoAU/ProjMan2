@@ -10,9 +10,9 @@ import { PortalEmpty }   from '@/components/portal/PortalEmpty';
 import { PortalError }   from '@/components/portal/PortalError';
 import { usePortalData } from '@/components/portal/usePortalData';
 import { projectsApi, authApi } from '@/lib/api';
-import { seedMockProjects } from '@/lib/clientInvoices';
+import { seedMockProjects } from '@/lib/clientClaims';
 import { accountingExportApi, ACCOUNTING_EXPORT_MOCK, EXPORT_KINDS, EXPORT_FORMATS } from '@/lib/accountingExport';
-import { money } from '@/components/portal/ClientInvoiceViews';
+import { money } from '@/components/portal/ClientClaimViews';
 
 const th = { padding: '8px 12px', textAlign: 'left', color: 'var(--dim)', fontSize: 11, fontWeight: 700 };
 const thR = { ...th, textAlign: 'right' };
