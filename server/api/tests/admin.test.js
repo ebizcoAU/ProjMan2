@@ -110,6 +110,47 @@ async function call(m, p, b, t) {
   const csv = await fetch(BASE + '/admin/logs/login/export', { headers: { Authorization: `Bearer ${pmA}` } });
   ok('login log CSV export', csv.headers.get('content-type')?.includes('csv') && (await csv.text()).startsWith('at,action'));
 
+  // ── 7. Security fixes (dashboard spec §14 L3–L7, 2026-10-14) ──
+  // L7: an account action is audited against the TARGET user's org, not the operator's.
+  const [[suspAudit]] = await pool.query(
+    `SELECT org_id FROM audit_log WHERE action = 'admin.user.suspend' AND entity_id = ? ORDER BY id DESC LIMIT 1`, [bUser]);
+  ok('L7: admin.user.suspend is audited in the target user\'s org', suspAudit?.org_id === orgB, JSON.stringify(suspAudit));
+
+  // L4: a tenant-controlled org name that looks like a formula is neutralised in the CSV.
+  await call('POST', '/auth/register', {
+    organisation: { name: `=HYPERLINK("http://x") ${s}` },
+    user: { full_name: 'Eve Formula', email: `f${s}@x.com`, password: 'hunter2hunter2' },
+    device: { device_uid: `f-${s}`, platform: 'web' },
+  });
+  const csv2 = await (await fetch(BASE + `/admin/logs/login/export?email=f${s}@x.com`,
+    { headers: { Authorization: `Bearer ${pmA}` } })).text();
+  ok('L4: a formula-like cell is prefixed with \' in the CSV export',
+    csv2.includes(`"'=HYPERLINK`) && !csv2.includes(`"=HYPERLINK`), csv2.slice(0, 300));
+
+  // L5: the audit IP is req.ip (proxy-aware), not a client-chosen first X-Forwarded-For entry.
+  await fetch(BASE + '/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '6.6.6.6, 10.9.8.7' },
+    body: JSON.stringify({ email: `a${s}@x.com`, password: 'hunter2hunter2', device: { device_uid: `a-${s}`, platform: 'web' } }),
+  });
+  const [[loginRow]] = await pool.query(
+    `SELECT ip FROM audit_log WHERE action = 'auth.login' AND user_id = ? ORDER BY id DESC LIMIT 1`, [userA]);
+  ok('L5: a spoofed leading X-Forwarded-For entry does not become the audited IP',
+    !!loginRow && loginRow.ip !== '6.6.6.6', JSON.stringify(loginRow));
+
+  // L3: CSV export is admin-only; a 'staff' operator still reads the log but cannot bulk-export it.
+  const regS = await call('POST', '/auth/register', {
+    organisation: { name: `AdminOrgS ${s}` },
+    user: { full_name: 'Sam Staff', email: `s${s}@x.com`, password: 'hunter2hunter2' },
+    device: { device_uid: `s-${s}`, platform: 'web' },
+  });
+  const staffTok = regS.j.data.accessToken, staffUser = regS.j.data.user.id;
+  await pool.query('INSERT INTO platform_admins (id, user_id, admin_role, note) VALUES (?, ?, ?, ?)', [uuidv4(), staffUser, 'staff', 'test']);
+  ok('L3: staff still reads the login log', (await call('GET', '/admin/logs/login', undefined, staffTok)).status === 200);
+  const staffCsv = await fetch(BASE + '/admin/logs/login/export', { headers: { Authorization: `Bearer ${staffTok}` } });
+  ok('L3: staff CANNOT export the login log (403)', staffCsv.status === 403, String(staffCsv.status));
+  await pool.query('DELETE FROM platform_admins WHERE user_id = ?', [staffUser]);
+
   await pool.query('DELETE FROM platform_admins WHERE user_id = ?', [userA]);
   console.log(`\n${pass} passed, ${fail} failed`);
   await pool.end();

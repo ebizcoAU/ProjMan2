@@ -130,7 +130,7 @@ async function listUsers({ orgId, role, status, scope, search, sortBy, sortDir, 
 
 // ── Account actions (account layer only — never touches the user's work) ──────
 async function userAction({ userId, action }) {
-  const [[user]] = await pool.query('SELECT id, status, security_version FROM users WHERE id = ? AND is_deleted = 0 LIMIT 1', [userId]);
+  const [[user]] = await pool.query('SELECT id, org_id, status, security_version FROM users WHERE id = ? AND is_deleted = 0 LIMIT 1', [userId]);
   if (!user) throw new ServiceError('NOT_FOUND', 'User account not found', 404);
 
   if (action === 'suspend') {
@@ -144,7 +144,7 @@ async function userAction({ userId, action }) {
   } else {
     throw new ServiceError('VALIDATION_ERROR', 'Unknown action', 400);
   }
-  return { userId, action };
+  return { userId, action, orgId: user.org_id }; // orgId is for the audit row; the route doesn't return it
 }
 
 const DEVICE_SORT = {

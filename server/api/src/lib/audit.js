@@ -10,13 +10,13 @@
 
 const pool = require('../db/pool');
 
-/** Client IP, honouring a reverse proxy. */
+/**
+ * Client IP. Express's `req.ip` already honours the reverse proxy (`trust proxy` = 1 hop), and
+ * takes the address our proxy saw. Reading the FIRST X-Forwarded-For entry, as this did before,
+ * let any client write whatever IP it liked into the audit log (L5).
+ */
 function clientIp(req) {
-  return (
-    req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
-    req.ip ||
-    null
-  );
+  return req?.ip || null;
 }
 
 /**

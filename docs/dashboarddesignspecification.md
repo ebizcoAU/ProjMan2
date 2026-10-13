@@ -495,11 +495,16 @@ L1–L2. Everything else is tracked, not blocking.
 |---|---|---|---|
 | L1 | **No `audit_log` retention** | The 12-month retention this spec commits to (APP 11.2, destroy PII no longer needed) is not enforced; IPs, emails and devices accumulate indefinitely | G4 |
 | L2 | **Platform payroll is not compliant** (§15.2) | Salary runs pay the annual figure; PAYG/super are hand-typed and in practice 0; no PAYG/super liability postings; no STP. The P&L's "PAYG withheld" / "BAS payable" figures rest on these. | Freeze the payroll page for real pay runs until fixed, or replace with an external payroll product (the Owner decides) |
-| L3 | `staff` can bulk-export the cross-tenant login log (emails, IPs, orgs) | It contradicts the "non-admin roles act by id only" rule in spirit; the export is audited, but the unfiltered view is not | Restrict the export to `admin`, or audit every view (G6) |
-| L4 | CSV formula injection in the export | Tenant-controlled org names starting with `= + - @` run as formulas in Excel | Prefix those cells with `'` |
-| L5 | `audit.js` trusts the first `X-Forwarded-For` value | IP evidence in the log is spoofable | Use Express's `req.ip` (trust proxy is already 1) |
-| L6 | `scripts/seed-admin-team.js` hardcodes and prints a known password | Run against prod, it creates known credentials | Refuse to run when `NODE_ENV=production`; random passwords |
-| L7 | Admin-action audit rows carry the admin's own `org_id`, not the target user's | Per-tenant audit trails miss actions taken on their users | Pass the target org |
+| L3 | `staff` can bulk-export the cross-tenant login log (emails, IPs, orgs) | It contradicts the "non-admin roles act by id only" rule in spirit; the export is audited, but the unfiltered view is not | ✅ **Fixed 2026-10-14:** export is `admin`-only (API + button hidden). Open: `staff` still *views* emails/IPs in the log, see below |
+| L4 | CSV formula injection in the export | Tenant-controlled org names starting with `= + - @` run as formulas in Excel | ✅ **Fixed 2026-10-14:** cells starting `= + - @ \t \r` are prefixed with `'` |
+| L5 | `audit.js` trusts the first `X-Forwarded-For` value | IP evidence in the log is spoofable | ✅ **Fixed 2026-10-14:** `clientIp` = `req.ip` |
+| L6 | `scripts/seed-admin-team.js` hardcodes and prints a known password | Run against prod, it creates known credentials | ✅ **Fixed 2026-10-14:** refuses in production; new accounts get random one-time passwords. **Accounts already seeded on the lab keep the old password: rotate them** |
+| L7 | Admin-action audit rows carry the admin's own `org_id`, not the target user's | Per-tenant audit trails miss actions taken on their users | ✅ **Fixed 2026-10-14** |
+
+**Open after L3 (for the PM/Owner):** the Admin Privacy Rule says non-admin platform roles never
+see tenant user PII, but `staff`'s core screen, the login log, shows emails and IPs. Options:
+mask them for `staff` (e.g. `j***@domain`, IP truncated to /24) and keep full detail for `admin`,
+or make the log admin-only.
 
 Also stale: the overview page text says "ProjMan2 has no MQTT broker", but MQTT was
 reintroduced (`AdminService.js` comment). §4's "`payments` ❌ do not exist" row is superseded

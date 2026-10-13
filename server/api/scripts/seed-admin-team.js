@@ -4,16 +4,18 @@
 // data — they only ever use /admin/*, which is cross-tenant and ignores org_id) plus
 // three users, each granted a platform_admins row with the requested admin_role.
 // Idempotent — safe to re-run; skips anything that already exists.
+// Dev/lab only: refuses to run with NODE_ENV=production, and gives each NEW account a random
+// password printed once (it used to hardcode and print one shared password, L6).
 //
 //   node scripts/seed-admin-team.js
 
 const bcrypt = require('bcrypt');
+const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const pool = require('../src/db/pool');
 const config = require('../src/config');
 
 const ORG_NAME = 'eBizco Platform Ops';
-const PASSWORD = 'Passwd@1234';
 
 const ACCOUNTS = [
   { email: 'admin@projman.internal',    full_name: 'Platform Admin',   admin_role: 'admin' },
@@ -35,9 +37,10 @@ async function ensureOrg() {
 
 async function ensureUser(orgId, { email, full_name }) {
   const [[existing]] = await pool.query('SELECT id FROM users WHERE email = ? LIMIT 1', [email]);
-  if (existing) return existing.id;
+  if (existing) return { id: existing.id, password: null };
   const id = uuidv4();
-  const passwordHash = await bcrypt.hash(PASSWORD, config.password.bcryptCost);
+  const password = crypto.randomBytes(12).toString('base64url');
+  const passwordHash = await bcrypt.hash(password, config.password.bcryptCost);
   // `role` is the tenant-facing role column — irrelevant for a platform-ops account
   // (it never reaches the tenant surface), set to the assignable default so the row
   // satisfies the same shape every other user does.
@@ -47,7 +50,7 @@ async function ensureUser(orgId, { email, full_name }) {
     [id, orgId, email, passwordHash, full_name]
   );
   console.log(`Created user ${email} (${id})`);
-  return id;
+  return { id, password };
 }
 
 async function grant(userId, adminRole) {
@@ -60,14 +63,25 @@ async function grant(userId, adminRole) {
 }
 
 async function main() {
+  if (config.server.env === 'production') {
+    console.error('Refusing to seed platform-admin test accounts with NODE_ENV=production.');
+    console.error('Grant real operators with scripts/grant-platform-admin.js instead.');
+    process.exit(1);
+  }
   const orgId = await ensureOrg();
+  const created = [];
   for (const acct of ACCOUNTS) {
-    const userId = await ensureUser(orgId, acct);
+    const { id: userId, password } = await ensureUser(orgId, acct);
     await grant(userId, acct.admin_role);
     console.log(`Granted platform-admin [${acct.admin_role}] to ${acct.email}`);
+    if (password) created.push({ ...acct, password });
   }
-  console.log('\nLogin at /login with any of:');
-  for (const acct of ACCOUNTS) console.log(`  ${acct.email}  /  ${PASSWORD}  [${acct.admin_role}]`);
+  if (created.length) {
+    console.log('\nNew accounts. These passwords are shown ONCE, so store them now:');
+    for (const a of created) console.log(`  ${a.email}  /  ${a.password}  [${a.admin_role}]`);
+  } else {
+    console.log('\nNo new accounts; existing passwords are unchanged.');
+  }
   await pool.end();
 }
 

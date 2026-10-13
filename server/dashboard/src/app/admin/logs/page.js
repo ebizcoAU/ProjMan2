@@ -1,4 +1,4 @@
-// /admin/logs — the login transaction log (dashboardspec §6): filters + CSV export.
+// /admin/logs — the login transaction log (dashboardspec §6): filters + CSV export (admin only).
 'use client';
 
 import { useState } from 'react';
@@ -16,6 +16,11 @@ export default function AdminLogs() {
   const [f, setF] = useState({ email: '', outcome: '', method: '', from: '', to: '', page: 1 });
   const { data, loading, error } = usePortalData(
     () => adminApi.loginLog({ ...f, limit: 50 }), [f.email, f.outcome, f.method, f.from, f.to, f.page]);
+
+  // CSV export is admin-only (routes/admin.js, Admin Privacy Rule): a 'staff' session never
+  // sees a button it would only get a 403 from.
+  const me = usePortalData(() => adminApi.me());
+  const canExport = me.data?.data?.role === 'admin';
 
   const entries = data?.data?.entries ?? [];
   const pg = data?.data?.pagination;
@@ -52,7 +57,7 @@ export default function AdminLogs() {
           <input type="date" value={f.from} onChange={e => set('from', e.target.value)} style={input} />
           <label style={{ fontSize: 13, color: 'var(--muted)' }}>to</label>
           <input type="date" value={f.to} onChange={e => set('to', e.target.value)} style={input} />
-          <button className="btn btn-ghost" style={{ marginLeft: 'auto' }} onClick={exportCsv}>Export CSV</button>
+          {canExport && <button className="btn btn-ghost" style={{ marginLeft: 'auto' }} onClick={exportCsv}>Export CSV</button>}
         </div>
 
         {loading ? <PortalEmpty message="Loading…" />

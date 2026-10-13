@@ -82,9 +82,10 @@ router.get('/users', adminOnly,
 // Account actions — user-account layer only (suspend/reactivate/force-logout).
 router.post('/users/:id/:action(suspend|reactivate|force-logout)', canUserActions, async (req, res) => {
   try {
-    const result = await AdminService.userAction({ userId: req.params.id, action: req.params.action });
+    const { orgId, ...result } = await AdminService.userAction({ userId: req.params.id, action: req.params.action });
+    // Audited against the TARGET user's org, so that tenant's own audit trail shows it (L7).
     await audit(req, `admin.user.${req.params.action}`, {
-      entity: 'users', entityId: req.params.id, detail: { by_platform_admin: req.admin.userId },
+      orgId, entity: 'users', entityId: req.params.id, detail: { by_platform_admin: req.admin.userId },
     });
     return res.json({ success: true, data: result });
   } catch (err) { return sendError(res, err); }
@@ -122,8 +123,9 @@ router.get('/logs/login', canLoginLog,
   }
 );
 
-// CSV export of the login log (same filters).
-router.get('/logs/login/export', canLoginLog, async (req, res) => {
+// CSV export of the login log (same filters). admin-only: a bulk file of tenant users' emails
+// and IPs is exactly what the Admin Privacy Rule keeps from non-admin platform roles (L3).
+router.get('/logs/login/export', adminOnly, async (req, res) => {
   try {
     const q = req.query;
     const { entries } = await AdminService.loginLog({
@@ -131,7 +133,13 @@ router.get('/logs/login/export', canLoginLog, async (req, res) => {
       outcome: q.outcome, method: q.method, page: 1, limit: 100000,
     });
     await audit(req, 'admin.logs.export', { orgId: q.org_id || null, detail: { rows: entries.length, by_platform_admin: req.admin.userId } });
-    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    // A cell starting with = + - @ (or a tab/CR) runs as a formula in Excel; tenant-controlled
+    // values (org names, emails) must never execute on an operator's machine (L4).
+    const esc = (v) => {
+      let t = String(v ?? '');
+      if (/^[=+\-@\t\r]/.test(t)) t = `'${t}`;
+      return `"${t.replace(/"/g, '""')}"`;
+    };
     const header = ['at', 'action', 'outcome', 'email', 'organisation', 'method', 'ip', 'city', 'country', 'device', 'os'];
     const lines = [header.join(',')].concat(entries.map((e) => [
       e.at, e.action, e.outcome, e.email, e.organisation, e.method, e.ip,
