@@ -673,8 +673,11 @@ if unmapped) `, tracking` (project code + name) `, project_id, rcti` (13.3a) `, 
   `cost_centres.export_account_code VARCHAR(20) NULL` (new) feeds `account_code` on bills,
   POs and contractor payments. Org defaults live in `accounting_export_settings (org_id,
   sales_account_code, bills_account_code, gst_code_map JSON)`. `gst_code_map` maps each
-  `gst_treatment` to the package's tax-code names (e.g. Xero "GST on Income" / "GST on
-  Expenses"). A row with no cost-centre code falls back to the org default, and stays blank
+  `gst_treatment` to the package's tax-code names, **per direction**, because packages name
+  sales and purchase codes differently: `{ sales: { gst, gst_free, input_taxed, out_of_scope },
+  bills: { …same keys } }` (e.g. Xero sales.gst = "GST on Income", bills.gst = "GST on
+  Expenses"). The `sales` kind uses `sales`; `bills`, `purchase_orders` and
+  `contractor_payments` use `bills`. A row with no cost-centre code falls back to the org default, and stays blank
   ("unmapped") only if both are missing. The existing `cost_centres.linked_account_id` (v042,
   → `org_accounts`) belongs to the hidden ledger and is not used by the export.
   Endpoints: `GET/PUT /accounting-export/settings`, and `PATCH /cost-centres/:id
