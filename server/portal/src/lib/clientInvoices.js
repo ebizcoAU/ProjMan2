@@ -216,7 +216,9 @@ const mock = {
     const s = schedules[pid];
     const invoiced = lockedMilestones(pid);
     return ok({
-      schedule: MILESTONES.map((m) => ({ milestone: m, percentage: s[m], invoiced: invoiced.has(m) })),
+      // invoiced = the lock flag (issued or paid); invoice_status = the live invoice, voids excluded.
+      schedule: MILESTONES.map((m) => ({ milestone: m, percentage: s[m], invoiced: invoiced.has(m),
+        invoice_status: invoices.find((i) => i.project_id === pid && i.milestone === m && !i.is_deleted && i.status !== 'void')?.status || null })),
       contract_value: p.contract_value, site_state: p.site_state, deposit_cap: depositCap(p.site_state, p.contract_value),
     });
   },

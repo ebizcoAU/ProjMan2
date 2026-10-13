@@ -167,7 +167,7 @@ export function PaymentScheduleCard({ projectId, canWrite, onSaved }) {
             const locked = r.invoiced || !canWrite;
             return (
               <tr key={r.milestone}>
-                <td style={td}>{MILESTONE_LABEL[r.milestone]}{r.invoiced && <span style={{ color: 'var(--dim)', fontSize: 11 }}> · billed, locked</span>}</td>
+                <td style={td}>{MILESTONE_LABEL[r.milestone]}{r.invoice_status && <span style={{ color: 'var(--dim)', fontSize: 11 }}> · {r.invoice_status}{r.invoiced ? ', locked' : ''}</span>}</td>
                 <td style={{ ...td, color: 'var(--dim)', fontSize: 12 }}>{MILESTONE_TRIGGER[r.milestone]}</td>
                 <td style={tdR}>
                   {locked ? `${r.percentage}%` : (
