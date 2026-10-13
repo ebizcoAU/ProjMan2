@@ -44,6 +44,7 @@ const StageTemplateService = require('../services/StageTemplateService');
 const StageProgressionService = require('../services/StageProgressionService');
 const InspectionService = require('../services/InspectionService');
 const HandoverService = require('../services/HandoverService');
+const ClientClaimService = require('../services/ClientClaimService');
 const { requireFeature } = require('../lib/features');
 const TaskProgressService = require('../services/TaskProgressService');
 const JobAwardService = require('../services/JobAwardService');
@@ -122,6 +123,7 @@ router.post(
   canWriteProjects,
   [
     body('code').trim().notEmpty().isLength({ max: 30 }).withMessage('A project code is required (max 30 chars)'),
+    body('site_state').optional({ nullable: true }).isIn(['WA', 'SA', 'NT', 'QLD', 'NSW', 'VIC', 'TAS', 'ACT']),
     body('name').trim().notEmpty().withMessage('A project name is required'),
     body('contract_type').optional({ nullable: true, checkFalsy: true }).isIn(['fixed_price', 'cost_plus']),
     body('status').optional().isIn(['draft', 'active', 'on_hold', 'completed', 'inactive', 'cancelled']),
@@ -199,6 +201,7 @@ router.patch(
   canWriteProjects,
   [
     body('code').optional().trim().notEmpty().isLength({ max: 30 }),
+    body('site_state').optional({ nullable: true }).isIn(['WA', 'SA', 'NT', 'QLD', 'NSW', 'VIC', 'TAS', 'ACT']),
     body('name').optional().trim().notEmpty(),
     body('contract_type').optional({ nullable: true, checkFalsy: true }).isIn(['fixed_price', 'cost_plus']),
     body('status').optional().isIn(['draft', 'active', 'on_hold', 'completed', 'inactive', 'cancelled']),
@@ -1550,6 +1553,46 @@ router.post('/:id/client-signoffs', async (req, res) => {
       detail: { project_id: req.params.id, method: req.body?.method, decision: req.body?.decision },
     });
     return res.status(201).json({ success: true, data });
+  } catch (err) { return sendError(res, err); }
+});
+
+// ── Client progress claims: project entry points (xprojman-43 R2) ─────────────────
+// GET/PUT the milestone payment schedule (money.read / money.write) and raise a draft
+// claim by hand (money.write) until the R5 milestone triggers draft them automatically.
+const canReadMoneyCc = requirePermission('money.read');
+const sendWarned = (res, result, status = 200) => res.status(status).json({
+  success: true, data: result.data ?? result, ...(result.warnings?.length ? { warnings: result.warnings } : {}),
+});
+
+router.get('/:id/payment-schedule', canReadMoneyCc, async (req, res) => {
+  try {
+    sendWarned(res, await ClientClaimService.getSchedule({
+      orgId: req.auth.orgId, projectId: req.params.id, actor: { role: req.auth.role, userId: req.auth.userId },
+    }));
+  } catch (err) { return sendError(res, err); }
+});
+
+router.put('/:id/payment-schedule', canWriteMoney, async (req, res) => {
+  try {
+    const result = await ClientClaimService.saveSchedule({
+      orgId: req.auth.orgId, projectId: req.params.id, actor: { role: req.auth.role, userId: req.auth.userId },
+      schedule: req.body?.schedule,
+    });
+    await audit(req, 'payment_schedule.update', { entity: 'projects', entityId: req.params.id,
+      detail: { schedule: req.body?.schedule } });
+    sendWarned(res, result);
+  } catch (err) { return sendError(res, err); }
+});
+
+router.post('/:id/client-claims', canWriteMoney, async (req, res) => {
+  try {
+    const result = await ClientClaimService.raise({
+      orgId: req.auth.orgId, projectId: req.params.id, actor: { role: req.auth.role, userId: req.auth.userId },
+      milestone: req.body?.milestone,
+    });
+    await audit(req, 'client_claim.create', { entity: 'client_claims', entityId: result.client_claim.id,
+      detail: { project_id: req.params.id, milestone: req.body?.milestone } });
+    sendWarned(res, result, 201);
   } catch (err) { return sendError(res, err); }
 });
 

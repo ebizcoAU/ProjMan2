@@ -17,6 +17,8 @@ const MembershipService = require('./MembershipService');
 
 const PROJECT_FIELDS = [
   'customer_id', 'code', 'name', 'description', 'site_address', 'lot_plan', 'contract_value',
+  // xprojman-43 R2: the SITE's jurisdiction (deposit caps follow the site); defaults to the org's state.
+  'site_state',
   'contract_type', 'start_date', 'due_date', 'status', 'template_id', 'pm_user_id',
   // Site geofence (§11.5) — web-set config the server derives attendance geo_verified
   // from. Not financial, not redacted; the app reads it to render "📍 Site".
@@ -191,6 +193,12 @@ async function createProject({ orgId, data, addedBy }) {
   const fields = {};
   for (const key of PROJECT_FIELDS) {
     if (data[key] !== undefined) fields[key] = data[key] === '' ? null : data[key];
+  }
+  if (fields.site_state === undefined) {
+    // The site's jurisdiction defaults to the org's own state (editable): a NULL site state
+    // would quietly skip the deposit-cap check (xprojman-43 §9).
+    const [[org]] = await pool.query('SELECT state FROM organisations WHERE id = ? LIMIT 1', [orgId]);
+    if (org?.state) fields.site_state = org.state;
   }
   const columns = Object.keys(fields);
 
