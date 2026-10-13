@@ -4,14 +4,15 @@ import '../../config/app_theme.dart';
 import '../../config/providers.dart';
 import '../../models/domain.dart';
 import '../../services/project_service.dart';
+import '../safety/inductions_view.dart';
 import '../safety/safety_entries_view.dart';
 
 /// Safety — hazard capture, incident capture, inductions (development.md §4:
 /// incident entry must be reachable in two taps from anywhere — the tab
 /// itself + Raise is exactly two). Hazards/near misses and Incidents are
-/// wired to sync (`SafetyOpsService`, xprojman-48, server v048). Inductions
-/// and SWMS sign-on are server-ready in v048 but not yet built in the App, so
-/// that page stays a placeholder. Toolbox talks run as a checklist category.
+/// wired to sync (`SafetyOpsService`), and so are site inductions and SWMS
+/// sign-on (`InductionOpsService`), both against server v048 (xprojman-48).
+/// Toolbox talks run as a checklist category.
 /// Same project-scoped shell pattern as [QualityTab]/[SiteTab].
 class SafetyTab extends ConsumerStatefulWidget {
   final int subPage;
@@ -75,7 +76,7 @@ class _SafetyTabState extends ConsumerState<SafetyTab> {
       case 1:
         return SafetyEntriesView(project: p, incidents: true);
       case 2:
-        return const _InductionsPlaceholder();
+        return InductionsView(project: p);
       default:
         return SafetyEntriesView(project: p, incidents: false);
     }
@@ -159,33 +160,4 @@ class _SafetyTabState extends ConsumerState<SafetyTab> {
           ],
         ),
       );
-}
-
-class _InductionsPlaceholder extends StatelessWidget {
-  const _InductionsPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(24),
-      children: const [
-        SizedBox(height: 72),
-        Icon(Icons.groups_outlined, size: 52, color: Op.muted),
-        SizedBox(height: 12),
-        Center(
-          child: Text('Inductions',
-              style: TextStyle(color: Op.text, fontSize: 16, fontWeight: FontWeight.w700)),
-        ),
-        SizedBox(height: 8),
-        Center(
-          child: Text(
-            'Site inductions and SWMS sign-on are coming in an update. '
-            'Run toolbox talks from Quality → Checklists.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Op.muted, fontSize: 13),
-          ),
-        ),
-      ],
-    );
-  }
 }

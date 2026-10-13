@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import 'db_service.dart';
 import 'document_queue_service.dart';
+import 'nexus_service.dart';
 import 'sync_client.dart';
 
 /// Sign-offs: the one place a person's signature against a subject lives.
@@ -86,6 +87,11 @@ class SignoffStore {
 
   static const table = 'signoffs';
   final DatabaseService _db = DatabaseService();
+
+  /// Test seam: stands in for the sync transport.
+  @visibleForTesting
+  Future<ApiResult> Function(String op, Map<String, Object?> data, String id)?
+      pushForTest;
 
   static const _wireCols = [
     'subject_type', 'subject_id', 'project_id', 'user_id', 'name',
@@ -211,12 +217,11 @@ class SignoffStore {
     final id = r['id'] as String;
     final op = (r['pending_op'] as String?) ?? 'update';
     try {
-      final res = await SyncClient.push(
-        table: table,
-        operation: op,
-        data: {for (final c in _wireCols) if (r.containsKey(c)) c: r[c]},
-        localId: id,
-      );
+      final data = {for (final c in _wireCols) if (r.containsKey(c)) c: r[c]};
+      final res = pushForTest != null
+          ? await pushForTest!(op, data, id)
+          : await SyncClient.push(
+              table: table, operation: op, data: data, localId: id);
       if (res.success) {
         await _db.update(table,
             {'is_dirty': 0, 'pending_op': null, 'ever_synced': 1},
