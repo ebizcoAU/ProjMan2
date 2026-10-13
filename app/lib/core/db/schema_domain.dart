@@ -499,6 +499,48 @@ class DomainSchema {
     )
   ''';
 
+  // Site inductions (xprojman-48 F5, server v048). The inductee is `user_id`
+  // (a project member) or `name` (a visitor). `inducted_by` is server-stamped.
+  // Created by a safety.manage role; the server derives
+  // site_attendance.induction_ok from these rows (warn, never block).
+  static const String siteInductions = '''
+    CREATE TABLE IF NOT EXISTS site_inductions (
+      id                    TEXT PRIMARY KEY NOT NULL,
+      org_id                TEXT,
+      project_id            TEXT NOT NULL,
+      user_id               TEXT,
+      name                  TEXT,
+      inducted_by           TEXT,
+      inducted_at           TEXT NOT NULL,
+      expires_at            TEXT,
+      checklist_instance_id TEXT,
+      sync_error            TEXT,
+      device_id             TEXT,
+      is_deleted            INTEGER DEFAULT 0,
+      is_dirty              INTEGER DEFAULT 0,
+      pending_op            TEXT,
+      ever_synced           INTEGER DEFAULT 0,
+      created_at            TEXT,
+      updated_at            INTEGER,
+      server_updated_at     TEXT
+    )
+  ''';
+
+  // Local cache of the project's SWMS register (GET /documents?kind=swms), so
+  // a worker can read and sign on at the gate with no signal. Not synced:
+  // the documents themselves are Portal-uploaded. `local_path` is the
+  // downloaded file, once opened.
+  static const String swmsDocuments = '''
+    CREATE TABLE IF NOT EXISTS swms_documents (
+      id          TEXT PRIMARY KEY NOT NULL,
+      project_id  TEXT NOT NULL,
+      title       TEXT,
+      mime_type   TEXT,
+      uploaded_at TEXT,
+      local_path  TEXT
+    )
+  ''';
+
   /// v2 upgrade step (P5, servdesignspec §11).
   static const List<String> v2 = [siteDiary, siteAttendance, deliveries];
 
@@ -526,5 +568,8 @@ class DomainSchema {
   /// v7 upgrade step (xprojman-48, server migration_v048 — safety/OHS).
   static const List<String> v7 = [safetyEvents, incidentDetails, safetyActions];
 
-  static const List<String> all = [...v2, ...v3, ...v4, ...v5, ...v6, ...v7];
+  /// v8 upgrade step (xprojman-48 F5/F6 — site inductions, SWMS sign-on).
+  static const List<String> v8 = [siteInductions, swmsDocuments];
+
+  static const List<String> all = [...v2, ...v3, ...v4, ...v5, ...v6, ...v7, ...v8];
 }
