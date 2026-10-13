@@ -5,7 +5,7 @@ const config = require('../config');
 // code compares them with `new Date(str)`, which parses in the PROCESS's local zone.
 // On a machine set to another zone (this dev box is on AEST) every expiry check is
 // hours out. Pin the process to the app's zone before any Date is built.
-process.env.TZ = config.timezone;
+process.env.TZ = config.server.timezone;
 
 // The pool timezone must match the MySQL server's `time_zone`. Nexus lost days to
 // this (O-036): the server ran on the dev machine's local offset while mysql2
