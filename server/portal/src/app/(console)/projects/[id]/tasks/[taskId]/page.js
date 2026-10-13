@@ -24,6 +24,11 @@ import { useTopbarOverride } from '@/components/portal/chrome';
 import { taskDisplayName } from '@/components/portal/taskDisplay';
 
 const SKILL_LABEL = { expert: 'Expert', professional: 'Professional', std: 'Std', free: 'Free' };
+// The date a system step completed: whichever completion stamp the read carries.
+const sysDate = (t) => {
+  const v = t.completed_at || t.verified_at || t.updated_at;
+  return v ? new Date(String(v).replace(' ', 'T')).toLocaleDateString('en-AU') : null;
+};
 const STATUS_LABEL = { not_started: 'Not started', in_progress: 'In progress', complete: 'Complete', cancelled: 'Cancelled', n_a: 'N/A' };
 const STATUS_BADGE = { not_started: 'badge-muted', in_progress: 'badge-pending', complete: 'badge-active', cancelled: 'badge-revoked', n_a: 'badge-revoked' };
 // completion=0/100 already implies not_started/complete for a task that predates
@@ -493,7 +498,15 @@ export default function TaskDetailPage() {
         <Progress pct={task.completion} />
 
         <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--s4)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          {task.status === 'n_a' || task.status === 'cancelled' ? (
+          {task.auto_event ? (
+            // A system step (xprojman-56 SYS+, v052): the server ticks it when its event fires,
+            // and any manual change is refused (SYSTEM_STEP), so there are no actions here.
+            <span style={{ fontSize: 13, color: 'var(--dim)' }}>
+              {task.status === 'complete'
+                ? `Completed by the system${sysDate(task) ? ` on ${sysDate(task)}` : ''}.`
+                : `A system step: it completes automatically (${String(task.auto_event).replace(/_/g, ' ')}).`}
+            </span>
+          ) : task.status === 'n_a' || task.status === 'cancelled' ? (
             <ActionBtn disabled={statusBusy} onClick={() => setStatus(deriveStatusFromCompletion(task.completion))}>
               {statusBusy ? 'Restoring…' : 'Restore task'}
             </ActionBtn>
