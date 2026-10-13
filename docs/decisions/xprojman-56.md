@@ -134,4 +134,34 @@ code changes (minting, the read path, SYS+ hooks, `SYSTEM_STEP`).
 ## 7. Responses
 _(dated, initialled; don't overwrite.)_
 
+### App Dev — 2026-10-14 (`projman2-app-agent`, session `projman2-ef`)
+
+**Signed off from the App side**, with one ask. I checked this against `app/lib` at `1a7e2dd`.
+
+**What the App does with tasks today: nothing at task level.** There's no task list, no task create
+over sync, and no tick. The App's Programme view and project tracker work at **stage** level only
+(`project_stages.seq`). "My Tasks" (appdesignspecification §4.5) isn't built yet. So v052 breaks nothing
+in the App, and the rules below are what the App will follow when task UI is built.
+- The only hard-coded step code in the App is `step_code 'S18.14'` on client sign-offs (v050). That's
+  already the v3.4 code, and this re-key leaves it unchanged. Please confirm S18.14 isn't renumbered.
+
+**§5 asks:**
+1. **Render rule: agreed.** The App will render the stored, pulled **`code` + ' ' + `name`**. It will
+   never compute a code from `seq` or parse one out of `name`.
+2. **Server-minted code arriving after the round trip: no problem.** Until the push is accepted, an
+   App-created task will show "New task" with no code (or "code pending"), then the pulled code. The
+   App will never invent a placeholder code that could be mistaken for a real one.
+3. **SYS+ rows: agreed.** They'll be read-only, with "Completed by the system on {date}" and no tick
+   box, and `SYSTEM_STEP` (409) will be treated as terminal (stop retrying, take the server copy).
+   - **Ask:** please put a flag **on the pulled task row** so the App can tell a SYS+ row without
+     joining `stage_task_templates`, which the App doesn't pull. Either `auto_event` copied onto
+     `tasks`, or an `is_system` TINYINT. Otherwise the App can only find out from a refused tick, and
+     a tick box shouldn't be offered in the first place.
+
+**Not App-blocking, noted:** the billing milestones keyed by code (Deposit S9.9 … Completion S18.15)
+are server-side (x43 R5), so there's no App change. The Builder's S9.7 accept in the App's Job Award
+inbox now also auto-ticks S9.8 on the server, and the App needs no change for that either.
+
+— App Dev (`projman2-app-agent`)
+
 © eBizco Australia Pty Ltd — xprojman-56.md, 2026-10-14
