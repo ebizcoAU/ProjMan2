@@ -644,28 +644,45 @@ under the ATO RCTI determination that needs a **written agreement per subcontrac
 
 ### 13.4 Accounting export (v1 CSV, v2 unified API)
 
-`AccountingExportService` with a pluggable adapter interface `{ format, kinds, toRows() }`:
+`AccountingExportService` with a pluggable adapter interface `{ format, kinds, toRows() }`.
+The kinds are seen from the exporting org's side:
 
-| Kind | Source rows | Accounting side |
+| Kind | Source rows (exportable when) | Accounting side |
 |---|---|---|
-| `sales` | `client_claims` issued (and voids as credit lines) | sales invoices |
-| `purchases` | `supplier_invoices` approved | bills |
+| `sales` | `client_claims` issued (a void → credit-note row) | sales invoices |
+| `bills` | `progress_claims` approved (Builder → this org) + `supplier_invoices` approved | bills / purchases |
+| `purchase_orders` | `purchase_orders` issued | POs (presets only where the package imports POs; generic CSV always) |
 | `contractor_payments` | `project_payments` + paid `progress_claims` with `tpar_reportable` | TPAR (the existing TPAR export is reused) |
 
-- `GET /accounting-export?kind=&format=xero|myob|qbo&from=&to=` streams a CSV (permission:
-  `accounts.read`, held by the org owner, accountant and developer). Every run writes an
-  `accounting_exports` row (org, kind, format, period, row_count, sha256, created_by) and stamps
-  `exported_at` on the rows. A re-export of the same period is allowed and is flagged as such.
-- Column templates per vendor must be checked against each vendor's current import format
-  before release (O4). Xero first, unless the Owner says otherwise.
-- v2 adds a unified-API adapter (Codat/Apideck/Merge) behind the same interface, so routes and
-  data don't change.
+**Row shape** (generic CSV; the presets rename and reorder): `kind, source_type, source_id,
+reference` (claim/invoice/PO number) `, date, due_date, contact_name, contact_abn,
+description, amount_ex_gst, gst_amount, amount_inc_gst, gst_code`
+(mapped from `gst_treatment`) `, account_code` (from the cost-centre → account mapping, blank
+if unmapped) `, tracking` (project code + name) `, project_id, rcti` (13.3a) `, sop_state`
+(13.3).
+
+- **Endpoint:** `GET /accounting-export?kind=&format=generic|xero|myob|qbo&from=&to=&project_id=&only_new=1`
+  streams the CSV. `GET /accounting-export/preview?…` returns the same rows as JSON for the
+  screen. Permission is `accounts.read` (org owner, accountant, developer).
+- **Double-post guard:** each source row gets `exported_at` / `exported_by` / `export_id`.
+  Every run writes `accounting_exports (id, org, kind, format, filters, row_count, sha256,
+  created_by)`. With `only_new=1` (the default), rows already exported are skipped. A full
+  re-export is allowed but flagged in the response (`warnings: [EXPORT_INCLUDES_EXPORTED]`).
+  Rows carry `exported_at` in the normal list/detail responses too.
+- **Column templates:** each vendor's current import format must be checked before the
+  presets ship (O4). The generic CSV ships first, then Xero.
+- **v2:** a unified-API adapter (Codat/Apideck/Merge) behind the same interface; routes and
+  data stay the same.
+- **Payment-schedule readiness** (the Portal screen): `GET /projects/:id/payment-schedule`
+  rows gain `gates: [{ code, label, met, met_at }]`. Example: Base → S12.10 hold point;
+  Frame → S13.11; Completion → S18.3 OC + S18.14 sign-off (not met until `xprojman-51` is
+  built). `ready = all gates met`.
 
 ### 13.5 Hidden behind feature flags (nothing deleted)
 
 | Flag (default **off**) | Hides | Off behaviour |
 |---|---|---|
-| `FEATURE_TENANT_LEDGER` | `org_journal` auto-posting hooks (Costing, Procurement, Claim) + `/finance/*` reports (x42) | hooks no-op; routes `404 FEATURE_DISABLED` |
+| `FEATURE_TENANT_LEDGER` | `org_journal` auto-posting hooks (Costing, Procurement, Claim) + `/finance/*` reports and chart of accounts (x42) | hooks no-op; routes `404 FEATURE_DISABLED`. Portal's matching flag is `NEXT_PUBLIC_ACCOUNTING_SCREENS`; flip both together |
 | `FEATURE_BAS` | `/accounts/bas*` incl. lodge | `404 FEATURE_DISABLED` |
 | `FEATURE_TPAR_LODGE` | `POST /accounts/tpar/:id/lodge` | the TPAR **export stays** |
 | `FEATURE_DEPRECIATION` | fixed-asset routes + `/accounts/depreciation/export` | **stays ON until S18.12 is ruled** (13.6) |
