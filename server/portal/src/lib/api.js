@@ -436,6 +436,8 @@ export const safetyApiReal = {
 // mock until Server builds R2.
 export const clientClaimsApiReal = {
   list:          (params)        => request('GET',   `/client-claims${qs(params || {})}`),
+  // A PM raises a milestone's draft by hand until the R5 triggers do it (v053).
+  create:        (pid, milestone) => request('POST', `/projects/${pid}/client-claims`, { milestone }),
   detail:        (iid)           => request('GET',   `/client-claims/${iid}`),
   patch:         (iid, body)     => request('PATCH', `/client-claims/${iid}`, body),
   issue:         (iid)           => request('POST',  `/client-claims/${iid}/issue`),

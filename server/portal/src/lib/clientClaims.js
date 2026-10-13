@@ -3,14 +3,14 @@
 // ProjMan records the claim; the builder's accounting system issues the tax invoice from
 // the export (lib/accountingExport.js).
 //
-// CLIENT_CLAIMS_MOCK = true until Server builds x43 R2. The routes in clientClaimsApiReal
+// CLIENT_CLAIMS_MOCK was true until Server built x43 R2 (v053, live 2026-10-14); the mock stays for offline review. The routes in clientClaimsApiReal
 // (lib/api.js) and the response shapes below follow §12 as renamed by §13.2.
 // Going live is flipping this flag and checking field names against the real responses.
 // Dates follow the API's wall-clock form ('YYYY-MM-DD HH:MM:SS', mysql2 dateStrings).
 // Nothing in the mock is persisted; a page reload resets it.
 import { clientClaimsApiReal } from './api';
 
-export const CLIENT_CLAIMS_MOCK = true;
+export const CLIENT_CLAIMS_MOCK = false; // live since x43 R2 (v053, 2026-10-14)
 
 export const MILESTONES = ['deposit', 'base', 'frame', 'lock_up', 'fixing', 'completion'];
 export const MILESTONE_LABEL = {
@@ -170,6 +170,14 @@ const mock = {
     const p = projects[inv.project_id];
     return ok({ client_claim: { ...withAging(inv), contract_value: p.contract_value, site_state: p.site_state,
       supplier: { name: 'Your organisation', abn: '12 345 678 901', gst_registered: GST_REGISTERED } } });
+  },
+  create: (pid, milestone) => {
+    const p = projects[pid];
+    if (!p) return fail(404, 'NOT_FOUND', 'Project not found');
+    if (invoices.some((i) => i.project_id === pid && i.milestone === milestone && i.status !== 'void')) {
+      return fail(409, 'CLAIM_EXISTS', 'That milestone already has a live claim');
+    }
+    return ok({ client_claim: withAging(makeInvoice(p, milestone, 'draft', null)) });
   },
   patch: (iid, body) => {
     const inv = findInv(iid);

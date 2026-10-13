@@ -146,6 +146,13 @@ export function PaymentScheduleCard({ projectId, canWrite, onSaved }) {
   const depositIncGst = (data.contract_value * 1.1 * (Number(draft.deposit) || 0)) / 100;
   const depositOver = cap?.amount_inc_gst != null && depositIncGst > cap.amount_inc_gst + 0.005;
   const blocked = depositOver && cap.verified;
+  // Until the R5 milestone triggers draft claims automatically, the PM raises one by hand.
+  const raise = async (milestone) => {
+    setBusy(true); setErr(null);
+    try { await clientClaimsApi.create(projectId, milestone); await load(); onSaved?.(); }
+    catch (e) { setErr(errMsg(e)); }
+    finally { setBusy(false); }
+  };
   const save = async () => {
     setBusy(true); setErr(null);
     try {
@@ -160,11 +167,12 @@ export function PaymentScheduleCard({ projectId, canWrite, onSaved }) {
   return (
     <div>
       <div style={{ fontSize: 12, color: 'var(--dim)', marginBottom: 10 }}>
+        {data.is_default && <span style={{ color: 'var(--amber)' }}>Standard schedule, not yet confirmed for this project. Review it and save. · </span>}
         Contract {money(data.contract_value)} ex GST · site in {data.site_state || '—'}
  · {capText(cap, data.site_state)}
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead><tr><th style={th}>Milestone</th><th style={th}>Ready when</th><th style={thR}>%</th><th style={thR}>Amount (ex GST)</th></tr></thead>
+        <thead><tr><th style={th}>Milestone</th><th style={th}>Ready when</th><th style={thR}>%</th><th style={thR}>Amount (ex GST)</th>{canWrite && <th style={th} />}</tr></thead>
         <tbody>
           {data.schedule.map((r) => {
             const locked = r.invoiced || !canWrite;
@@ -188,6 +196,15 @@ export function PaymentScheduleCard({ projectId, canWrite, onSaved }) {
                   )}
                 </td>
                 <td style={tdR}>{money((data.contract_value * (Number(draft[r.milestone]) || 0)) / 100)}</td>
+                {canWrite && (
+                  <td style={td}>
+                    {!r.invoice_status && (
+                      <button type="button" className="btn btn-ghost" style={{ padding: '1px 8px', fontSize: 12 }}
+                        disabled={busy || dirty} title={dirty ? 'Save the schedule first' : undefined}
+                        onClick={() => raise(r.milestone)}>Raise draft</button>
+                    )}
+                  </td>
+                )}
               </tr>
             );
           })}
@@ -195,6 +212,7 @@ export function PaymentScheduleCard({ projectId, canWrite, onSaved }) {
             <td style={{ ...td, fontWeight: 700 }} colSpan={2}>Total</td>
             <td style={{ ...tdR, fontWeight: 700, color: Math.abs(total - 100) > 0.001 ? 'var(--red)' : 'var(--green)' }}>{Math.round(total * 100) / 100}%</td>
             <td style={tdR}>{money((data.contract_value * total) / 100)}</td>
+            {canWrite && <td style={td} />}
           </tr>
         </tbody>
       </table>
@@ -203,10 +221,11 @@ export function PaymentScheduleCard({ projectId, canWrite, onSaved }) {
         {!cap.verified && ' This cap isn’t verified yet, so it won’t block saving.'}</div>}
       <Warnings list={warnings} />
       {err && <div style={{ marginTop: 8 }}><PortalError message={err} /></div>}
-      {canWrite && dirty && (
+      {canWrite && (dirty || data.is_default) && (
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-          <button className="btn btn-primary" disabled={busy || Math.abs(total - 100) > 0.001 || blocked} onClick={save}>Save schedule</button>
-          <button className="btn btn-ghost" disabled={busy} onClick={load}>Discard</button>
+          <button className="btn btn-primary" disabled={busy || Math.abs(total - 100) > 0.001 || blocked} onClick={save}>
+            {dirty ? 'Save schedule' : 'Confirm schedule'}</button>
+          {dirty && <button className="btn btn-ghost" disabled={busy} onClick={load}>Discard</button>}
         </div>
       )}
     </div>

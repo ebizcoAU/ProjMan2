@@ -21,6 +21,7 @@
 // dwelling, `unit_count=1`) so the user never has to think about them.
 'use client';
 
+import { SITE_STATES, SITE_STATE_HINT } from '@/components/portal/siteState';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { PortalError } from '@/components/portal/PortalError';
@@ -65,7 +66,7 @@ export default function NewProjectPage() {
 
   const [customer, setCustomer] = useState({ full_name: '', client_tier: 'individual', phone: '', email: '', source: 'Referral' });
   const [brief, setBrief] = useState({ project_name: '', dwelling_type: 'Single storey', budget_from: '', budget_to: '', requirements: '' });
-  const [land, setLand] = useState({ site_address: '', lot_plan: '', site_area: '', zoning_code: '', estimated_start: '', due_date: '' });
+  const [land, setLand] = useState({ site_address: '', site_state: '', lot_plan: '', site_area: '', zoning_code: '', estimated_start: '', due_date: '' });
   const [contract, setContract] = useState({ contract_value: '', contract_type: '' });
 
   const setC = (k) => (e) => setCustomer((c) => ({ ...c, [k]: e.target.value }));
@@ -108,6 +109,7 @@ export default function NewProjectPage() {
         // home (was captured-but-unsaved before that column landed).
         description: brief.requirements || undefined,
         site_address: land.site_address || undefined,
+        site_state: land.site_state || undefined, // blank → the org's state (server default)
         lot_plan: land.lot_plan || undefined,
         start_date: land.estimated_start || undefined,
         due_date: land.due_date || undefined,
@@ -209,6 +211,12 @@ export default function NewProjectPage() {
             <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 12 }}>Land & site info</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}>
               <Field label="Site address *" full><input style={inputStyle} placeholder="14 Kestrel Rise, Baldivis WA 6171" value={land.site_address} onChange={setL('site_address')} required /></Field>
+              <Field label="Site state" hint={`${SITE_STATE_HINT} Blank uses your organisation's state.`}>
+                <select style={inputStyle} value={land.site_state} onChange={setL('site_state')}>
+                  <option value="">Organisation&apos;s state</option>
+                  {SITE_STATES.map((st) => <option key={st} value={st}>{st}</option>)}
+                </select>
+              </Field>
               <Field label="Lot / Plan"><input style={inputStyle} placeholder="Lot 14 / DP411287" value={land.lot_plan} onChange={setL('lot_plan')} /></Field>
               <Field label="Site area (m²)" hint="Not yet saved."><input style={inputStyle} placeholder="612" value={land.site_area} onChange={setL('site_area')} /></Field>
               <Field label="Zoning code" hint="Not yet saved."><input style={inputStyle} placeholder="R20" value={land.zoning_code} onChange={setL('zoning_code')} /></Field>

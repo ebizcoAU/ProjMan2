@@ -47,6 +47,7 @@
 // `acknowledged_by`/`acknowledged_at` simply won't populate until then.
 'use client';
 
+import { SITE_STATES, SITE_STATE_HINT } from '@/components/portal/siteState';
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { PortalCard } from '@/components/portal/PortalCard';
@@ -281,6 +282,7 @@ export default function EditProjectPage() {
         budget_from: '',
         budget_to: '',
         site_address: proj.site_address || '',
+        site_state: proj.site_state || '',
         lot_plan: proj.lot_plan || '',
         site_area: '',
         zoning_code: '',
@@ -317,6 +319,7 @@ export default function EditProjectPage() {
       if (form.description !== (proj.description || '')) body.description = form.description || null;
       if (form.customer_id !== (proj.customer_id || '')) body.customer_id = form.customer_id || null;
       if (form.site_address !== (proj.site_address || '')) body.site_address = form.site_address;
+      if (form.site_state && form.site_state !== (proj.site_state || '')) body.site_state = form.site_state;
       if (form.lot_plan !== (proj.lot_plan || '')) body.lot_plan = form.lot_plan;
       if (form.start_date !== dateOnly(proj.start_date)) body.start_date = form.start_date || null;
       if (form.due_date !== dateOnly(proj.due_date)) body.due_date = form.due_date || null;
@@ -413,6 +416,12 @@ export default function EditProjectPage() {
                 <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 12 }}>Land & site info</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}>
                   <Field label="Site address" full><input style={inputStyle} value={form.site_address} onChange={set('site_address')} /></Field>
+                  <Field label="Site state" hint={SITE_STATE_HINT}>
+                    <select style={inputStyle} value={form.site_state} onChange={set('site_state')}>
+                      <option value="">—</option>
+                      {SITE_STATES.map((st) => <option key={st} value={st}>{st}</option>)}
+                    </select>
+                  </Field>
                   <Field label="Lot / plan"><input style={inputStyle} value={form.lot_plan} onChange={set('lot_plan')} /></Field>
                   <Field label="Site area (m²)" hint="Not yet saved."><input style={inputStyle} value={form.site_area} onChange={set('site_area')} /></Field>
                   <Field label="Zoning code" hint="Not yet saved."><input style={inputStyle} value={form.zoning_code} onChange={set('zoning_code')} /></Field>
