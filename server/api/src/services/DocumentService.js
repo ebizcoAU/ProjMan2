@@ -66,9 +66,10 @@ const canReadDocs = (actor) => {
   const principal = { role: actor.role, isOrgOwner: actor.isOrgOwner };
   return access.grants(principal, 'projects.read') || access.grants(principal, 'documents.read');
 };
+// Deletion has its own permission (v049): it used to ride on quality.write, which handed it to
+// the Inspector along with the inspection writes that role genuinely needs.
 const canCurate = (actor) =>
-  access.grants({ role: actor.role, isOrgOwner: actor.isOrgOwner }, 'quality.write') ||
-  access.grants({ role: actor.role, isOrgOwner: actor.isOrgOwner }, 'documents.write');
+  access.grants({ role: actor.role, isOrgOwner: actor.isOrgOwner }, 'documents.delete');
 
 // ── mime sniffing (P3) ───────────────────────────────────────────────────────────────────────
 // Magic numbers first — the bytes are the authority. Extension is only a fallback for formats
@@ -333,7 +334,7 @@ async function getForStream({ orgId, actor, id }) {
  */
 async function softDelete({ orgId, actor, id }) {
   if (!canCurate(actor)) {
-    throw new ServiceError('FORBIDDEN', 'Requires permission: quality.write or documents.write', 403);
+    throw new ServiceError('FORBIDDEN', 'Requires permission: documents.delete', 403);
   }
   const [[doc]] = await pool.query(
     'SELECT id, is_deleted FROM documents WHERE id = ? AND org_id = ? LIMIT 1', [id, orgId]);

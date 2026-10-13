@@ -1351,7 +1351,7 @@ in a data migration; this is part of xprojman-43 Steps 1–2 (milestone codes).
 | §7.4 | `/veritrade/login/status/:id`, `/app/veritrade-login/scan\|respond` | `/veritrade/login/initiate`, `/login/:id/{context,approve,deny,status}`, plus generic `/auth/app-login/*` (v033) |
 | §8 | lists five modules | see §15.1; `cpc_evidence` does not exist |
 | §9 | build order A–G | A, A2, B, D, D2, E, F built (v012–v016, v027–v029, v033); C is Portal; **G (licence verification) not built** |
-| §10 #4 | "audit before shipping step A" | **Answered: `inspector` still holds `quality.write` (v009:175), never revoked.** v024 also lets it DELETE documents through that grant. Fix: revoke, keep `quality.validate` (Server, next migration) |
+| §10 #4 | "audit before shipping step A" | **Answered (corrected 2026-10-14):** `inspector` holds `quality.write` (v009:175) **by design**. It is the one gate for creating and completing inspections, filling items, raising defects and recording certificates, so revoking it would stop inspections. The real defect was that document DELETE rode on `quality.write`; **v049 moves delete to a new `documents.delete`** (PM, siteSupervisor, builder, foreperson; not the inspector). **Divergence for the Owner:** `devroadmap.md` roles #7 says the Inspector's write access is "exclusively the protected `is_validated` flag", which is narrower than the built `quality.write` (e.g. the Inspector can close defects). Whether to narrow it is a separate design call. |
 | §10 #6 | "unresolved" | ruled in §11.4 #6: (B)+(b1), native facts + export, sync deferred |
 | §11 | "P8b/P8c not yet authorised", "TaxService NOT yet written", "no native GL" | TaxService, TPAR, `org_accounts`/`org_journal` all built (v023, v026, v042, v044) |
 | §11.4 #18 | open | resolved: `accounts.read` is in `OWNER_CAPABILITIES` |
@@ -1367,7 +1367,7 @@ in a data migration; this is part of xprojman-43 Steps 1–2 (milestone codes).
 | **TZ pin:** `db/pool.js:8` reads `config.timezone`, which doesn't exist (the key is `config.server.timezone`), so the process runs in UTC and every `dateStrings` expiry check is 8h lenient. Present since d71b702. | One-line fix drafted; lands with v048 |
 | **`notified_at` normalisation** (v048 `setNotifiable`): ISO with Z/offset → Perth wall clock, 400 on garbage | drafted + test; lands with v048 |
 | v047 system-template wording → Product's approved copy | data migration queued |
-| `inspector` `quality.write` revoke | next migration |
+| Inspector document delete → `documents.delete` (v049) | built; awaiting lab migration |
 
 ### 15.6 Legal / regulatory items (for the Owner's legal list)
 

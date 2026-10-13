@@ -12,7 +12,7 @@
 //   5. GET /documents/:id streams the exact bytes back (sha256 round-trips).
 //   6. Read gate: projects.read OR you uploaded it — the Builder (who holds NO projects.read) can
 //      read back their own delivery docket, but not another user's document.
-//   7. DELETE is quality.write | documents.write; a tradie is refused; soft delete hides it.
+//   7. DELETE is documents.delete (v049); a tradie and an inspector are refused; soft delete hides it.
 //   8. Cross-org isolation.
 //
 // Run: DISABLE_RATE_LIMIT=true PORT=4199 node src/index.js &   then
@@ -191,11 +191,23 @@ const PDF = Buffer.concat([Buffer.from('%PDF-1.7\n', 'ascii'), crypto.randomByte
 
   // ── 7. DELETE gate ──
   const tDel = await call('DELETE', `/documents/${doc1}`, undefined, tradieTok);
-  ok('a tradie CANNOT delete (holds neither quality.write nor documents.write)',
+  ok('a tradie CANNOT delete (no documents.delete)',
     tDel.status === 403, JSON.stringify(tDel.json));
 
+  // v049: the Inspector keeps quality.write (inspections) but no longer gets deletion with it.
+  const inspTok = await pairAs(pm, pmUser, 'inspector', `insp-${s}`);
+  const iDel = await call('DELETE', `/documents/${doc1}`, undefined, inspTok);
+  ok('an INSPECTOR CANNOT delete a document (v049 documents.delete)',
+    iDel.status === 403, JSON.stringify(iDel.json));
+  const iInsp = await call('POST', `/projects/${projId}/inspections`, { type: 'site_check' }, inspTok);
+  const iDone = iInsp.json.data?.id
+    ? await call('POST', `/projects/${projId}/inspections/${iInsp.json.data.id}/complete`, { result: 'fail' }, inspTok)
+    : iInsp;
+  ok('…but an inspector can still create and complete an inspection (quality.write kept)',
+    [200, 201].includes(iInsp.status) && iDone.status === 200, JSON.stringify([iInsp.json, iDone.json]).slice(0, 300));
+
   const fDel = await call('DELETE', `/documents/${doc1}`, undefined, foreTok);
-  ok('a foreperson CAN delete (documents.write, new in v024)',
+  ok('a foreperson CAN delete (documents.delete, v049; was documents.write)',
     fDel.status === 200 && fDel.json.data.status === 'deleted', JSON.stringify(fDel.json));
 
   const list2 = await call('GET', `/documents?entity_type=inspection_item&entity_id=${itemId}`, undefined, pm);
@@ -207,6 +219,9 @@ const PDF = Buffer.concat([Buffer.from('%PDF-1.7\n', 'ascii'), crypto.randomByte
 
   const pmDel = await call('DELETE', `/documents/${doc1}`, undefined, pm);
   ok('deleting an already-deleted document is idempotent', pmDel.json.data.status === 'already_deleted');
+  const bDel = await call('DELETE', `/documents/${bUp.json.data.document_id}`, undefined, builderTok);
+  ok('a builder CAN delete (documents.delete, v049; was documents.write)',
+    bDel.status === 200 && bDel.json.data.status === 'deleted', JSON.stringify(bDel.json));
 
   // ── 8. Validation + cross-org ──
   const noRef = await postDoc({ entity_type: 'defect', entity_id: uuid() },

@@ -86,7 +86,7 @@ const isoDay = (d) => new Date(Date.now() + d * 86400000).toISOString().slice(0,
   // ── 1. Permissions ──
   const perms = await call('GET', '/auth/permissions', undefined, tradie);
   ok('matrix v16; tradie holds safety.report but not safety.manage',
-    perms.json.data?.matrixVersion === 16 && perms.json.data.permissions.includes('safety.report')
+    perms.json.data?.matrixVersion >= 16 && perms.json.data.permissions.includes('safety.report')
       && !perms.json.data.permissions.includes('safety.manage'), JSON.stringify(perms.json.data?.matrixVersion));
 
   // ── 2. Raise ──

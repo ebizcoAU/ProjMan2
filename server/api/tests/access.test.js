@@ -74,15 +74,15 @@ async function pairAs(admin, adminUserId, role, uid, stamp) {
   // accounts edits, narrower than money.write (same reasoning as tax.approve).
   // v14 (v043, xprojman-39 §3): + quotes.approve (projectManager only) — mirrors
   // claims.approve exactly, including NOT enforcing four-eyes.
-  ok('permissions: matrixVersion present', d?.matrixVersion === 16, JSON.stringify(d?.matrixVersion));
+  ok('permissions: matrixVersion present', d?.matrixVersion === 17, JSON.stringify(d?.matrixVersion));
   ok('permissions: projectManager has finance.manage (v13)', d?.permissions?.includes('finance.manage'),
     JSON.stringify(d?.permissions));
   ok('permissions: projectManager has quotes.approve (v14)', d?.permissions?.includes('quotes.approve'),
     JSON.stringify(d?.permissions));
   ok('permissions: projectManager has accounts.read (v10)', d?.permissions?.includes('accounts.read'),
     JSON.stringify(d?.permissions));
-  ok('permissions: projectManager does NOT need documents.write (quality.write covers DELETE)',
-    !d?.permissions?.includes('documents.write') && d?.permissions?.includes('quality.write'),
+  ok('permissions: projectManager deletes via documents.delete (v049), not documents.write',
+    !d?.permissions?.includes('documents.write') && d?.permissions?.includes('documents.delete'),
     JSON.stringify(d?.permissions));
   ok('permissions: projectManager scope = portfolio', d?.scopeClass === 'portfolio');
   ok('permissions: projectManager has projects.write', d?.permissions?.includes('projects.write'));
