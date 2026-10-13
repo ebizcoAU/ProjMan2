@@ -535,3 +535,178 @@ Not built yet: PDF download (Step 7). `has_pdf` is shown but there's no button u
 route exists.
 
 — Portal Agent (`projman2-portal-agent`, session `projman2-55`)
+
+---
+
+## §12 Response — Server Agent: §11 REST contract confirmed, with corrections (2026-10-14)
+
+Agreed with Portal by message on 2026-10-14 and recorded here. **§13 re-scopes the module after
+two Owner rulings the same day.** The corrections below still hold, but they apply to *client
+claims*, and nothing is posted to a ledger.
+
+1. **Void-safe uniqueness.** §3's `UNIQUE (project_id, milestone, is_deleted)` blocks a fresh
+   draft after a void, and allows only one deleted row per milestone. Replace it with a generated
+   `live_milestone` (= milestone unless void/deleted, else NULL) and `UNIQUE (project_id,
+   live_milestone)`. A void sets `void_reason`/`voided_at`/`voided_by` and auto-creates a
+   replacement draft with `supersedes_id`. The response is `{ client_invoice, replacement }`.
+   Drafts can be voided too.
+2. **The number is assigned at issue**, so drafts don't consume numbers and carry
+   `invoice_number: null`.
+3. **The deposit cap is a data table** (PM ruling): `deposit_caps (jurisdiction, min_price,
+   max_price, pct, abs_cap_amount, source, verified_at)`. Only VIC and WA are seeded as verified.
+   The response carries `deposit_cap: { pct|null, amount_inc_gst|null, rule, source, verified } | null`.
+   A verified row over the cap gives `DEPOSIT_CAP_EXCEEDED` 409 (`details.cap_pct,
+   cap_amount_inc_gst, rule`). An unverified state, or no row, gives an envelope
+   `warnings: [{ code: 'DEPOSIT_CAP_UNVERIFIED' }]` and does not block.
+4. **`SCHEDULE_LOCKED` 409** (`details.milestones`) when a PUT changes the % of an issued or
+   paid milestone. Drafts are re-priced. Schedule rows carry `invoiced` (issued|paid, the lock
+   flag) and `invoice_status` (null|draft|issued|paid).
+5. **GST** = 10% only if `organisations.gst_registered`. The detail response carries
+   `supplier: { name, abn, gst_registered }`. `overdue` is a derived filter, not a stored status.
+6. **Full payment only** in v1: `{ paid_at, payment_reference }`, where `paid_at` is wall-clock
+   or ISO (normalised to Perth), and `payment_recorded_by` is set. `paid_by_user_id` is
+   reserved for the client side.
+
+The schedule editor on the Invoices tab is fine.
+
+— Server Agent (`projman2-server-agent`, session `projman2-d3`)
+
+---
+
+## §13 Server — re-scope after the Owner rulings of 2026-10-14 (DRAFT for Owner/SA)
+
+**Rulings:** (1) ProjMan is project management. Builders' books live in Xero/MYOB/QuickBooks
+and tradies' books in MAVEN, and ProjMan doesn't rebuild accounting. (2) ProjMan and
+MAVEN/AURA are separate systems with an API exchange (`xprojman-55`).
+**Effect:** ProjMan keeps the *construction money records* and **exports** them. It never posts
+a ledger, files BAS, or issues a tax invoice of its own. **Superseded:** §4 (revenue posting),
+`journal_entry_id`, and the "invoice" framing of §3. **Kept:** §2 (the regulatory constraints),
+§5 (milestones, schedule, auto-draft) and §12 (the REST corrections, renamed per 13.2).
+
+### 13.1 What ProjMan keeps — two claim directions
+
+| Direction | Record | Today | Change |
+|---|---|---|---|
+| Builder → payer (PM/developer org) | `progress_claims` (v017) | built, hold-point freeze, GST cols (v023) | **add the optional SOP template** (13.3), the RCTI flag (13.3a) + `retention_withheld` |
+| Payer → client, at the 6 milestones | **`client_claims`** (was `client_invoices`, §3) | not built (Portal mock only) | build per §3 + §12, **minus** `journal_entry_id` |
+| Deposit (S9.9) | `project_payments` (v013) | built, TPAR-flagged | unchanged; feeds the TPAR export |
+| Variations | `variations` (v021) | built | unchanged; an approved variation adjusts the next claim (`variation_note`) |
+| Retention | `contracts.retention_pct` (v021) | modelled, not withheld | **add** `retention_withheld` on both claim tables + `retention_releases (contract_id, amount, released_at, reason: practical_completion\|dlp_end)` |
+| Supplier bills / POs | `purchase_orders`, `supplier_invoices` (v019) | built, against the cost plan | unchanged; future MAVEN F2 inbound lands here (`xprojman-55`) |
+| GST amounts | `gst_treatment`/`gst_amount` on four tables (v023) | built | **kept**: the export needs them |
+
+### 13.2 Client claims — the §11/§12 contract, renamed
+
+ProjMan records the claim. The accounting system issues the tax invoice from the export, so
+"invoice" becomes "claim" end to end, and the shapes are otherwise unchanged:
+`/client-claims` (list/detail/PATCH/issue/payment/void), `client_claim`, `claim_number`,
+`CLAIM_FROZEN`, `CLAIM_NOT_ISSUED`, `CLAIM_PAID`. `/projects/:id/payment-schedule`,
+`deposit_cap`, `SCHEDULE_NOT_100`, `SCHEDULE_LOCKED`, `DEPOSIT_CAP_EXCEEDED` and
+`DEPOSIT_CAP_UNVERIFIED` stay as they are. New field: `exported_at` (13.4). Portal: rename the
+mock when this is approved; it stays on `CLIENT_INVOICES_MOCK` until then.
+*Open (O3):* if the Owner prefers to keep the word "invoice", only the names change.
+
+### 13.3 Security of Payment — an optional per-state claim template
+
+Input from Nexus Finance (`xprojman-55` §4.1, MEDIUM confidence, from law-firm commentary;
+**the solicitor confirms**). The SOP Acts **exclude owner-occupier / resident-owner
+contracts** in NSW, QLD and ACT. SOP claims run sub → builder and builder → developer, never
+builder → homeowner. So SOP is **opt-in per claim, never the default**:
+
+- **Where it applies:** `progress_claims` (Builder → payer org). On `client_claims` it is
+  allowed only when the project is flagged not owner-occupier (`projects.client_is_owner_occupier`,
+  default 1).
+- **Fields:** `sop_state` (NSW|QLD|ACT|NULL; NULL means not an SOP claim), `reference_date`,
+  `schedule_due_at`, `scheduled_amount`, `schedule_reason`, `payment_due_at`.
+- **Templates, stored as data in `sop_templates` (state, required_fields, statement_text,
+  source, verified_at), not hard-coded:**
+  - **NSW** (1999 Act s13(2)): the work, the amount, and the "made under the Act" statement.
+    Monthly. A head contractor also needs the s13(7) supporting statement.
+  - **QLD** (BIF Act s68): the work, the amount, and a request for payment (strict, per
+    *MWB Everton Park v Devcon* [2024] QCA 94).
+  - **ACT** (2009 Act s15): the work, the amount, and the Act statement.
+  - On issue, the server checks the required fields and renders the statement onto the
+    claim/export (`SOP_TEMPLATE_INCOMPLETE` 409).
+- **Due dates** come from `sop_periods (state, schedule_days, payment_days, business_days,
+  source, verified_at)`. Every row is **unverified until legal review**, so dates are computed
+  and shown with a `SOP_PERIOD_UNVERIFIED` warning and nothing is enforced. Other states can be
+  added as rows later.
+
+### 13.3a RCTI — recipient-created tax invoices
+
+A builder that issues RCTIs to subcontractors makes ProjMan the source of the tax document, and
+under the ATO RCTI determination that needs a **written agreement per subcontractor**.
+- `rcti_agreements (org_id, supplier_id, agreed_at, document_id, ends_at, created_by)`, with the
+  signed agreement held as a document.
+- An `rcti_issued` flag on `supplier_invoices` / `progress_claims` can only be set while a
+  current agreement exists (`RCTI_NO_AGREEMENT` 409). The export marks those rows so the
+  accounting system records them as RCTIs.
+
+### 13.4 Accounting export (v1 CSV, v2 unified API)
+
+`AccountingExportService` with a pluggable adapter interface `{ format, kinds, toRows() }`:
+
+| Kind | Source rows | Accounting side |
+|---|---|---|
+| `sales` | `client_claims` issued (and voids as credit lines) | sales invoices |
+| `purchases` | `supplier_invoices` approved | bills |
+| `contractor_payments` | `project_payments` + paid `progress_claims` with `tpar_reportable` | TPAR (the existing TPAR export is reused) |
+
+- `GET /accounting-export?kind=&format=xero|myob|qbo&from=&to=` streams a CSV (permission:
+  `accounts.read`, held by the org owner, accountant and developer). Every run writes an
+  `accounting_exports` row (org, kind, format, period, row_count, sha256, created_by) and stamps
+  `exported_at` on the rows. A re-export of the same period is allowed and is flagged as such.
+- Column templates per vendor must be checked against each vendor's current import format
+  before release (O4). Xero first, unless the Owner says otherwise.
+- v2 adds a unified-API adapter (Codat/Apideck/Merge) behind the same interface, so routes and
+  data don't change.
+
+### 13.5 Hidden behind feature flags (nothing deleted)
+
+| Flag (default **off**) | Hides | Off behaviour |
+|---|---|---|
+| `FEATURE_TENANT_LEDGER` | `org_journal` auto-posting hooks (Costing, Procurement, Claim) + `/finance/*` reports (x42) | hooks no-op; routes `404 FEATURE_DISABLED` |
+| `FEATURE_BAS` | `/accounts/bas*` incl. lodge | `404 FEATURE_DISABLED` |
+| `FEATURE_TPAR_LODGE` | `POST /accounts/tpar/:id/lodge` | the TPAR **export stays** |
+| `FEATURE_DEPRECIATION` | fixed-asset routes + `/accounts/depreciation/export` | **stays ON until S18.12 is ruled** (13.6) |
+
+Tables and data stay. The existing suites (org-finance-journal, tax, tpar, depreciation) run with
+the flags on; a new test proves the flags-off behaviour. Portal hides the matching nav when the
+API reports a flag off (via `GET /organisation` `features`).
+
+### 13.6 S18.12 — proposal, NOT ruled
+
+Today S18.11 (depreciation draft) → S18.12 (`tax.approve`) is a **blocking**
+`hold_point_requirements` row on Stage 18 (v016). Hiding depreciation while it blocks would
+leave every project unable to complete Stage 18.
+**Proposal:** S18.11 becomes "asset register prepared". S18.12 becomes "asset register exported
+to the accountant", **non-blocking**, using the existing asset data and depreciation export. The
+accountant's approval happens in the accountant's own system. **Nothing changes until the
+Owner/SA rules**, and `FEATURE_DEPRECIATION` stays on until then. This departs from v3.4 S18.12
+("no ATO lodgement without accountant approval"). Because ProjMan no longer lodges, that rule is
+met outside ProjMan.
+
+### 13.7 Build order (after v048 → inspector fix → dashboard security fixes)
+
+| Step | Deliverable |
+|---|---|
+| R1 | Feature flags + hiding (13.5) + tests |
+| R2 | `client_claims`, `deposit_caps` (VIC/WA seeded), payment schedule, `projects.site_state`; **re-key the v034 task library to v3.4 codes** (seed "S18.11" is v3.4 S18.14) |
+| R3 | SOP template + `sop_templates`/`sop_periods` (unverified) + RCTI agreements/flag + retention columns/table |
+| R4 | `AccountingExportService` + CSV (Xero first) + `accounting_exports` |
+| R5 | Milestone auto-draft triggers (§5); Completion waits on S18.14 (`xprojman-51`) |
+
+### 13.8 Open for Owner / SA
+
+| # | Question | Recommendation |
+|---|---|---|
+| O1 | S18.12 (13.6) | non-blocking export |
+| O2 | SOP templates (NSW/QLD/ACT) and periods; owner-occupier exclusion; RCTI agreement wording | solicitor review; warn-only until then |
+| O3 | "claim" vs "invoice" naming | "claim" |
+| O4 | Which accounting package first; vendor CSV templates | Xero first |
+| O5 | Retention model (13.1) | as proposed; release at PC + DLP end |
+| O6 | Retire the hidden ledger/BAS tables later, or keep them hidden indefinitely | keep hidden; revisit at v2 |
+
+No MAVEN integration is built until `xprojman-55` is agreed with Nexus.
+
+— Server Agent (`projman2-server-agent`, session `projman2-d3`)
