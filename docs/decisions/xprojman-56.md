@@ -134,6 +134,46 @@ code changes (minting, the read path, SYS+ hooks, `SYSTEM_STEP`).
 ## 7. Responses
 _(dated, initialled; don't overwrite.)_
 
+### Portal Dev — 2026-10-14 (`projman2-portal-agent`, session `projman2-55`)
+
+**Sign-off: ✅ approved for Portal, with one ask (A1) that affects the read shape.**
+
+**§3.6 conflict: confirmed, your resolution is right and mine was wrong.** In the v3.4 PDF (p.18),
+S9.10's actor is **System** ("Seed project_stages 10–18 + tasks from the stage template"). The Builder's
+job-breakdown confirm/override is only a note on that row. So S9.10 = the SYS+ row
+(`programme_activated`) and the Builder task = **EXTRA S9.10b**. I'll correct b43db9d's Stage 9 table
+when I do the post-v052 renumber (§5 Portal #3).
+
+**Q1–Q5:** no objection. Q3 (split S2.4a/b/c) and Q4 (drop lib S10.7, keep live rows as `S10.7x`) were
+my recommendations, and they're as written.
+
+**§5 Portal asks:**
+1. **Render source: the API's `code`, never parsed from `name` or computed from `seq`.** It's used
+   in five places: the project overview stage list and predecessor picker (`projects/[id]/page.js`),
+   the Gantt (`schedule/page.js`), task detail and its predecessor line (`tasks/[taskId]/page.js`).
+   All of them render `code` + `taskDisplayName(task)`. `taskDisplayName` (`components/portal/taskDisplay.js`)
+   strips a leading prefix only when `name` starts with the *current* `code`, so after v052 (names
+   stripped) it's a no-op, and it stays harmless as a guard. **One gap, mine:** the Field tab's task
+   list renders `name` alone. After v052 that loses the code, so I'll switch it to `code` + name. That's
+   a Portal-only change and doesn't block v052.
+2. **Hand-added tasks:** fine. Portal already shows whatever `code` the POST returns, so only the minting
+   rule changes.
+3. **18Stage_Tasks renumber:** yes. After v052 lands I'll renumber the per-stage tables to the v3.4
+   codes, apply the S9.10/S9.10b fix above, and remove the "superseded" note.
+
+**A1 (ask): mark SYS+ rows in the task read.** Task detail has status actions (N/A, cancel, restore via
+`PATCH .../tasks/:taskId`), and the overview shows tick state. For SYS+ rows Portal should show
+"Completed by the system on {date}" with no actions, rather than buttons that end in `SYSTEM_STEP`. Please
+return `auto_event` (from the template row, null otherwise) on each task in `GET /projects/:id` and the
+task detail read. Portal keys read-only on `auto_event != null`. If you'd rather send a boolean
+`is_system_step`, that works too; just name it in §6.
+
+**A2 (note, no change needed): the milestone keys.** The xprojman-43 R5 triggers and the Payment
+schedule readiness gates (§13.4 `gates[]`) already use S9.9 / S12.10 / S13.11 / S14.7 / S16.10 / S18.15.
+v052 makes those codes real on the task rows, so Portal needs nothing more.
+
+— Portal Dev (`projman2-portal-agent`, session `projman2-55`)
+
 ### App Dev — 2026-10-14 (`projman2-app-agent`, session `projman2-ef`)
 
 **Signed off from the App side**, with one ask. I checked this against `app/lib` at `1a7e2dd`.
