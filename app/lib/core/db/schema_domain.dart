@@ -410,6 +410,95 @@ class DomainSchema {
     )
   ''';
 
+  // ── Safety/OHS (xprojman-48, server migration_v048) ──────────────────────
+  // `raised_by`/`raised_at`/`closed_by`/`closed_at`/`notifiable_confirmed_by`/
+  // `notified_at`/`regulator_reference` are server-stamped or Portal-only:
+  // stored for display, never pushed. Local-only: `photo_ids` (the queue's
+  // cache for `documents` rows with entity_type 'safety_event'), `sync_error`
+  // (the last code that stopped this row syncing), `raised_by_name` (display),
+  // `has_details` (this device recorded injury details for it, so the UI can
+  // say where they went once the outbox row is gone).
+  static const String safetyEvents = '''
+    CREATE TABLE IF NOT EXISTS safety_events (
+      id                      TEXT PRIMARY KEY NOT NULL,
+      org_id                  TEXT,
+      project_id              TEXT NOT NULL,
+      stage_id                TEXT,
+      unit_id                 TEXT,
+      kind                    TEXT NOT NULL,
+      description             TEXT NOT NULL,
+      location                TEXT,
+      severity                TEXT DEFAULT 'medium',
+      status                  TEXT DEFAULT 'open',
+      occurred_at             TEXT,
+      lat                     REAL,
+      lng                     REAL,
+      is_notifiable           INTEGER DEFAULT 0,
+      notifiable_confirmed_by TEXT,
+      notified_at             TEXT,
+      regulator_reference     TEXT,
+      raised_by               TEXT,
+      raised_by_name          TEXT,
+      raised_at               TEXT,
+      closed_by               TEXT,
+      closed_at               TEXT,
+      close_note              TEXT,
+      photo_ids               TEXT,
+      has_details             INTEGER DEFAULT 0,
+      sync_error              TEXT,
+      device_id               TEXT,
+      is_deleted              INTEGER DEFAULT 0,
+      is_dirty                INTEGER DEFAULT 0,
+      pending_op              TEXT,
+      ever_synced             INTEGER DEFAULT 0,
+      created_at              TEXT,
+      updated_at              INTEGER,
+      server_updated_at       TEXT
+    )
+  ''';
+
+  // Health information (Privacy Act sensitive, xprojman-48 F2). This is an
+  // OUTBOX, not a mirror: a row lives here only until its create push is
+  // accepted, then it is deleted. The server never sends it back on a pull.
+  // Columns are exactly v048's; add no extra free-text injury fields.
+  static const String incidentDetails = '''
+    CREATE TABLE IF NOT EXISTS incident_details (
+      id               TEXT PRIMARY KEY NOT NULL,
+      event_id         TEXT NOT NULL,
+      injured_user_id  TEXT,
+      injured_name     TEXT,
+      injury_type      TEXT,
+      body_part        TEXT,
+      treatment        TEXT,
+      lost_time        INTEGER,
+      witness_names    TEXT,
+      updated_at       INTEGER
+    )
+  ''';
+
+  static const String safetyActions = '''
+    CREATE TABLE IF NOT EXISTS safety_actions (
+      id                TEXT PRIMARY KEY NOT NULL,
+      org_id            TEXT,
+      event_id          TEXT NOT NULL,
+      action            TEXT NOT NULL,
+      assigned_to       TEXT,
+      assigned_to_name  TEXT,
+      due_date          TEXT,
+      status            TEXT DEFAULT 'open',
+      closed_by         TEXT,
+      closed_at         TEXT,
+      device_id         TEXT,
+      is_deleted        INTEGER DEFAULT 0,
+      is_dirty          INTEGER DEFAULT 0,
+      pending_op        TEXT,
+      ever_synced       INTEGER DEFAULT 0,
+      created_at        TEXT,
+      updated_at        INTEGER,
+      server_updated_at TEXT
+    )
+  ''';
+
   /// v2 upgrade step (P5, servdesignspec §11).
   static const List<String> v2 = [siteDiary, siteAttendance, deliveries];
 
@@ -434,5 +523,8 @@ class DomainSchema {
     checklistInstanceItems, signoffs,
   ];
 
-  static const List<String> all = [...v2, ...v3, ...v4, ...v5, ...v6];
+  /// v7 upgrade step (xprojman-48, server migration_v048 — safety/OHS).
+  static const List<String> v7 = [safetyEvents, incidentDetails, safetyActions];
+
+  static const List<String> all = [...v2, ...v3, ...v4, ...v5, ...v6, ...v7];
 }

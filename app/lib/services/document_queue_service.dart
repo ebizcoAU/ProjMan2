@@ -49,6 +49,7 @@ class DocumentQueueService {
     'delivery': 'delivery_docket',
     'checklist_item': 'checklist_photo', // xprojman-46, server v047
     'signoff': 'signature',
+    'safety_event': 'safety_photo', // xprojman-48, server v048
   };
 
   /// entity_type → (owning table, id column, the plural cache columns that may
@@ -63,6 +64,7 @@ class DocumentQueueService {
     'delivery': ('deliveries', 'id', ['photo_ids']),
     'checklist_item': ('checklist_instance_items', 'id', ['photo_ids']),
     'signoff': ('signoffs', 'id', ['signature_ids']),
+    'safety_event': ('safety_events', 'id', ['photo_ids']),
   };
 
   /// Called with the entity type after each successful upload, so an owner

@@ -18,7 +18,9 @@ class DatabaseManager {
   ///        columns (xprojman-22/23 — one queue, five capture surfaces)
   ///   v6 — checklists: templates, instances, items, shared signoffs
   ///        (xprojman-46, server migration_v047)
-  static const int currentVersion = 6;
+  ///   v7 — safety/OHS: safety_events, safety_actions, incident_details outbox
+  ///        (xprojman-48, server migration_v048)
+  static const int currentVersion = 7;
 
   static Database? _instance;
 
@@ -56,6 +58,7 @@ class DatabaseManager {
       await _createDisputeIndexes(txn);
       await _createUploadQueueIndexes(txn);
       await _createChecklistIndexes(txn);
+      await _createSafetyIndexes(txn);
     });
     // ignore: avoid_print
     print('✅ [DB] Created projman2.db v$version '
@@ -117,6 +120,14 @@ class DatabaseManager {
         await _createChecklistIndexes(txn);
       });
     }
+    if (oldVersion < 7) {
+      await db.transaction((txn) async {
+        for (final stmt in DomainSchema.v7) {
+          await txn.execute(stmt);
+        }
+        await _createSafetyIndexes(txn);
+      });
+    }
     // ignore: avoid_print
     print('ℹ️ [DB] upgrade $oldVersion → $newVersion');
   }
@@ -161,6 +172,17 @@ class DatabaseManager {
       'CREATE INDEX IF NOT EXISTS idx_cl_item_instance ON checklist_instance_items(instance_id)',
       'CREATE INDEX IF NOT EXISTS idx_cl_tpl_item_tpl ON checklist_template_items(template_id)',
       'CREATE INDEX IF NOT EXISTS idx_signoffs_subject ON signoffs(subject_type, subject_id)',
+    ]) {
+      await txn.execute(stmt);
+    }
+  }
+
+  static Future<void> _createSafetyIndexes(Transaction txn) async {
+    for (final stmt in const [
+      'CREATE INDEX IF NOT EXISTS idx_se_project ON safety_events(project_id)',
+      'CREATE INDEX IF NOT EXISTS idx_se_dirty ON safety_events(is_dirty)',
+      'CREATE INDEX IF NOT EXISTS idx_sa_event ON safety_actions(event_id)',
+      'CREATE INDEX IF NOT EXISTS idx_id_event ON incident_details(event_id)',
     ]) {
       await txn.execute(stmt);
     }
