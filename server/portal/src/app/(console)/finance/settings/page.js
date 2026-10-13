@@ -368,10 +368,15 @@ export default function FinanceSettingsPage() {
       <div style={{ marginBottom: 16 }}>
         <h1 style={{ fontFamily: 'var(--fh)', fontWeight: 800, fontSize: 22, color: 'var(--text)', margin: 0 }}>Finance settings</h1>
         <div style={{ fontSize: 13.5, color: 'var(--dim)', marginTop: 4, maxWidth: '62ch' }}>
-          Chart of accounts, cost rates, and cost centres. See the P&amp;L/
-          Balance Sheet/Expenses/Sales items in the sidebar for the journal
-          reports. Year-end rollover (closing a financial year) isn&rsquo;t
-          built yet.
+          {ACCOUNTING_SCREENS ? (
+            <>Chart of accounts, cost rates, and cost centres. See the P&amp;L/
+            Balance Sheet/Expenses/Sales items in the sidebar for the journal
+            reports. Year-end rollover (closing a financial year) isn&rsquo;t
+            built yet.</>
+          ) : (
+            <>Cost rates and cost centres for project costing, and the account and tax
+            codes the Accounting export uses for your Xero, MYOB or QuickBooks.</>
+          )}
         </div>
       </div>
 
