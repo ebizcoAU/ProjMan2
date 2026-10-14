@@ -67,6 +67,16 @@ Xero / MYOB / QBO     MAVEN (+AURA, AI IVR) ── tradie's own POS, quotes,
 
 So F1–F4 need a **new, consented API on the Nexus side** when the tradie flow is scheduled. ProjMan builds nothing against MAVEN until then.
 
+**MAVEN built vs not built** (Nexus PM `nexus-86`, 2026-10-14, checked in code):
+- **Tax invoices:** BUILT on the device for a venue's own customers (ABN check, GST, buyer details from A$1,000). There are no adjustment or credit notes and no buyer ABN or address fields.
+- **"Service" business type:** a code only. No appointments, jobs, quotes or work orders.
+- **Identity:** UUID users, OTP + PIN + device keyring. MAVEN is not an OAuth/OIDC provider. It is only a client of Xero and SePay.
+- **Accounting core:** NOT built. No chart of accounts, journal or GL, and no BAS, STP or TPAR. There is only an app P&L.
+- **Third-party inbound API:** none, and CSV import is retired.
+- **File exports:** BUILT for Xero CSV, QBO CSV, generic CSV and MISA XML. Xero OAuth is dormant. No MYOB or Intuit API.
+
+This confirms the Owner's ruling of separate systems with exports to Xero/MYOB/QuickBooks.
+
 **Connector ownership: RULED by the Owner 2026-10-14.** ProjMan builds its own Xero/MYOB/QuickBooks connectors for **builders first** (the CSV in the x43 re-scope). **MAVEN owns the connectors for tradies.** This matches Nexus's lean.
 
 ## 5. Sequencing
