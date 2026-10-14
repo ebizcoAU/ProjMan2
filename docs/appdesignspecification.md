@@ -531,3 +531,180 @@ current content immediately before saving, not just before you started editing.)
 **I approve this document as the functional specification of record for the ProjMan App v2.**
 
 All design decisions in Section 7 are accepted and locked. The App team is cleared to build against this spec once the required Server schemas (identified in Section 9) are in place.
+
+---
+
+## 11. Build status & amendments (2026-10-14)
+
+App Dev (`projman2-app-agent`, session `projman2-ef`), at the Owner's request (routed by the PM, 2026-10-14).
+**Sections 0–10 above are LOCKED and have not been edited.** This section does three things:
+- §11.1–11.2 record what is actually built, as of commit `78f2f36`. These are facts read from `app/lib`, and
+  they supersede the "Current:" lines in §4, which are frozen at 2026-09-03.
+- §11.3 lists where this spec and the build differ from the Core Logic Driver
+  (`docs/researchPaper/ProjMan_18Stage_Specification_v3.4.pdf`, "v3.4").
+- §11.4 sets out the **proposed amendments**. **None of them takes effect until the Owner signs it off in §11.7.**
+
+Key: ✅ wired = real server calls (REST, `/sync/push`+`/sync/pull`, or the `/documents` upload queue) ·
+🧪 mockup = in-memory or local-only UI, no server path · ❌ = absent.
+
+### 11.1 Per module / screen
+
+| §4 module | Surface | Spec said (09-03) | Actual (10-14) | Notes |
+|---|---|---|---|---|
+| 4.1 Site Diary | Site → Site Diary | ✅ | ✅ wired | Text + photos. Voice isn't built (§11.2). |
+| — Attendance | Site → Attendance | — | ✅ wired | `check_in_lat/lng` are always null because there's no location package (§11.4 A4). |
+| — Deliveries | Site → Deliveries | — | ✅ wired | Docket photos go through the upload queue. Supplier and PO are free text. |
+| 4.2 Checklists & ITPs | Quality → Checklists | ⚠️ | ✅ wired, **not yet verified end-to-end** | Server v047 (xprojman-46), commit `adf7a2c`. Explicit Pass/Fail/N/A buttons (§7 #4), photo per item, canvas sign-off. Completion is pushed last. Toolbox talks run as a checklist category. The E2E with Portal is waiting on Owner test accounts. |
+| 4.2 Hold points / Inspections | Quality → Inspections | ⚠️ | ✅ wired | Sync, plus `POST …/inspections/:iid/complete`. |
+| 4.3 Insurances, 4.4 Tickets, 4.17 Pre-qual | Profile → My Tickets | ❌ | ❌ | Waits on Server's xprojman-49 §7.4 and API.NSW (xprojman-49/52 rulings). |
+| 4.5 My Tasks | Projects → My Tasks | ⚠️ | ❌ | The Programme screen is read-only. No task tick. |
+| — Programme / Gantt | Projects → Programme | — | ✅ read-only | Bar Gantt. Line-of-Balance is a stub: `_isMultiUnit` is always false, against v3.4 §1.8. The "Programme"/"Costs" header sub-pages exist, but they show the same project list. |
+| — Project create (Stage 1), 18-stage tracker | Projects | — | ✅ wired | `POST /customers`, `POST /projects`, stage advance. |
+| 4.6 Documents, 4.7 Actions, 4.8 Locations, 4.10 Drawings, 4.12 RFI, 4.16 Messages, 4.20 NCC AI | Projects | ❌/⚠️ | ❌ | No App code and no xprojman contract (the Server note in §9 still applies). |
+| 4.9 SDS, 4.18 Emergency Evacuation | Safety | ❌ | ❌ | |
+| 4.11 Defects, — Certificates | Quality | ✅ | ✅ wired | |
+| — Disputes (v3.4 Part 4 §4.1) | Quality → Disputes | — | 🧪 local-only | It's a SQLite record with no server endpoint. Counter-evidence photos do upload. |
+| 4.13 Submittals | Quality | ❌ | ❌ | |
+| 4.14 Permits, — Materials | Site | ❌ | ❌ | |
+| 4.19 Safety & OHS (hazards, near misses, incidents) | Safety → Safety / Incidents | ❌ | ✅ wired, **not yet verified end-to-end** (`c221878`, `16a6647`) | Server v048 (xprojman-48). Injury details go to a private outbox that's deleted after push (F2). Edits, actions and closing are manager-only. A notifiable incident is read-only on the device. Real photos. |
+| 4.19 Inductions + SWMS sign-on | Safety → Inductions | ❌ | ✅ wired, **not yet verified end-to-end** (`43d0b73`, `9912dc7`) | Server v048 (F5/F6). A manager inducts a member or visitor and the inductee signs. Workers see their own status (warn only, never block). SWMS register cached for offline sign-on. Running an induction as a checklist (`checklist_instance_id`) isn't used yet. |
+| — Job Invitations (S9.7) | Projects | — | ✅ wired | `trade_offered` shown for subcontractor awards (`5634003`). |
+| — Introduction QR, VeriTrade login (§8) | Profile | — | ✅ wired | |
+| — Device pairing + QR `typ` dispatch | Welcome → Join with a QR code | — | ✅ (`4d67cec`) | xprojman-50 F4. A `client_invite` QR shows a holding notice until Server's preview/redeem endpoints exist. |
+| — Client home + role routing | `/client-home` | — | ✅ minimal (`4ee4d49`) | xprojman-50 F7. Welcome, the builder's name and sign-out only. See §11.3 D1. |
+| — S18.11 depreciation draft | — | — | ❌ in App | System/Portal step (v3.4). No App surface needed. |
+| — S18.14 client final sign-off | Projects → Stage 18 → Client sign-off | — | ✅ wired, **not yet verified end-to-end** (`e994514`, `78f2f36`) | Server v050. Signature uploads first, then the row is pushed create-only. PACK_CHANGED asks for a new signature (supersedes). All three methods shown with none preselected; **F1 is with the solicitor** (§11.3 D2). Signing is gated on S18.3 being validated. |
+| — S18.6 Practical Completion walkthrough, S18.7 defect loop | App (PM) | — | ⚠️ partial | Defects exist. There's no walkthrough flow that generates a defect list. |
+| — OS push notifications | — | — | ❌ | Contract is xprojman-54. Needs Firebase/APNs credentials (§11.6). |
+
+### 11.2 Cross-cutting capabilities (§2, §5)
+
+| Capability | Spec | Actual |
+|---|---|---|
+| Unified `CaptureService` (§2) | One component | ❌ There's no single class. `captureAndEnqueue()` + `DocumentQueueService` cover photos only. |
+| Photo (§5.3) | quality 85, max 2560px, <25MB | ✅ As specified. **Offers camera AND gallery** (see A1). |
+| Video 60s (§5.3, §7 #5) | Locked | ❌ No video package. |
+| Voice + STT, keep audio (§5.2, §7 #6/#8) | Locked | ❌ No audio or speech package (deliberately left out of pubspec for now). |
+| Signature canvas (§5.4, §7 #7) | Locked | ✅ Custom finger-drawn pad, uploaded as a `signoff` document. |
+| QR scan (§5.5) | | ✅ `mobile_scanner` (pairing, introductions, VeriTrade). Material and induction scanning aren't built. |
+| Full-screen viewer with metadata bar (§7 #3) | Locked | ❌ Thumbnails only. |
+| GPS / geofence (§2, §0) | "always captured if permission granted" | ❌ No location package. The UI geofence chip is illustrative only (see A4). |
+| Offline queue (§1) | | ✅ Per-row `is_dirty` sync + `upload_queue` (idempotent `client_ref`). The generic `sync_queue` table is never written, so the always-visible sync badge only counts uploads. That's a known gap, to be fixed in the App. |
+| Hash at capture (§0, v3.4 §1.4) | "frozen/hashed" | ⚠️ The server stamps and freezes. The App doesn't hash at the moment of capture. |
+| MQTT realtime | | ❌ Config exists, but no client is wired. |
+| Local DB | | v6 |
+
+### 11.3 Divergences from the Core Logic Driver (v3.4)
+
+- **D1. Client in the App.** v3.4 §1.1 says the Client is "portal-only… never paired to the App, never a sync
+  writer". The Owner reversed this in xprojman-41 §0.1 (direction signed off on 2026-09-07). xprojman-50 is the
+  pairing contract. The App now routes `client` users to a minimal home screen, and the client is still never a
+  sync writer. **Ask:** annotate v3.4 §1.1 (or record the reversal next to it) so the Core Logic Driver doesn't
+  contradict a signed-off ruling.
+- **D2. S18.14 surface.** v3.4 has the Client sign on the **Portal**. xprojman-51 F1(a) proposes, for v1,
+  **assisted signing on the PM's tablet in the App**, with the PM as witness, because customers can't log in
+  yet. It's still pending with the Owner and is on the solicitor list (§11.5 L5).
+- **D3. Gallery uploads.** v3.4 §1.4 says evidence is "captured inside the app only (never a gallery
+  upload…)". The App's photo picker offers the gallery on every evidence surface. Proposed fix: A1.
+- **D4. Geofencing.** v3.4 §1.4 and §1.7 assume geofenced evidence. The App captures no location at all
+  (A4). v3.4 §1.7 also says a geofence is never sufficient on its own, and the tick-then-verify chain is
+  the real control. That chain is built for checklists and inspections.
+- **D5. Line-of-Balance.** v3.4 §1.8 makes LOB mandatory the first time a project has more than one unit.
+  The App only renders the bar Gantt. That's acceptable while every project has one unit, but it becomes a
+  blocker as soon as a multi-unit project is created.
+- **D6. Part 4 safeguards.**
+  - §4.1 disputes: local-only today (no server endpoint).
+  - §4.3 "no hidden dossier": the worker can't yet see what Foreperson or Builder see about them.
+  - §4.4 deactivation-not-erasure disclosure: there's no delete-account flow in the App.
+
+  v3.4 calls all of these "necessary, not optional, before this ships."
+
+### 11.4 Proposed amendments to locked behaviour (need Owner sign-off)
+
+- **A1. Evidence photos are camera-only.** On evidence surfaces (defects, checklist items, inspections,
+  diary, hazards/incidents, attendance), remove the "Choose from gallery" option. Keep gallery or file upload
+  only for *documents* (certificates, delivery dockets, permits, insurance), and mark those records
+  `source=upload` so the Portal labels them "uploaded, not captured". This aligns §5.3 with v3.4 §1.4.
+  *Recommend: approve.*
+- **A2. Client role is in scope for the App.** Amend §0/§1 to record D1: the App serves the `client` role
+  with a minimal, read-only home screen, never the staff shell and never a sync writer. Its scope grows
+  only through xprojman-41/50 follow-ups. *Recommend: approve (it records an existing ruling).*
+- **A3. Single capture component is a target, not a gate.** §2 is built incrementally: photo and signature
+  now, then video and voice. *Recommend: approve as wording only.*
+- **A4. Location: point-of-capture only, never continuous.** Amend §2's "GPS always captured if permission
+  granted" to: one fix taken at the moment of an explicit capture, with foreground permission only, never
+  background or continuous tracking (v3.4 §4.3 calls this "a hard technical limit"). Until location ships,
+  the UI must not show a geofence result. The illustrative chip is removed or reads "Location not
+  recorded". *Recommend: approve. Also see L3.*
+- **A5. §6 Sync contract split.**
+  - Built and synced: `site_diary`, `site_attendance`, `deliveries`, `defects`, `inspections`,
+    `checklist_instances`/items/`signoffs` (v047).
+  - Proposed, not built: `hazards`, `incidents`, `rfi`, `actions`, `permits`, `messages`.
+
+  This is what Server asked for in §9. *Recommend: approve as wording only.*
+- **A6. §3 navigation reflects the build.**
+  - Quality gains **Disputes** (v3.4 §4.1).
+  - Projects shows Programme as a read-only Gantt.
+  - Any tab not yet built stays off the header, rather than showing placeholder pages. (Projects'
+    "Costs" today shows the project list.)
+
+  *Recommend: approve.*
+
+### 11.5 Legal risks (for the PM, then the Owner and solicitor)
+
+- **L1. In-app tap as contract acceptance (S9.7 Job Award).** §7 #2 and v3.4 Part 3 #10 already flag this:
+  whether a tap satisfies state home-building-contract execution rules. It's built and wired. **It should be
+  confirmed before real use.**
+- **L2. Audio/video recording of people.** Voice and video (§5.2/5.3) are locked but not built. The state
+  surveillance/listening-devices acts need confirmation (v3.4 Part 3) **before** they're built. Note too that
+  iOS has no microphone usage string today.
+- **L3. Location.** No location is collected today. If A4 ships, it needs a privacy notice and APP 5
+  collection notice, and the copy must not claim geofencing before it exists. Product's xprojman-53 audit
+  already corrected the site copy.
+- **L4. Privacy Act / APPs.**
+  - The App has **no privacy policy link, no terms acceptance and no collection notice** at register or
+    onboarding.
+  - Photos of people on site, worker attendance and the dispute and verification records are personal
+    information.
+  - Retention: the indefinite as-built class (v3.4 §1.11) versus pruning of granular capture (v3.4 §4.3).
+  - Account deletion is deactivation, not erasure (v3.4 §4.4), so it must be disclosed at the point of
+    deletion.
+- **L5. Client sign-off on the PM's tablet (xprojman-51 F1(a)).** The PM witnesses and hands over the
+  device. Questions: is it valid execution, could it be seen as undue influence or a non-independent
+  signature, and is the evidence strong enough compared with Portal self-sign? It's on the solicitor list.
+- **L6. Minors.** TAFE/school apprentices (v3.4 §1.7, Part 3) can be aged 15–16. The adult registration flow
+  has no age gate or parental consent. **Don't onboard minors until there's a dedicated design.**
+- **L7. Evidence weight.** Gallery uploads (D3/A1) and the lack of a capture-time hash (§11.2) weaken the
+  "evidence, not claim" position v3.4 §1.4 relies on in disputes.
+
+### 11.6 Blocking items
+
+| Blocker | Blocks | Owner of the fix |
+|---|---|---|
+| Test accounts (Portal PM, App field user, org/project) | Checklist E2E (xprojman-46) | Owner |
+| Ruling on xprojman-51 F1 + Server's response to F2–F4 | S18.14 build | Owner, Server |
+| Server `/client-invites/preview`, `/redeem`, `/email-code`; `typ:"device_pair"` on new staff QRs | Customer invite flow (xprojman-50) | Server |
+| ~~Server v048 (Safety) + TZ fix~~ | ✅ Landed 2026-10-14; the App's swap is done | — |
+| Server xprojman-49 §7.4 + API.NSW | My Tickets | Server, Owner (API.NSW access) |
+| Server re-seed of the v047 system templates with Product's copy (7fe2c69) | Real checklist wording | Server |
+| Firebase `projman-f4bca` FCM + APNs key; Apple Developer / Google Play accounts (the App is on neither store) | Push (xprojman-54), any external install | Owner |
+| Microsoft / Facebook OAuth app registrations | Those sign-in buttons in production (only Google is real) | Owner |
+| Support contact for `ACCOUNT_EXISTS` | Customer invite errors | Product / Owner |
+| **Android release manifest has no INTERNET permission** (only debug/profile do) | Any Android release build reaching the API | ✅ Fixed in `21748a7` (2026-10-14) |
+| Solicitor items L1, L2, L5 | Shipping Job Award tap, voice/video, assisted sign-off | Owner |
+
+### 11.7 Owner sign-off on amendments
+
+_(A1–A6 above. Mark each approved or declined, with a date. Until then the locked §0–§10 text governs.)_
+
+**Scope ruling (Owner, 2026-10-14, relayed by the PM):** ProjMan is project management.
+- Accounting and invoicing go through QuickBooks, Xero, MYOB or MAVEN.
+- Staff rosters and job attendance for pay belong to MAVEN + AURA.
+- **The App adds no invoicing or pay-related features.**
+- Site sign-on attendance (§11.1) stays a WHS/project record, not a pay record. The PM is confirming the exact
+  boundary with the Owner.
+
+No integration with AURA (personal app) or MAVEN (business app) from the Nexus project is built. The PM is
+talking to the Nexus PM first.
+
+— App Dev (`projman2-app-agent`), 2026-10-14
