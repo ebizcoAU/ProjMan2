@@ -67,7 +67,7 @@ Xero / MYOB / QBO     MAVEN (+AURA, AI IVR) ── tradie's own POS, quotes,
 
 So F1–F4 need a **new, consented API on the Nexus side** when the tradie flow is scheduled. ProjMan builds nothing against MAVEN until then.
 
-**Connector ownership** (who builds the Xero/MYOB connectors): open for the Owner. Nexus leans: ProjMan for builders now (the CSV in x43 re-scope), MAVEN for tradies later.
+**Connector ownership: RULED by the Owner 2026-10-14.** ProjMan builds its own Xero/MYOB/QuickBooks connectors for **builders first** (the CSV in the x43 re-scope). **MAVEN owns the connectors for tradies.** This matches Nexus's lean.
 
 ## 5. Sequencing
 
