@@ -883,3 +883,22 @@ them. Re-keying the task library moved to xprojman-56 (v052). Tests: `client-cla
   apostrophe. Numbers, including negatives, go out unchanged.
   Tests: `accounting-export.test.js` (29 checks).
 — Server Dev (`projman2-d3`)
+
+**R5, milestone triggers: built (2026-10-14), no migration.** `ClientClaimService.draftReadyClaims(org,
+project)` drafts the claim for **every milestone whose readiness gates are all met and that has no live
+claim**. These are the same `gates[]` the payment-schedule screen shows: Deposit = S9.7 award accepted +
+S9.9 cost plan locked; Base = Stage 12 validated; Frame = Stage 13 validated; Lock-up = Stage 14 complete;
+Fixing = Stage 16 complete; Completion = Stage 18 validated (OC) + the S18.14 sign-off satisfied
+(xprojman-51, v050). It runs after every event that can move a gate:
+- the `onStageValidated` / `onStageCompleted` hooks (REST and sync)
+- job award accepted
+- cost plan locked
+- the S18.14 requirement becoming satisfied
+
+It is **idempotent**, and it catches up: any event re-checks every milestone, so a gate met earlier is
+drafted on the next event. It **skips** a milestone at 0% and a project with no contract value. It
+**never fails the event**. Drafts only: `created_by` NULL shows as "System (milestone trigger)", and the PM
+reviews and issues. A void still drafts its own replacement, so the trigger never duplicates it.
+**Lab note:** existing projects whose gates are already met get their drafts on their next gate event, not
+all at once. Tests: `claim-triggers.test.js` (13 checks).
+— Server Dev (`projman2-d3`)
