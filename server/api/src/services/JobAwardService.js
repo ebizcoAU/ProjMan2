@@ -125,6 +125,8 @@ async function respond({ orgId, projectId, jobAwardId, actor, accept, surface })
       await TaskCodeService.autoTick(orgId, projectId, 'job_award_accepted');
       await TaskCodeService.autoTick(orgId, projectId, 'programme_activated');
     }
+    // x43 R5: the Deposit gate (S9.7 award accepted + S9.9 cost plan locked) may now be met.
+    await require('./ClientClaimService').draftReadyClaims(orgId, projectId);
     // xprojman-44 Module C: the actual writer subcontractor_engagements (migration_v014)
     // never had. Consent defaults FALSE per that table's own column default — never
     // auto-true just because the award was accepted.

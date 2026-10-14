@@ -14,12 +14,17 @@
 //                (SOP_OWNER_OCCUPIER); fields checked, statement rendered and due dates set at
 //                issue, all with the unverified warnings (SopService).
 //   * retention  (R3) set on the draft against the client contract (RetentionService).
+//   * triggers   (R5) draftReadyClaims drafts every milestone whose readiness gates are all met
+//                and that has no live claim, after each event that can move a gate: stage
+//                validated/completed (hooks), job award accepted, cost plan locked, client sign-off.
+//                Drafts only (created_by NULL = the system); the PM still reviews and issues.
 
 const { v4: uuidv4 } = require('uuid');
 const pool = require('../db/pool');
 const { ServiceError } = require('./errors');
 const { toWallClock, nowWallClock } = require('../lib/datetime');
 const ProjectService = require('./ProjectService');
+const hooks = require('./stageHooks');
 const { projectScope } = require('../lib/scope');
 const SopService = require('./SopService');
 const RetentionService = require('./RetentionService');
@@ -448,6 +453,39 @@ async function voidClaim({ orgId, actor, id, reason }) {
   return { client_claim: voided, replacement };
 }
 
+/**
+ * R5 milestone triggers (x43 §5): draft the claim for every milestone whose gates (the same ones
+ * the payment-schedule screen shows) are all met and that has no live claim yet. Idempotent, so it
+ * is safe to call after any event; a milestone at 0% or a project without a contract value is
+ * skipped. Never throws: a trigger must not fail the event that fired it.
+ */
+async function draftReadyClaims(orgId, projectId) {
+  try {
+    const [[p]] = await pool.query(
+      'SELECT contract_value FROM projects WHERE id = ? AND org_id = ? AND is_deleted = 0 LIMIT 1', [projectId, orgId]);
+    if (!p || !(Number(p.contract_value) > 0)) return [];
+    const [gates, live, sched] = await Promise.all([
+      gatesFor(orgId, projectId), liveClaims(orgId, projectId), scheduleMap(orgId, projectId)]);
+    const drafted = [];
+    for (const m of MILESTONES) {
+      if (live.has(m) || !(sched[m] > 0) || !gates[m].every((g) => g.met)) continue;
+      try {
+        drafted.push({ milestone: m, id: await createDraft({ orgId, projectId, actor: null, milestone: m }) });
+      } catch (err) {
+        if (err.code !== 'CLAIM_EXISTS') throw err; // a concurrent trigger got there first
+      }
+    }
+    return drafted;
+  } catch (err) {
+    console.warn('[CLIENT_CLAIMS] milestone auto-draft failed (non-fatal):', err.message);
+    return [];
+  }
+}
+
+// Base / Frame / Lock-up / Fixing / Completion gates move with the stage engine.
+hooks.on('onStageValidated', ({ orgId, projectId }) => draftReadyClaims(orgId, projectId));
+hooks.on('onStageCompleted', ({ orgId, projectId }) => draftReadyClaims(orgId, projectId));
+
 /** POST /projects/:id/client-claims { milestone } — the PM raises a draft by hand. */
 async function raise({ orgId, actor, projectId, milestone }) {
   const id = await createDraft({ orgId, projectId, actor, milestone });
@@ -456,5 +494,5 @@ async function raise({ orgId, actor, projectId, milestone }) {
 
 module.exports = {
   MILESTONES, DEFAULT_SCHEDULE, depositCap, getSchedule, saveSchedule, createDraft,
-  list, detail, patchDraft, issue, recordPayment, voidClaim, raise,
+  list, detail, patchDraft, issue, recordPayment, voidClaim, raise, draftReadyClaims,
 };

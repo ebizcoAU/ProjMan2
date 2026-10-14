@@ -160,6 +160,8 @@ async function setLock({ orgId, projectId, actor, locked }) {
     `UPDATE cost_plans SET status = ?, locked_at = ?, locked_by = ? WHERE project_id = ? AND org_id = ?`,
     [locked ? 'locked' : 'draft', locked ? new Date() : null, locked ? actor.userId : null, projectId, orgId]
   );
+  // x43 R5: locking the cost plan (S9.9) can complete the Deposit gate.
+  if (locked) await require('./ClientClaimService').draftReadyClaims(orgId, projectId);
   return { project_id: projectId, status: locked ? 'locked' : 'draft' };
 }
 
