@@ -51,6 +51,7 @@ const JobAwardService = require('../services/JobAwardService');
 const HoldPointService = require('../services/HoldPointService');
 const EstimateService = require('../services/EstimateService');
 const ClaimService = require('../services/ClaimService');
+const RetentionService = require('../services/RetentionService');
 const ProcurementService = require('../services/ProcurementService');
 const TaskQuoteService = require('../services/TaskQuoteService');
 const ContractService = require('../services/ContractService');
@@ -124,6 +125,7 @@ router.post(
   [
     body('code').trim().notEmpty().isLength({ max: 30 }).withMessage('A project code is required (max 30 chars)'),
     body('site_state').optional({ nullable: true }).isIn(['WA', 'SA', 'NT', 'QLD', 'NSW', 'VIC', 'TAS', 'ACT']),
+    body('client_is_owner_occupier').optional().isBoolean().toBoolean(),
     body('name').trim().notEmpty().withMessage('A project name is required'),
     body('contract_type').optional({ nullable: true, checkFalsy: true }).isIn(['fixed_price', 'cost_plus']),
     body('status').optional().isIn(['draft', 'active', 'on_hold', 'completed', 'inactive', 'cancelled']),
@@ -202,6 +204,7 @@ router.patch(
   [
     body('code').optional().trim().notEmpty().isLength({ max: 30 }),
     body('site_state').optional({ nullable: true }).isIn(['WA', 'SA', 'NT', 'QLD', 'NSW', 'VIC', 'TAS', 'ACT']),
+    body('client_is_owner_occupier').optional().isBoolean().toBoolean(),
     body('name').optional().trim().notEmpty(),
     body('contract_type').optional({ nullable: true, checkFalsy: true }).isIn(['fixed_price', 'cost_plus']),
     body('status').optional().isIn(['draft', 'active', 'on_hold', 'completed', 'inactive', 'cancelled']),
@@ -1014,19 +1017,31 @@ router.post(
     body('amount').isFloat({ gt: 0 }).withMessage('amount must be a positive number'),
     body('stage_id').optional({ nullable: true }).isString(),
     body('note').optional({ nullable: true }).isString(),
+    // xprojman-43 R3: opt-in SOP template + retention
+    body('sop_state').optional({ nullable: true }).isString().isLength({ max: 3 }),
+    body('work_description').optional({ nullable: true }).isString().isLength({ max: 1000 }),
+    body('reference_date').optional({ nullable: true }).isISO8601(),
+    body('supporting_statement_document_id').optional({ nullable: true }).isString(),
+    body('contract_id').optional({ nullable: true }).isString(),
+    body('retention_withheld').optional({ nullable: true }).isFloat({ min: 0 }),
   ],
   async (req, res) => {
     if (validation(req, res)) return;
     try {
+      const b = req.body;
       const result = await ClaimService.submit({
         orgId: req.auth.orgId, projectId: req.params.id,
         actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
-        stageId: req.body.stage_id, amount: req.body.amount, note: req.body.note,
+        stageId: b.stage_id, amount: b.amount, note: b.note,
+        sop: { sop_state: b.sop_state, work_description: b.work_description, reference_date: b.reference_date,
+          supporting_statement_document_id: b.supporting_statement_document_id },
+        contractId: b.contract_id, retentionWithheld: b.retention_withheld,
       });
       await audit(req, 'progress_claim.submit', {
-        entity: 'progress_claims', entityId: result.id, detail: { project_id: req.params.id },
+        entity: 'progress_claims', entityId: result.data.id,
+        detail: { project_id: req.params.id, sop_state: result.data.sop_state, retention_withheld: result.data.retention_withheld },
       });
-      return res.status(201).json({ success: true, data: result });
+      return res.status(201).json({ success: true, data: result.data, ...(result.warnings.length ? { warnings: result.warnings } : {}) });
     } catch (err) { return sendError(res, err); }
   }
 );
@@ -1034,13 +1049,19 @@ router.post(
 router.post(
   '/:id/progress-claims/:claimId/approve',
   canApproveClaims,
-  [body('accept').optional().isBoolean()],
+  [
+    body('accept').optional().isBoolean(),
+    body('contract_id').optional({ nullable: true }).isString(),
+    body('retention_withheld').optional({ nullable: true }).isFloat({ min: 0 }),
+  ],
   async (req, res) => {
+    if (validation(req, res)) return;
     try {
       const result = await ClaimService.approve({
         orgId: req.auth.orgId, projectId: req.params.id, claimId: req.params.claimId,
         actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
         accept: req.body.accept !== false,
+        contractId: req.body.contract_id, retentionWithheld: req.body.retention_withheld,
       });
       await audit(req, 'progress_claim.approve', {
         entity: 'progress_claims', entityId: req.params.claimId,
@@ -1065,6 +1086,92 @@ router.post(
       await audit(req, 'progress_claim.pay', {
         entity: 'progress_claims', entityId: req.params.claimId,
         detail: { project_id: req.params.id, payment_id: result.payment_id },
+      });
+      return res.status(201).json({ success: true, data: result });
+    } catch (err) { return sendError(res, err); }
+  }
+);
+
+// ── xprojman-43 R3 — SOP payment schedule, RCTI flag, retention ─────────────────────
+//   POST /:id/progress-claims/:claimId/schedule   respondent's payment schedule (claims.approve)
+//   POST /:id/progress-claims/:claimId/rcti       { issued } needs a current agreement (claims.approve)
+//   GET  /:id/retention                           per contract withheld/released/held (money.read)
+//   POST /:id/retention-releases                  release part of the retention (money.write)
+router.post(
+  '/:id/progress-claims/:claimId/schedule',
+  canApproveClaims,
+  [
+    body('scheduled_amount').isFloat({ min: 0 }).withMessage('scheduled_amount must be 0 or more'),
+    body('schedule_reason').optional({ nullable: true }).isString().isLength({ max: 500 }),
+  ],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await ClaimService.schedule({
+        orgId: req.auth.orgId, projectId: req.params.id, claimId: req.params.claimId,
+        actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+        scheduledAmount: req.body.scheduled_amount, reason: req.body.schedule_reason,
+      });
+      await audit(req, 'progress_claim.schedule', {
+        entity: 'progress_claims', entityId: req.params.claimId,
+        detail: { project_id: req.params.id, scheduled_amount: result.data.scheduled_amount },
+      });
+      return res.json({ success: true, data: result.data, ...(result.warnings.length ? { warnings: result.warnings } : {}) });
+    } catch (err) { return sendError(res, err); }
+  }
+);
+
+router.post(
+  '/:id/progress-claims/:claimId/rcti',
+  canApproveClaims,
+  [body('issued').isBoolean().withMessage('issued must be true or false')],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const issued = req.body.issued === true || req.body.issued === 'true';
+      const result = await ClaimService.setRcti({
+        orgId: req.auth.orgId, projectId: req.params.id, claimId: req.params.claimId,
+        actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role }, issued,
+      });
+      await audit(req, 'progress_claim.rcti', {
+        entity: 'progress_claims', entityId: req.params.claimId,
+        detail: { project_id: req.params.id, rcti_issued: result.rcti_issued, rcti_agreement_id: result.rcti_agreement_id },
+      });
+      return res.json({ success: true, data: result });
+    } catch (err) { return sendError(res, err); }
+  }
+);
+
+router.get('/:id/retention', requirePermission('money.read'), async (req, res) => {
+  try {
+    const data = await RetentionService.summary({
+      orgId: req.auth.orgId, projectId: req.params.id,
+      actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role },
+    });
+    return res.json({ success: true, data });
+  } catch (err) { return sendError(res, err); }
+});
+
+router.post(
+  '/:id/retention-releases',
+  canWriteMoney,
+  [
+    body('contract_id').isString().notEmpty(),
+    body('amount').isFloat({ gt: 0 }).withMessage('amount must be a positive number'),
+    body('reason').isIn(['practical_completion', 'dlp_end', 'other']),
+    body('released_at').optional({ nullable: true }).isISO8601(),
+    body('note').optional({ nullable: true }).isString().isLength({ max: 300 }),
+  ],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await RetentionService.release({
+        orgId: req.auth.orgId, projectId: req.params.id,
+        actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role }, body: req.body,
+      });
+      await audit(req, 'retention.release', {
+        entity: 'retention_releases', entityId: result.id,
+        detail: { project_id: req.params.id, contract_id: result.contract_id, amount: result.amount, reason: result.reason },
       });
       return res.status(201).json({ success: true, data: result });
     } catch (err) { return sendError(res, err); }
@@ -1203,6 +1310,27 @@ router.post(
       await audit(req, 'supplier_invoice.status', {
         entity: 'supplier_invoices', entityId: req.params.invId,
         detail: { project_id: req.params.id, status: result.status },
+      });
+      return res.json({ success: true, data: result });
+    } catch (err) { return sendError(res, err); }
+  }
+);
+
+router.post(
+  '/:id/supplier-invoices/:invId/rcti',
+  canWritePo,
+  [body('issued').isBoolean().withMessage('issued must be true or false')],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const issued = req.body.issued === true || req.body.issued === 'true';
+      const result = await ProcurementService.setInvoiceRcti({
+        orgId: req.auth.orgId, projectId: req.params.id, invoiceId: req.params.invId,
+        actor: { orgId: req.auth.orgId, userId: req.auth.userId, role: req.auth.role }, issued,
+      });
+      await audit(req, 'supplier_invoice.rcti', {
+        entity: 'supplier_invoices', entityId: req.params.invId,
+        detail: { project_id: req.params.id, rcti_issued: result.rcti_issued, rcti_agreement_id: result.rcti_agreement_id },
       });
       return res.json({ success: true, data: result });
     } catch (err) { return sendError(res, err); }

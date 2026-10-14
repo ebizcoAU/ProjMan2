@@ -19,6 +19,8 @@ const PROJECT_FIELDS = [
   'customer_id', 'code', 'name', 'description', 'site_address', 'lot_plan', 'contract_value',
   // xprojman-43 R2: the SITE's jurisdiction (deposit caps follow the site); defaults to the org's state.
   'site_state',
+  // xprojman-43 R3: 0 = developer/investor client, so client claims may use an SOP template.
+  'client_is_owner_occupier',
   'contract_type', 'start_date', 'due_date', 'status', 'template_id', 'pm_user_id',
   // Site geofence (§11.5) — web-set config the server derives attendance geo_verified
   // from. Not financial, not redacted; the app reads it to render "📍 Site".

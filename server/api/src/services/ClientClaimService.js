@@ -10,6 +10,10 @@
 //                the schedule; issued/paid milestones lock their percentage (SCHEDULE_LOCKED).
 //   * money      amounts follow the codebase rule (§11.4 #12): ex GST, with GST additive,
 //                10% only when the org is gst_registered. contract_value is ex GST.
+//   * SOP (R3)   opt-in on a draft (sop_state), only when the client is NOT an owner-occupier
+//                (SOP_OWNER_OCCUPIER); fields checked, statement rendered and due dates set at
+//                issue, all with the unverified warnings (SopService).
+//   * retention  (R3) set on the draft against the client contract (RetentionService).
 
 const { v4: uuidv4 } = require('uuid');
 const pool = require('../db/pool');
@@ -17,6 +21,10 @@ const { ServiceError } = require('./errors');
 const { toWallClock, nowWallClock } = require('../lib/datetime');
 const ProjectService = require('./ProjectService');
 const { projectScope } = require('../lib/scope');
+const SopService = require('./SopService');
+const RetentionService = require('./RetentionService');
+
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 const MILESTONES = ['deposit', 'base', 'frame', 'lock_up', 'fixing', 'completion'];
 const DEFAULT_SCHEDULE = { deposit: 5, base: 10, frame: 15, lock_up: 35, fixing: 20, completion: 15 };
@@ -32,11 +40,12 @@ async function loadProject(orgId, projectId, actor) {
   if (actor) await ProjectService.assertProjectReachable(orgId, projectId, { role: actor.role, userId: actor.userId });
   const [[p]] = await pool.query(
     `SELECT p.id, p.code, p.name, p.contract_value, COALESCE(p.site_state, o.state) AS site_state,
-            o.name AS org_name, o.abn AS org_abn, o.gst_registered
+            p.client_is_owner_occupier, o.name AS org_name, o.abn AS org_abn, o.gst_registered
        FROM projects p JOIN organisations o ON o.id = p.org_id
       WHERE p.id = ? AND p.org_id = ? AND p.is_deleted = 0 LIMIT 1`, [projectId, orgId]);
   if (!p) throw new ServiceError('NOT_FOUND', 'Project not found', 404);
-  return { ...p, contract_value: p.contract_value == null ? null : Number(p.contract_value), gst_registered: !!p.gst_registered };
+  return { ...p, contract_value: p.contract_value == null ? null : Number(p.contract_value), gst_registered: !!p.gst_registered,
+    client_is_owner_occupier: !!p.client_is_owner_occupier };
 }
 
 const gstFor = (exGst, gstRegistered) => (gstRegistered ? round2(exGst * 0.1) : 0);
@@ -225,6 +234,11 @@ function shape(r) {
     payment_recorded_by: person(r.payment_recorded_by, r.payment_recorded_by_name),
     void_reason: r.void_reason, voided_at: r.voided_at, voided_by: person(r.voided_by, r.voided_by_name),
     supersedes_id: r.supersedes_id, has_pdf: false, exported_at: r.exported_at,
+    work_description: r.work_description, sop_state: r.sop_state,
+    reference_date: r.reference_date == null ? null : String(r.reference_date).slice(0, 10),
+    supporting_statement_document_id: r.supporting_statement_document_id, sop_statement: r.sop_statement,
+    schedule_due_at: r.schedule_due_at, payment_due_at: r.payment_due_at,
+    contract_id: r.contract_id, retention_withheld: Number(r.retention_withheld || 0),
     created_by: r.created_by ? person(r.created_by, r.created_by_name) : { id: null, name: 'System (milestone trigger)' },
     created_at: r.created_at,
   };
@@ -304,7 +318,10 @@ async function detail({ orgId, actor, id }) {
   };
 }
 
-/** PATCH /client-claims/:id { amount_ex_gst?, variation_note? } — drafts only. */
+/**
+ * PATCH /client-claims/:id { amount_ex_gst?, variation_note?, work_description?, sop_state?,
+ * reference_date?, supporting_statement_document_id?, contract_id?, retention_withheld? } — drafts only.
+ */
 async function patchDraft({ orgId, actor, id, body }) {
   const r = await loadClaim(orgId, id, actor);
   if (r.status !== 'draft') throw new ServiceError('CLAIM_FROZEN', 'Only a draft claim can be edited', 409);
@@ -315,11 +332,38 @@ async function patchDraft({ orgId, actor, id, body }) {
     if (!Number.isFinite(ex) || ex < 0) throw new ServiceError('VALIDATION_ERROR', 'amount_ex_gst must be 0 or more', 400);
   }
   const gst = gstFor(ex, project.gst_registered);
+  const pick = (k) => (body[k] !== undefined ? (body[k] === '' ? null : body[k]) : r[k]);
+
+  // SOP (R3): the SOP Acts exclude owner-occupier contracts.
+  const sopState = pick('sop_state');
+  if (sopState && project.client_is_owner_occupier) {
+    throw new ServiceError('SOP_OWNER_OCCUPIER',
+      'Security of Payment claims are not available when the client is an owner-occupier. Change the project setting first if the client is a developer or investor.', 409);
+  }
+  if (sopState) await SopService.loadRules(sopState); // unknown state → 400
+  const refDate = pick('reference_date');
+  if (refDate && !DATE.test(String(refDate).slice(0, 10))) {
+    throw new ServiceError('VALIDATION_ERROR', 'reference_date must be a date (YYYY-MM-DD)', 400);
+  }
+  if (body.supporting_statement_document_id) await SopService.assertDocumentInOrg(orgId, body.supporting_statement_document_id);
+
+  // Retention (R3): against the client contract; the project's sole client contract is assumed.
+  let contractId = pick('contract_id');
+  let retention = body.retention_withheld !== undefined ? body.retention_withheld : Number(r.retention_withheld || 0);
+  let contract = null;
+  if (contractId) contract = await RetentionService.loadContract(orgId, r.project_id, contractId, 'client');
+  else if (Number(retention) > 0) contract = await RetentionService.soleClientContract(orgId, r.project_id);
+  contractId = contract ? contract.id : null;
+  retention = RetentionService.checkRetention({ retention, amount: ex, contract });
+
   await pool.query(
-    `UPDATE client_claims SET amount_ex_gst = ?, gst_amount = ?, amount_inc_gst = ?, variation_note = ?, updated_at = ?
+    `UPDATE client_claims SET amount_ex_gst = ?, gst_amount = ?, amount_inc_gst = ?, variation_note = ?,
+            work_description = ?, sop_state = ?, reference_date = ?, supporting_statement_document_id = ?,
+            contract_id = ?, retention_withheld = ?, updated_at = ?
       WHERE id = ?`,
     [ex, gst, round2(ex + gst), body.variation_note !== undefined ? (body.variation_note || null) : r.variation_note,
-     Date.now(), id]);
+     pick('work_description'), sopState || null, refDate ? String(refDate).slice(0, 10) : null,
+     pick('supporting_statement_document_id'), contractId, retention, Date.now(), id]);
   return detail({ orgId, actor, id });
 }
 
@@ -335,6 +379,20 @@ async function issue({ orgId, actor, id }) {
   }
   const warnings = r.milestone === 'deposit' ? await checkDeposit(project, Number(r.amount_inc_gst)) : [];
   const issuedAt = nowWallClock();
+  // SOP (R3): re-checked at issue (the project flag may have changed since the draft was edited).
+  let sop = { sop_statement: null, schedule_due_at: null, payment_due_at: null };
+  if (r.sop_state) {
+    if (project.client_is_owner_occupier) {
+      throw new ServiceError('SOP_OWNER_OCCUPIER',
+        'Security of Payment claims are not available when the client is an owner-occupier', 409);
+    }
+    const prepared = await SopService.prepare({
+      state: r.sop_state, servedAt: issuedAt, siteState: project.site_state,
+      claim: { ...r, amount: r.amount_inc_gst },
+    });
+    sop = prepared.columns;
+    warnings.push(...prepared.warnings);
+  }
   const year = Number(issuedAt.slice(0, 4));
   const conn = await pool.getConnection();
   try {
@@ -348,9 +406,10 @@ async function issue({ orgId, actor, id }) {
     await conn.query(
       `UPDATE client_claims SET status = 'issued', claim_number = ?, claim_year = ?, claim_seq = ?,
               issued_at = ?, issued_by = ?, due_at = DATE_ADD(?, INTERVAL ${PAYMENT_TERMS_DAYS} DAY),
-              percentage_of_contract = ?, updated_at = ?
+              percentage_of_contract = ?, sop_statement = ?, schedule_due_at = ?, payment_due_at = ?, updated_at = ?
         WHERE id = ? AND status = 'draft'`,
-      [number, year, seq, issuedAt, actor.userId, issuedAt, pct, Date.now(), id]);
+      [number, year, seq, issuedAt, actor.userId, issuedAt, pct,
+       sop.sop_statement, sop.schedule_due_at, sop.payment_due_at, Date.now(), id]);
     await conn.commit();
   } catch (err) {
     await conn.rollback();

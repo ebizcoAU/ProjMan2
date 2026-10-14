@@ -26,6 +26,7 @@ const ProjectService = require('./ProjectService');
 const JobAwardService = require('./JobAwardService');
 const AttestationService = require('./AttestationService');
 const OrgFinanceService = require('./OrgFinanceService');
+const RctiService = require('./RctiService');
 
 const canWrite = (role) => access.hasPermission(role, 'po.write');
 const canRead  = (role) => access.hasPermission(role, 'money.read') || access.hasPermission(role, 'po.write');
@@ -329,6 +330,20 @@ async function setInvoiceStatus({ orgId, projectId, invoiceId, actor, status }) 
   return { id: invoiceId, status };
 }
 
+/**
+ * POST /projects/:id/supplier-invoices/:invId/rcti { issued } (po.write, own scope) — x43 R3
+ * 13.3a: this org issues the tax invoice; needs a current agreement with the supplier.
+ */
+async function setInvoiceRcti({ orgId, projectId, invoiceId, actor, issued }) {
+  if (!canWrite(actor.role)) throw new ServiceError('FORBIDDEN', 'Requires permission: po.write', 403);
+  const inv = await loadInvoice({ orgId, projectId, invoiceId });
+  assertOwnParty(actor, inv);
+  const agreementId = await RctiService.agreementForFlag(orgId, !!issued, { supplierId: inv.supplier_id });
+  await pool.query('UPDATE supplier_invoices SET rcti_issued = ?, rcti_agreement_id = ? WHERE id = ? AND org_id = ?',
+    [issued ? 1 : 0, agreementId, invoiceId, orgId]);
+  return { id: invoiceId, rcti_issued: !!issued, rcti_agreement_id: agreementId };
+}
+
 async function listSupplierInvoices({ orgId, projectId, actor }) {
   await ProjectService.assertProjectReachable(orgId, projectId, { role: actor.role, userId: actor.userId });
   if (!canRead(actor.role)) throw new ServiceError('FORBIDDEN', 'Requires permission: money.read or po.write', 403);
@@ -407,6 +422,7 @@ async function subcontractorRegister({ orgId, projectId, actor }) {
 }
 
 module.exports = {
+  setInvoiceRcti,
   createSupplier, listSuppliers,
   createPurchaseOrder, setPoStatus, listPurchaseOrders,
   createSupplierInvoice, setInvoiceStatus, listSupplierInvoices,

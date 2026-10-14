@@ -38,6 +38,7 @@ const jobAwardsRoutes = require('./routes/jobAwards');
 const engagementsRoutes = require('./routes/engagements');
 const identityRoutes = require('./routes/identity');
 const suppliersRoutes = require('./routes/suppliers');
+const rctiRoutes = require('./routes/rcti');
 const costCentresRoutes = require('./routes/costCentres');
 const financeRoutes = require('./routes/finance');
 const clientClaimRoutes = require('./routes/clientClaims');
@@ -174,6 +175,8 @@ app.use('/api/v1/job-awards',    jobAwardsRoutes);
 app.use('/api/v1/engagements',   engagementsRoutes);
 app.use('/api/v1/identity',      identityRoutes);
 app.use('/api/v1/suppliers',     suppliersRoutes);
+app.use('/api/v1/rcti-agreements', rctiRoutes.agreements);  // xprojman-43 R3 (13.3a)
+app.use('/api/v1/sop-templates',   rctiRoutes.sopTemplates); // xprojman-43 R3 (13.3)
 app.use('/api/v1/cost-centres',  costCentresRoutes); // xprojman-39 §2
 app.use('/api/v1/finance',       financeRoutes);
 app.use('/api/v1/client-claims', clientClaimRoutes); // xprojman-43 R2 progress claims (not behind the ledger flag)     // xprojman-42 §2 (chart of accounts)
