@@ -840,3 +840,46 @@ them. Re-keying the task library moved to xprojman-56 (v052). Tests: `client-cla
 - **For R4:** the export reads `rcti_issued`, `sop_state` and `retention_withheld` from these columns.
   Tests: `sop-rcti-retention.test.js` (44 checks).
 — Server Dev (`projman2-d3`)
+
+**R4, accounting export: built on v055 (2026-10-14).** As §13.4, with these specifics:
+- **Routes.** `GET /accounting-export?kind=&format=generic|xero&from=&to=&project_id=&only_new=1` streams the
+  CSV (accounts.read: org owner, PM, accountant, developer). It sets the headers `X-Export-Id`,
+  `X-Export-Rows`, `X-Export-Sha256` and `X-Export-Warnings` (comma-separated codes), and they are
+  CORS-exposed. `GET /accounting-export/preview?…` returns the same rows as JSON (`rows[]`, `row_count`,
+  `skipped_already_exported`, `totals`, `warnings[]`) and marks nothing. `GET /accounting-export/history`
+  lists the runs. `GET /accounting-export/settings` (accounts.read or money.read) returns `settings`,
+  `cost_centres[]` (with `export_account_code`), `formats[]` (`{ id, label, kinds, verified }`) and
+  `format_gst_defaults`. `PUT /accounting-export/settings { sales_account_code, bills_account_code,
+  gst_code_map: { sales: {…}, bills: {…} }, xero_tracking_category }` and
+  `PATCH /cost-centres/:id { export_account_code }` need money.write. **Portal follow-up (4):** the
+  mapping lives in those two places.
+- **Rows.** Generic columns are the §13.4 row shape plus `retention_withheld` and `exported_at`.
+  - `sales`: issued and paid client claims. A **void of an already-exported claim** gives one credit
+    row (`<number>-CR`, negative amounts, `is_credit`). A void that was never exported is skipped,
+    since there is nothing to reverse.
+  - `bills`: approved and paid progress claims (reference `CODE-PC<n>`) plus matched and approved
+    supplier invoices.
+  - `purchase_orders`: issued and received POs (reference `CODE-PO<n>`). POs have no GST columns, so
+    `gst_code` is blank.
+  - `contractor_payments`: `project_payments` with `tpar_reportable`, including retention releases.
+  - **Procurement rows are the org's own (`owner_party = pm`).** A builder's private cost rows (§7.2.1)
+    are never exported by the PM org.
+- **Guard.** The first CSV a row appears in stamps `exported_at`/`exported_by`/`export_id`, and a
+  credit row stamps `client_claims.void_exported_at`. Preview never stamps. `only_new=0` repeats rows
+  and warns `EXPORT_INCLUDES_EXPORTED`. Runs are serialised per org (`EXPORT_BUSY` 409). An empty export
+  records no run.
+- **Codes.** `account_code` comes from the cost centre (via the task on a supplier invoice or PO), else
+  the org default for the direction, else blank, with the warning `EXPORT_UNMAPPED_ACCOUNTS`.
+  `gst_code` comes from the org's map for the direction, else the format default.
+- **Xero (O4) is UNVERIFIED.** It is built from Xero's published sales-invoice and bill import
+  templates, but I couldn't confirm the current column list from Xero itself. It warns
+  `EXPORT_FORMAT_UNVERIFIED` until someone runs a test import into a Xero demo company. Details:
+  sales and bills only (`EXPORT_KIND_UNSUPPORTED` for POs and payments); dates DD/MM/YYYY; one line per
+  document, tax-exclusive (choose "Tax exclusive" on import); credits as negative unit amounts; GST
+  defaults "GST on Income" / "GST on Expenses" / "GST Free …" / "Input Taxed" / "BAS Excluded";
+  `TrackingName1/Option1` filled only when `xero_tracking_category` is set (that category must already
+  exist in Xero).
+- **CSV safety.** Every cell is quoted, and a text cell starting with `= + - @` gets a leading
+  apostrophe. Numbers, including negatives, go out unchanged.
+  Tests: `accounting-export.test.js` (29 checks).
+— Server Dev (`projman2-d3`)
