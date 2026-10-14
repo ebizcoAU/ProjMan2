@@ -1,11 +1,13 @@
 # ProjMan — Server Design Specification
 
 **Status:** Specification of record. **Re-baselined against the code on 2026-10-14. Read §15
-first:** it gives the build status of every module (c1projman2 at v047, v048 on a branch),
-how the server maps onto the v3.4 stages, the corrections to stale statements in §3–§14,
-and the legal and blocking items. Where §15 and an earlier section disagree, §15
-describes the code.
-**Date:** 27 July 2026 (architecture) · 14 October 2026 (re-baseline, §15)
+first, then §16:** §15 gives the build status of every module, how the server maps onto the
+v3.4 stages, the corrections to stale statements in §3–§14, and the legal and blocking items
+(its tables were brought up to date at v055). §16 records what was built later the same day,
+v048–v055: Safety, the S18.14 client sign-off, stored task codes, and the xprojman-43 re-scope
+(progress claims, SOP/RCTI/retention, the accounting export, milestone triggers). c1projman2 is
+at **v055**. Where §15/§16 and an earlier section disagree, §15/§16 describe the code.
+**Date:** 27 July 2026 (architecture) · 14 October 2026 (re-baseline §15; v048–v055 §16)
 **Owner:** eBizco Australia (Vince Phan) / NexusPM (server)
 **Source of truth:** *ProjMan — The 18-Stage Construction Lifecycle, Fully
 Decomposed*, v3.4 — cited as "the 18-Stage spec."
@@ -1243,7 +1245,8 @@ table. Flagging as future scope, not committing to it here.
 
 Sources: every migration v001–v047 on `server/p5-site-ops`, v048 at `203f7de`, every route,
 service and test under `server/api`, and a full read of the v3.4 PDF. ✅ built · 🟡
-partial · 📐 specced, not built · ❌ not started.
+partial · 📐 specced, not built · ❌ not started. **Updated at v055 (same day):** rows changed
+since the first pass are marked **(→v0NN)**; §16 has the detail.
 
 ### 15.1 Module status
 
@@ -1259,32 +1262,40 @@ partial · 📐 specced, not built · ❌ not started.
 | Deactivation, not erasure (§7.6) | ✅ (v015) | organisation routes | VeriTrade `is_published` is not cleared on deactivation |
 | PM2-02 engagements / identities / attestations (§13) | ✅ (v027) | EngagementService, AttestationService · engagements, identity, attestations | Emitted from 4 of 5 hook points: **none on stage completion**, contrary to §13.3 |
 | VeriTrade login (§7.4) + generic app-login | ✅ (v028, v029, v033) | VeriTradeLoginService · veritrade-login | Routes differ from §7.4 (see §15.4) |
-| 18-stage engine, hold points, task library | ✅ (v006, v016, v034, v037, v038) | StageProgressionService, HoldPointService · stages, task-status-seq | `onStageValidated` has no handler registered |
+| 18-stage engine, hold points, task library | ✅ (v006, v016, v034, v037, v038, **v052**) | StageProgressionService, HoldPointService, TaskCodeService · stages, task-status-seq, task-codes | **(→v052)** stored task codes, library re-keyed to v3.4, SYS+ steps ticked by the server. `onStageValidated` now has handlers (SYS+ ticks, milestone claim drafts) |
 | Site ops: diary, attendance, deliveries, site map | ✅ (v008, v040) | SiteOpsService, SiteMapService · siteops, site-map | site map needs `GOOGLE_MAPS_API_KEY` |
-| Quality: inspections, defects, certificates | ✅ (v009) | InspectionService · quality | Defects have no DLP fields |
-| **Checklists** | ✅ **v047** | ChecklistService · checklists | xprojman-46. System-template wording still the placeholder (data migration queued) |
-| **Safety / OHS** | 📐→✅ **v048 on branch `server/v048-safety` only** | SafetyService · safety (33 checks) | xprojman-48. Landing is waiting on the Owner's approval in the Server session, together with the `notified_at` fix (§15.5) |
+| Quality: inspections, defects, certificates | ✅ (v009) | InspectionService · quality | Defects have no DLP fields. **(→c637e22)** `POST /projects/:id/defects` (a defect without an inspection) |
+| **Checklists** | ✅ **v047, v051** | ChecklistService · checklists | xprojman-46. **(→v051)** system templates carry Product's approved wording |
+| **Safety / OHS** | ✅ **v048** | SafetyService · safety | xprojman-48. **(→v048)** landed and migrated 2026-10-14 with the TZ and `notified_at` fixes (§16.1) |
+| **Handover pack + client sign-off (S18.13/S18.14)** | ✅ **v050** | HandoverService · handover | xprojman-51. **(→v050)** `client_signoffs` frozen by DB triggers; S18.14 is the blocking Stage 18 requirement (§16.2) |
 | Compliance (NCC/CPC reference + gates) | 🟡 (v010) | ComplianceService · compliance | `cpc_evidence` (named in §8) does not exist |
-| Commercial: Cost Plan, estimates, progress claims | ✅ (v017) | EstimateService, ClaimService · commercial | |
+| Commercial: Cost Plan, estimates, progress claims | ✅ (v017, **v054**) | EstimateService, ClaimService · commercial, sop-rcti-retention | **(→v054)** optional SOP template, payment schedule, RCTI flag, retention (§16.4) |
 | Procurement | ✅ (v019) | ProcurementService · procurement | |
-| Variations, contracts | ✅ (v021) | ContractService · variations | retention modelled (`retention_pct`), not withheld |
+| Variations, contracts | ✅ (v021) | ContractService · variations | **(→v054)** retention is now withheld per claim and released in parts (RetentionService, §16.4) |
 | Task costing, rate cards, cost centres, quotes | ✅ (v030, v039, v043) | CostingService, TaskQuoteService · task-costing, task-quotes | |
-| Documents | ✅ (v024, v025, v030) | DocumentService, lib/storage · documents | disk driver only (no object store); `supersedes_id` exists but the service doesn't use it |
+| Documents | ✅ (v024, v025, v030, **v049**) | DocumentService, lib/storage · documents | disk driver only (no object store); `supersedes_id` exists but the service doesn't use it. **(→v049)** delete is `documents.delete` (not the Inspector) |
 | Project brief snapshots, status, delete | ✅ (v035, v041) | ProjectBriefService, ProjectDeletionService | snapshot = an acknowledgement flag, not a content hash |
-| Fixed assets, depreciation (S18.11 draft → S18.12 `tax.approve`) | ✅ (v022) | DepreciationService · depreciation | |
-| GST / BAS (P8b) | ✅ (v023) | TaxService · tax | accrual only; "lodge" sets status, no ATO transmission |
-| TPAR (P8c) | ✅ (v026) | TparService · tpar | record only, no ATO transmission |
-| Tenant chart of accounts + `org_journal` auto-posting | ✅ (v042, v044) | OrgFinanceService · org-finance-journal | supersedes §11.1's "no native GL" |
+| Fixed assets, depreciation (S18.11 draft → S18.12 `tax.approve`) | ✅ (v022) | DepreciationService · depreciation | **(→v050, R1)** S18.12 no longer blocks (x43 §14 O1); hidden behind `FEATURE_DEPRECIATION` |
+| GST / BAS (P8b) | ✅ (v023) | TaxService · tax | accrual only; "lodge" sets status, no ATO transmission. **(→R1)** hidden behind `FEATURE_BAS` |
+| TPAR (P8c) | ✅ (v026) | TparService · tpar | record only, no ATO transmission. **(→R1)** the export stays; lodge is behind `FEATURE_TPAR_LODGE` |
+| Tenant chart of accounts + `org_journal` auto-posting | ✅ (v042, v044) | OrgFinanceService · org-finance-journal | supersedes §11.1's "no native GL". **(→R1)** hidden behind `FEATURE_TENANT_LEDGER` (Owner scope ruling, §16.3) |
 | Platform (eBizco) books + platform payroll | ✅ (v031, v032, v036) | FinanceService · finance, finance-coa | `dashboarddesignspecification.md` §15.2; **payroll not compliant** |
-| Admin dashboard, SaaS billing | ✅ (v007, v011) | AdminService, BillingService · admin | gaps: dashboard spec §14 |
-| **Client billing (xprojman-43)** | 📐 **approved, not built** | — | see §15.2 |
+| Admin dashboard, SaaS billing | ✅ (v007, v011) | AdminService, BillingService · admin, dashboard, audit-prune | gaps: dashboard spec §14. **(→3ea9ad3, c942073)** L3–L7 and G1–G4 fixed (health page, auto-refresh, disable/reset, `scripts/prune-audit-log.js`) |
+| **Client progress claims (xprojman-43)** | ✅ **v053, R5** | ClientClaimService · client-claims, claim-triggers | **(→v053)** built as re-scoped: claims recorded and exported, no ledger posting (§16.3); milestone triggers draft them |
+| **Accounting export (xprojman-43 R4)** | ✅ **v055** | AccountingExportService · accounting-export | generic CSV; the Xero preset is **unverified** until a test import (§16.5) |
 | Tenant payroll | ❌ cancelled (§12) | — | still cancelled; only platform payroll exists |
 | Consultants | 🟡 schema only (v030) | — | |
 | Stage 2 hazard audit, Stage 3 AI concept, Stage 4 screening, Stage 6 selections, Stage 7 DA | ❌ | — | §15.3 |
 | Push notifications (xprojman-54) | 📐 draft | — | FCM/APNs credentials |
-| Xero/MYOB live sync | ❌ | — | §11.4 #6: native facts + export now, live API sync deferred |
+| Xero/MYOB live sync | ❌ | — | §11.4 #6: native facts + export now, live API sync deferred. The CSV export is v055 (§16.5) |
 
 ### 15.2 Client billing — xprojman-43 as approved (§11, 2026-10-14)
+
+> **Superseded at v053–v055 (§16.3).** The Owner's scope ruling the same day made ProjMan
+> project management only: claims are recorded and **exported**, nothing posts to
+> `org_journal`, and "invoice" became "progress claim" (`client_claims`, `PC-YYYY-NNNN`). The
+> deposit-cap, void-safe uniqueness and numbering rules below were built as written; the
+> revenue-posting and reversal lines were not.
 
 Approved by the SA (= Owner) on 2026-09-30; the REST contract was agreed with Portal on
 2026-10-14 (x43 §11; Server's reply is to be written up as x43 §12). The build order is Steps 1–3 (schema +
@@ -1317,8 +1328,8 @@ Approved by the SA (= Owner) on 2026-09-30; the REST contract was agreed with Po
 | 5 Budget | `cost_plans` draft → locked; no content hash, can be unlocked | 🟡 |
 | 6 Drawings / selections | no material selections; the client has only `projects.read` | ❌ |
 | 7 DA | no DA statuses, no statutory clock, no client hashed sign-off | ❌ |
-| 8 CC | inspection + certificate flags, but **`is_hold_point=0`**: stages 10+ are gated on Builder acceptance, not on CC issue (S8.8) | 🟡 |
-| 9 Tender / Award / Deposit | Job Award + S9.9 deposit (`project_payments`, TPAR) + S9.10 activation ✅; tender ❌; `job_awards.document_hash` hashes metadata + time, not document content | 🟡 |
+| 8 CC | inspection + certificate flags, but **`is_hold_point=0`**: stages 10+ are gated on Builder acceptance, not on CC issue (S8.8). v052 seeded S8.8 as non-hold-point; **open with the Owner (x56 Q1)** | 🟡 |
+| 9 Tender / Award / Deposit | Job Award + S9.9 deposit (`project_payments`, TPAR) + S9.10 activation ✅; the Deposit progress claim drafts itself at S9.7 + S9.9 (R5); tender ❌; `job_awards.document_hash` hashes metadata + time, not document content | 🟡 |
 | 10 Site works | S10.5 set-out blocking hold point, geofenced attendance, diary | ✅ |
 | 11 Foundation | stage hold point + the three S11.9–11.11 rows, **non-blocking** | 🟡 |
 | 12 Base | hold point; S12.8/9 rows non-blocking, **no S2.4 auto-trigger** (§8 patch (2) not built) | 🟡 |
@@ -1327,16 +1338,17 @@ Approved by the SA (= Owner) on 2026-09-30; the REST contract was agreed with Po
 | 15 Rough-in | stage hold point; separate electrical/plumbing rows and task-level lining gate not built | 🟡 |
 | 16 Fixing | S16.7 energisation cert, jurisdiction-aware ✅; per-room sign-off partial | 🟡 |
 | 17 External | S17.2 crossover flag | ✅ |
-| 18 Handover | S18.11/18.12 ✅; OC/BA3 are free-text certificate types; S18.13 pack ❌; **S18.14 client sign-off ❌**; S18.15 status ✅; S18.16 attestations go to the Builder only, not to every participant | 🟡 |
+| 18 Handover | S18.11 ✅, S18.12 non-blocking (v050); OC/BA3 are document kinds (v050); **S18.13 pack ✅ (v050); S18.14 client sign-off ✅, blocking, DB-frozen (v050)**; S18.15 status ✅; S18.16 attestations go to the Builder only, not to every participant, and the SYS+ step is deliberately not auto-ticked (x56 O1) | 🟡 |
 
 **Cross-cutting rules from v3.4 that are not met:**
-- §1.4 frozen/hashed records: no `content_hash`, `frozen_at`, `email_message_id`, no DB
-  triggers. Immutability is enforced in application code only (estimate lock,
-  `CHECKLIST_FROZEN`, `SAFETY_FROZEN`).
+- §1.4 frozen/hashed records: no `content_hash`, `email_message_id`. Immutability is enforced
+  in application code (estimate lock, `CHECKLIST_FROZEN`, `SAFETY_FROZEN`), with **one DB-enforced
+  freeze since v050: `client_signoffs`** (triggers refuse UPDATE/DELETE; it binds a `pack_hash`).
 - §1.5 two-tier unit hold points: `hold_point_requirements` has no `unit_id` (only
   `checklist_instances` does).
 
-**Numbering collision.** The v034 task library was seeded from `18Stage_Tasks.md`, and its
+**Numbering collision — resolved by v052 (xprojman-56).** The library is re-keyed to v3.4 and
+codes are stored, not derived. What follows is the original finding. The v034 task library was seeded from `18Stage_Tasks.md`, and its
 codes don't match v3.4. Seed "S18.11" is the client sign-off (v3.4 **S18.14**), seed "S18.8"
 is the depreciation draft (v3.4 S18.11), seed "S9.8" is the Cost Plan lock (v3.4 S9.9), and
 Stage 6 differs. The code (HoldPointService, DepreciationService) uses v3.4 numbering, so
@@ -1364,43 +1376,193 @@ in a data migration; this is part of xprojman-43 Steps 1–2 (milestone codes).
 
 | Fix | State |
 |---|---|
-| **TZ pin:** `db/pool.js:8` reads `config.timezone`, which doesn't exist (the key is `config.server.timezone`), so the process runs in UTC and every `dateStrings` expiry check is 8h lenient. Present since d71b702. | One-line fix drafted; lands with v048 |
-| **`notified_at` normalisation** (v048 `setNotifiable`): ISO with Z/offset → Perth wall clock, 400 on garbage | drafted + test; lands with v048 |
-| v047 system-template wording → Product's approved copy | data migration queued |
-| Inspector document delete → `documents.delete` (v049) | built; awaiting lab migration |
+| **TZ pin:** `db/pool.js:8` reads `config.timezone`, which doesn't exist (the key is `config.server.timezone`), so the process runs in UTC and every `dateStrings` expiry check is 8h lenient. Present since d71b702. | ✅ landed 3c23e4b |
+| **`notified_at` normalisation** (v048 `setNotifiable`): ISO with Z/offset → Perth wall clock, 400 on garbage | ✅ landed 3793afe (`lib/datetime.js`, now shared) |
+| v047 system-template wording → Product's approved copy | ✅ v051 |
+| Inspector document delete → `documents.delete` (v049) | ✅ v049 migrated |
 
 ### 15.6 Legal / regulatory items (for the Owner's legal list)
 
 | # | Item | Server today | Needs |
 |---|---|---|---|
-| R1 | **Deposit caps** (state Home Building Acts) | not enforced (no client invoices yet) | statute verification of every state except VIC/WA (PM has it on the Owner's list) |
-| R2 | **WHS notifiable incidents** | v048 records, flags, alerts, keeps 5 years; never lodges with the regulator | v048 landing; the Owner confirms "record only" |
-| R3 | **Health information in incident details** (Privacy Act, APP 3/6) | v048: create-only, never pulled to devices, REST read limited to safety.manage + reporter | v048 landing |
-| R4 | **Retention classes** (v3.4 §1.11, S18.13; APP 11.2) | no retention classes, no prune job anywhere (incl. `audit_log`); soft delete only | an Owner ruling on periods; then a retention job |
+| R1 | **Deposit caps** (state Home Building Acts) | v053: `deposit_caps` data; VIC + WA verified and enforced, every other state warns | statute verification of every state except VIC/WA (PM has it on the Owner's list) |
+| R2 | **WHS notifiable incidents** | v048 (live): records, flags, alerts, keeps 5 years; never lodges with the regulator | the Owner confirms "record only" |
+| R3 | **Health information in incident details** (Privacy Act, APP 3/6) | v048 (live): create-only, never pulled to devices, REST read limited to safety.manage + reporter | — |
+| R4 | **Retention classes** (v3.4 §1.11, S18.13; APP 11.2) | no retention classes; soft delete only. `scripts/prune-audit-log.js` (c942073) prunes `audit_log` (dry run by default, minimum 12 months), **not scheduled** | an Owner ruling on periods + a schedule for the prune; then a retention job |
 | R5 | **Recording / surveillance consent** (v3.4 p31) | nothing | solicitor (state surveillance Acts) |
 | R6 | **Minors** (TAFE/school users, v3.4 p6/p30) | no DOB, no guardian consent | consent design + ruling |
 | R7 | **Contract execution by in-app tap** (S9.7) | tap built, S9.9 deposit anchors it | solicitor |
-| R8 | **Security of Payment** response times | `progress_claims` has no due/response dates | solicitor, then a claim clock |
+| R8 | **Security of Payment** response times | v054: opt-in SOP templates + due periods (NSW/QLD/ACT) as **unverified data**, warn only; payment schedule recorded | solicitor review (x43 §14 O2), then mark rows verified |
+| R8a | **RCTI** (ATO determination) | v054: written agreement per counterparty required to flag an RCTI; a missing signed copy warns | solicitor review of the agreement wording (O2) |
 | R9 | **Defects liability / statutory warranty** per state | `defects` has no DLP fields | ruling on periods |
 | R10 | **Home Warranty Insurance** (S8.7) | generic document only, no gate | ruling: gate S9/S10 on it? |
 | R11 | **Platform payroll** (PAYG, SG, STP) | not compliant (dashboard spec §15.2) | Owner: fix or external payroll |
 | R12 | **Location / IP minimisation** (v3.4 §4.3) | no continuous tracking ✅; no retention limit on IP/location | part of R4 |
-| R13 | **Frozen/hashed evidence** (v3.4 §1.4) | app-level only; `document_hash` hashes metadata | design decision: DB triggers + content hashes |
+| R13 | **Frozen/hashed evidence** (v3.4 §1.4) | app-level, plus DB triggers on `client_signoffs` (v050); `document_hash` hashes metadata | design decision: extend DB freezes + content hashes |
 
 ### 15.7 Blockers
 
 | Blocked | On |
 |---|---|
-| v048 landing (+ TZ and `notified_at` fixes) | the Owner's approval typed in the Server session (approval relayed through the PM can't be used) |
+| ~~v048 landing~~ | ✅ approved by the Owner in the Server session and landed (56c1026) |
 | AI engines (S2.5, S3, S5.2, S6.6) and OCR (S1.5) | provider choice + credentials (`OPENAI_*` keys exist in `.env.example` but nothing reads them) |
 | Outbound client email (S1.8, S2.7, S3.9, S4.3, S7.7, S18.13) | production SMTP, with a provider that returns a message id (§1.4) |
 | Push (xprojman-54) | FCM/APNs credentials |
 | Microsoft / Facebook OAuth, ABR lookup, Google Maps | `MICROSOFT_CLIENT_ID`, `FACEBOOK_APP_*`, `ABR_GUID`, `GOOGLE_MAPS_API_KEY` |
 | Object storage for documents | a storage decision (only the disk driver exists) |
 | ATO / regulator / STP transmission | Owner ruling (today: record only) + software-provider credentials |
-| xprojman-43 Completion trigger | S18.14 client sign-off (xprojman-51) |
+| ~~xprojman-43 Completion trigger~~ | ✅ S18.14 built (v050); the trigger is live (R5) |
+| Xero preset trusted without a warning | a test import into a Xero demo company (Owner, via the PM) |
+| SOP/RCTI rows marked verified | solicitor review (x43 §14 O2) |
 | VeriTrade licence verification (§9 step G) | state data access (VeriTrade lane) |
 | Dispute mechanism (v3.4 §4.1) | design; VeriTrade hardcodes `unresolved_disputes: 0` |
+
+## 16. Built since the re-baseline: v048–v055 (2026-10-14)
+
+Everything here is on `server/p5-site-ops`, migrated on the lab (c1projman2 at **v055**), and
+tested on the throwaway `c1projman2_e2e` (44 test files, 1034 checks green at R5). The PM took a
+mysqldump before every migration. The decision records hold the full REST contracts; this section
+is the design summary.
+
+| Migration / commit | What | Record |
+|---|---|---|
+| v048 · 56c1026 | Safety/OHS | xprojman-48 |
+| 3c23e4b, 3793afe | TZ pin fix; `notified_at` normalisation (`lib/datetime.js`) | §15.5 |
+| v049 · a3092e3 | `documents.delete` | §15.4 (§10 #4) |
+| 3ea9ad3, c942073 | Dashboard L3–L7 and G1–G4 | dashboard spec §14/§15 |
+| v050 · 7011d8c | Handover pack + S18.14 client sign-off; S18.12 non-blocking | xprojman-51, x43 §14 O1 |
+| R1 · a77a3c1 | Feature flags hiding the ledger/BAS/TPAR-lodge/depreciation | x43 §13.5 |
+| c637e22 | `POST /projects/:id/defects` | — |
+| v051 · a80f1be | Checklist template wording | xprojman-46 |
+| v052 · cbebea1 | Stored task codes, library re-keyed to v3.4, SYS+ steps | xprojman-56 |
+| v053 · 768439a | Client progress claims, payment schedules, deposit caps, `site_state` | x43 R2 |
+| v054 · 4e4ad37 | SOP templates, RCTI agreements, retention | x43 R3 |
+| v055 · 134c0b1 | Accounting export | x43 R4 |
+| R5 · 3655d02 | Milestone triggers (no migration) | x43 R5 |
+
+### 16.1 Safety / OHS (v048)
+
+`safety_events` (hazard / near miss / incident, raised on site offline, closed from App or Portal),
+`incident_details` (1:1, the health information: synced **create-only and never pulled**, REST read by
+`safety.manage` or the reporter, corrections audited), `safety_actions` (an event can't close while
+one is open), `site_inductions` (expiry; `site_attendance.induction_ok` is server-derived at
+check-in; warn and alert, never block). A notifiable incident is **recorded and emailed** to the PM
+and Site Supervisor, never lodged with a regulator, and is append-only on sync. Everything is kept
+5 years (soft delete only; a notifiable event refuses deletion). Evidence is `documents` rows. The
+Builder has no `safety.manage` (x48 F7).
+
+### 16.2 Handover pack and client sign-off (v050)
+
+`handover_packs` is server-computed: every live document with a handover kind (`certificate`,
+`occupation_certificate`, `ba3`, `manual`, `warranty`, `as_built`), a canonical manifest and its
+`pack_hash`. `client_signoffs` is the client's accept/decline of one `pack_hash`: create-only on sync
+(`assisted_device`) and REST (`paper_upload`, `client_self`), and **frozen by DB triggers** (no UPDATE,
+no DELETE), the first DB-enforced freeze. The S18.14 `hold_point_requirements` row carries
+`auto_source = 'client_signoff'`. The server satisfies it when the latest counted sign-off accepts the
+current pack and re-opens it if the pack changes (`PACK_CHANGED`); the manual satisfy endpoint refuses
+it. S18.14 replaced S18.12 as the blocking Stage 18 requirement (x43 §14 O1). **Open:** whether the
+Site Supervisor may witness (`handover.witness`, with the Owner).
+
+### 16.3 The xprojman-43 re-scope: ProjMan is project management, not accounting
+
+The Owner ruled on 2026-10-14 that books live in Xero / MYOB / QuickBooks / MAVEN. ProjMan **keeps the
+construction money records and exports them**; it posts no ledger, files no BAS and issues no tax
+invoice. Consequences in the code:
+- **Feature flags (R1).** `FEATURE_TENANT_LEDGER`, `FEATURE_BAS`, `FEATURE_TPAR_LODGE` and
+  `FEATURE_DEPRECIATION` hide the earlier modules without deleting anything (x43 §14 O6). The code
+  default is ON (unset = on); the lab and `.env.production.example` set them **false**. Off: routes
+  `404 FEATURE_DISABLED`, posting hooks no-op, the TPAR export stays. `GET /organisation` returns
+  `features` so Portal hides the matching screens.
+- **Client progress claims (v053).** `client_claims` per billing milestone (`deposit`, `base`,
+  `frame`, `lock_up`, `fixing`, `completion`): draft → issued (`PC-YYYY-NNNN` per org, 14-day terms,
+  percentage frozen) → paid (full payment, recorded by the office), or void (reason; a replacement
+  draft supersedes it). One live claim per milestone via the generated `live_milestone` column.
+  `client_payment_schedules` must total 100% (`SCHEDULE_NOT_100`); issued milestones lock
+  (`SCHEDULE_LOCKED`). Amounts are ex GST with GST additive, only when the org is `gst_registered`.
+  `deposit_caps` is data: a verified row blocks (`DEPOSIT_CAP_EXCEEDED`), otherwise it warns
+  (`DEPOSIT_CAP_UNVERIFIED`). Jurisdiction is `projects.site_state`. The payment-schedule response
+  carries per-milestone readiness `gates[]`.
+- **Invariant: `client_claims.created_by` NULL means "drafted by the system".** Portal relies on it
+  to label R5 drafts. It holds because the column has no FK and users are never hard-deleted
+  (deactivation, not erasure, §7.6). If either changes, add an explicit
+  `client_claims.source ENUM('manual','milestone_trigger')` in that migration rather than inferring
+  from NULL.
+
+### 16.4 Security of Payment, RCTI and retention (v054)
+
+All legal content is **data and unverified** until the solicitor review (x43 §14 O2): it warns and
+never blocks a claim that didn't opt in.
+- **SOP.** `sop_templates` (per state: `required_fields`, `statement_text`, source, `verified_at`) and
+  `sop_periods` (schedule/payment days, business days), seeded NSW, QLD and ACT. A progress claim
+  (Builder → payer) or a client claim opts in with `sop_state`. The client side is allowed only when
+  `projects.client_is_owner_occupier = 0` (default 1; the Acts exclude owner-occupiers:
+  `SOP_OWNER_OCCUPIER`). When the claim is served (submit / issue), the required fields are checked
+  (`SOP_TEMPLATE_INCOMPLETE`), the statement is rendered onto the claim, and the due dates are
+  computed (weekends skipped, public holidays not) with `SOP_TEMPLATE_UNVERIFIED`,
+  `SOP_PERIOD_UNVERIFIED` and `SOP_STATE_MISMATCH` warnings. The respondent records a payment schedule;
+  less than claimed needs a reason.
+- **RCTI.** `rcti_agreements`: exactly one counterparty (a supplier, or a claimant user), `agreed_at`,
+  optional `ends_at`, the signed copy as a document, revocable. `rcti_issued` on `supplier_invoices`
+  and `progress_claims` can be turned on only while a current agreement exists (`RCTI_NO_AGREEMENT`).
+- **Retention (O5).** Both claim tables carry `contract_id` + `retention_withheld` (ex GST); the
+  progress-claim default is amount × `contracts.retention_pct`. **The payment recorded is amount −
+  retention.** `retention_releases` pays it back in parts (practical completion, DLP end), never more
+  than is held (`RETENTION_EXCEEDS_HELD`). A release to a claimant user writes a TPAR-reportable
+  `project_payments` row.
+
+### 16.5 Accounting export (v055)
+
+`AccountingExportService` with pluggable formats `{ kinds, verified, header, toRow }`. Kinds, from
+the exporting org's side: `sales` (client claims; a void of an exported claim → one credit row),
+`bills` (progress claims + supplier invoices), `purchase_orders`, `contractor_payments`
+(`project_payments` flagged TPAR). Procurement rows are the org's own (`owner_party = 'pm'`); a
+builder's private costs (§7.2.1) are never exported by the PM org.
+- **Double-post guard.** `exported_at` / `exported_by` / `export_id` on every source table (and
+  `client_claims.void_exported_at` for credits) are stamped the first time a row goes out in a CSV.
+  `only_new=1` is the default; a full re-export warns `EXPORT_INCLUDES_EXPORTED`. Each run is an
+  `accounting_exports` row (filters, row count, the file's sha256). A per-org named lock serialises
+  runs. The preview marks nothing.
+- **Codes.** `account_code` = the cost centre's `export_account_code`, else the org default for the
+  direction (`accounting_export_settings`), else blank (`EXPORT_UNMAPPED_ACCOUNTS`). `gst_code` = the
+  org's `gst_code_map[sales|bills]`, else the format default.
+- **Formats.** `generic` (our columns) is ready. **`xero` is unverified** (`EXPORT_FORMAT_UNVERIFIED`):
+  it is built from Xero's published sales/bill import templates, but nobody has test-imported it into
+  a Xero demo company yet (Owner, via the PM). MYOB and QuickBooks follow (O4). A v2 unified-API
+  adapter fits the same interface.
+- **CSV safety.** Every cell is quoted; a text cell starting with `= + - @` gets a leading apostrophe.
+
+### 16.6 Milestone triggers (R5, no migration)
+
+`ClientClaimService.draftReadyClaims` drafts every milestone whose readiness gates are all met and
+that has no live claim. It runs after each event that can move a gate: `onStageValidated` /
+`onStageCompleted` (REST and sync), job award accepted, cost plan locked, and the S18.14 requirement
+being satisfied. The gates: Deposit S9.7 + S9.9, Base Stage 12 validated, Frame Stage 13 validated,
+Lock-up Stage 14 complete, Fixing Stage 16 complete, Completion Stage 18 validated (OC) + S18.14. It
+is idempotent and catches up (each event re-checks every milestone). It skips 0% milestones and
+projects without a contract value, and never fails the event that fired it. Drafts only: the PM
+reviews and issues.
+
+### 16.7 Stored task codes and SYS+ steps (v052)
+
+`tasks.code` is stored and server-owned; library rows carry their v3.4 code (148 rows, 15 hold
+points). Any other task gets a minted `S{stage}.{n}` that never reuses a library code.
+`tasks.auto_event` marks a SYS+ step that the server ticks (job award accepted, programme activated,
+Stage 12/13 validated, the S18.10 cross-check, client sign-off, project completed); a manual tick is
+refused (`SYSTEM_STEP`). S18.16 (attestations emitted) is deliberately not auto-ticked until a real
+completion-attestation emitter exists (x56 O1).
+
+### 16.8 Still open after v055
+
+| Item | With |
+|---|---|
+| Xero test import → drop `EXPORT_FORMAT_UNVERIFIED` | Owner (PM relays) |
+| SOP templates/periods, RCTI wording, deposit caps outside VIC/WA → `verified_at` | solicitor (x43 §14 O2; §15.6 R1, R8, R8a) |
+| S8.8 as a hold point (x56 Q1) | Owner |
+| Site Supervisor `handover.witness` | Owner |
+| Staff login-log masking (A/B/C) | Owner |
+| Scheduling `scripts/prune-audit-log.js` at production | Owner |
+| S18.16 completion attestations to every participant | design (x56 O1) |
+| Retire the hidden ledger/BAS/depreciation tables | at v1 launch (x43 §14 O6) |
 
 ---
 
