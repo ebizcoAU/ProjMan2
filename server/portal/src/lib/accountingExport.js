@@ -1,26 +1,27 @@
 // accountingExport.js — the Accounting export client the screen uses (xprojman-43 §13.4).
 //
 // ProjMan keeps the construction money records and exports them; the accounting system
-// (Xero/MYOB/QuickBooks) issues the tax invoice and keeps the books. ACCOUNTING_EXPORT_MOCK
-// stays true until Server's R4 (AccountingExportService). The mock follows §13.4's row shape
-// and double-post guard exactly; `sales` rows are the progress-claims mock's issued claims,
-// the other kinds are sample rows on the org's real projects. Nothing is persisted.
+// (Xero/MYOB/QuickBooks) issues the tax invoice and keeps the books. Live since v055 (x43 R4,
+// contract in §15 R4), so ACCOUNTING_EXPORT_MOCK is false. The mock is kept with the same
+// response shapes; `sales` rows are the progress-claims mock's issued claims, the other kinds
+// sample rows on the org's real projects. Nothing is persisted.
 import { accountingExportApiReal } from './api';
 import { mockStore } from './clientClaims';
 
-export const ACCOUNTING_EXPORT_MOCK = true;
+export const ACCOUNTING_EXPORT_MOCK = false;
 
 export const EXPORT_KINDS = [
-  { k: 'sales', label: 'Progress claims to clients (sales)', hint: 'Issued progress claims to clients, raised as sales invoices in your accounting system. A void exports as a credit.' },
-  { k: 'bills', label: 'Bills', hint: 'Approved Builder progress claims and approved supplier invoices.' },
-  { k: 'purchase_orders', label: 'Purchase orders', hint: 'Issued purchase orders.' },
-  { k: 'contractor_payments', label: 'Contractor payments (TPAR)', hint: 'Payments to contractors for your Taxable Payments Annual Report.' },
+  { k: 'sales', label: 'Progress claims to clients (sales)', hint: 'Issued and paid progress claims to clients, raised as sales invoices in your accounting system. Voiding a claim that was already exported adds a credit row; a void never exported is left out.' },
+  { k: 'bills', label: 'Bills', hint: 'Approved and paid Builder progress claims, plus matched and approved supplier invoices.' },
+  { k: 'purchase_orders', label: 'Purchase orders', hint: 'Issued and received purchase orders. POs carry no GST columns.' },
+  { k: 'contractor_payments', label: 'Contractor payments (TPAR)', hint: 'Payments to contractors for your Taxable Payments Annual Report, including retention released to them.' },
 ];
-// Generic ships first, then Xero (§13.4; O4 ruled Xero → MYOB → QuickBooks).
+// The server's list (GET /accounting-export/settings `formats`) is the authority; this is the
+// fallback until it loads. Xero is unverified until the Owner test-imports into a Xero demo
+// company (EXPORT_FORMAT_UNVERIFIED), and it takes sales and bills only. O4: MYOB, then QBO.
 export const EXPORT_FORMATS = [
-  { k: 'generic', label: 'Generic CSV' },
-  { k: 'xero', label: 'Xero (preset, template not yet checked)' },
-  // O4: MYOB next, then QuickBooks Online, once their import templates are checked.
+  { id: 'generic', label: 'Generic CSV', verified: true, kinds: ['sales', 'bills', 'purchase_orders', 'contractor_payments'] },
+  { id: 'xero', label: 'Xero', verified: false, kinds: ['sales', 'bills'] },
 ];
 export const ROW_COLUMNS = ['kind', 'source_type', 'source_id', 'reference', 'date', 'due_date', 'contact_name', 'contact_abn',
   'description', 'amount_ex_gst', 'gst_amount', 'amount_inc_gst', 'gst_code', 'account_code', 'tracking', 'project_id', 'rcti', 'sop_state'];
@@ -45,7 +46,7 @@ export const GST_TREATMENTS = [
 // package like Xero names sales and purchase tax codes differently ("GST on Income" vs
 // "GST on Expenses"); proposed to Server, which has it as one flat map so far.
 const settings = {
-  sales_account_code: '200', bills_account_code: '',
+  sales_account_code: '200', bills_account_code: '', xero_tracking_category: null,
   gst_code_map: {
     sales: { gst: 'GST on Income', gst_free: 'GST Free Income', input_taxed: 'Input Taxed', out_of_scope: 'BAS Excluded' },
     bills: { gst: 'GST on Expenses', gst_free: 'GST Free Expenses', input_taxed: 'Input Taxed', out_of_scope: 'BAS Excluded' },
@@ -56,6 +57,7 @@ const ccCodes = {}; // cost_centres.export_account_code, keyed by the real cost-
 const exported = {}; // `${source_type}:${source_id}` → { exported_at, export_id }
 let samples = null;  // non-sales sample rows, built once from the seeded projects
 let exportSeq = 0;
+const runs = [];     // GET /accounting-export/history
 
 function sampleRows() {
   if (samples) return samples;
@@ -97,6 +99,8 @@ function salesRows() {
 
 function selectRows(p) {
   if (!p.kind) return { error: fail(400, 'VALIDATION_ERROR', 'kind is required') };
+  const fmt = EXPORT_FORMATS.find((x) => x.id === (p.format || 'generic'));
+  if (!fmt.kinds.includes(p.kind)) return { error: fail(400, 'EXPORT_KIND_UNSUPPORTED', `${fmt.label} imports ${fmt.kinds.join(' and ')} only`) };
   let rows = p.kind === 'sales' ? salesRows() : sampleRows().filter((r) => r.kind === p.kind);
   if (p.project_id) rows = rows.filter((r) => r.project_id === p.project_id);
   if (p.from) rows = rows.filter((r) => r.date >= p.from);
@@ -113,9 +117,10 @@ function selectRows(p) {
   const onlyNew = String(p.only_new ?? '1') !== '0';
   const already = rows.filter((r) => r.exported_at);
   if (onlyNew) rows = rows.filter((r) => !r.exported_at);
-  const warnings = !onlyNew && already.length
-    ? [{ code: 'EXPORT_INCLUDES_EXPORTED', message: `${already.length} row(s) were exported before. Importing them again would double-post.` }] : [];
-  return { rows: rows.sort((a, b) => a.date.localeCompare(b.date)), warnings };
+  const warnings = [];
+  if (!fmt.verified) warnings.push({ code: 'EXPORT_FORMAT_UNVERIFIED', message: `The ${fmt.label} layout hasn't been test-imported yet.` });
+  if (!onlyNew && already.length) warnings.push({ code: 'EXPORT_INCLUDES_EXPORTED', message: `${already.length} row(s) were exported before. Importing them again would double-post.` });
+  return { rows: rows.sort((a, b) => a.date.localeCompare(b.date)), warnings, skipped: onlyNew ? already.length : 0 };
 }
 
 const csvCell = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
@@ -133,25 +138,31 @@ function toCsv(rows, format) {
 
 const mock = {
   preview: (p = {}) => {
-    const { rows, warnings, error } = selectRows(p);
+    const { rows, warnings, error, skipped } = selectRows(p);
     if (error) return error;
-    return ok({ rows, row_count: rows.length, totals: { amount_ex_gst: round2(rows.reduce((s, r) => s + r.amount_ex_gst, 0)),
+    return ok({ rows, row_count: rows.length, skipped_already_exported: skipped, totals: { amount_ex_gst: round2(rows.reduce((s, r) => s + r.amount_ex_gst, 0)),
       gst_amount: round2(rows.reduce((s, r) => s + r.gst_amount, 0)), amount_inc_gst: round2(rows.reduce((s, r) => s + r.amount_inc_gst, 0)) } }, warnings);
   },
-  // Resolves to a Blob like the real fetchAuthedBlob; marks the rows exported (the double-post guard).
+  // Same shape as the real download; marks the rows exported (the double-post guard).
   download: (p = {}) => {
-    const { rows, error } = selectRows(p);
+    const { rows, error, warnings } = selectRows(p);
     if (error) return error;
-    const exportId = `exp-mock-${++exportSeq}`;
+    const exportId = rows.length ? `exp-mock-${++exportSeq}` : null;
     const at = new Date().toISOString().slice(0, 19).replace('T', ' ');
     rows.forEach((r) => { exported[`${r.source_type}:${r.source_id}`] = { exported_at: at, export_id: exportId }; });
-    return Promise.resolve(new Blob([toCsv(rows, p.format)], { type: 'text/csv' }));
+    if (exportId) runs.unshift({ id: exportId, kind: p.kind, format: p.format || 'generic', filters: p, row_count: rows.length,
+      sha256: null, includes_exported: p.only_new === '0', created_at: at, created_by: null });
+    return Promise.resolve({ blob: new Blob([toCsv(rows, p.format)], { type: 'text/csv' }), filename: null, exportId,
+      rows: rows.length, sha256: null, warnings: warnings.map((w) => w.code) });
   },
-  settings: () => ok(JSON.parse(JSON.stringify(settings))),
+  history: () => ok({ exports: runs }),
+  settings: () => ok({ settings: JSON.parse(JSON.stringify(settings)), formats: EXPORT_FORMATS,
+    cost_centres: null }), // null: the screen overlays the mock's codes on GET /cost-centres
   saveSettings: (body) => {
     Object.assign(settings, {
       sales_account_code: (body.sales_account_code || '').trim(), bills_account_code: (body.bills_account_code || '').trim(),
       gst_code_map: body.gst_code_map || settings.gst_code_map,
+      xero_tracking_category: (body.xero_tracking_category || '').trim() || null,
     });
     return mock.settings();
   },

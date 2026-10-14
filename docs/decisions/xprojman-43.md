@@ -750,7 +750,7 @@ means flipping a flag and checking field names.
 |---|---|---|---|
 | **Payment schedule** (project tab) | `/projects/[id]/payment-schedule` | Mock | `GET/PUT /projects/:id/payment-schedule`. Per milestone: %, amount, live claim status (`invoice_status`), lock (`invoiced`), **readiness gates** (`gates[]`: ✓/○ code + label, met date), deposit cap + `DEPOSIT_CAP_UNVERIFIED` banner. Also lists the project's claims |
 | **Progress claims** (to the client) list + detail | `/finance/progress-claims`, `/finance/progress-claims/[id]` | Mock | §12 routes. Issue / adjust a draft, record payment, void → replacement. Under §13.2 these **stay** (not behind the ledger flag). The journal/Sales line in the detail only shows with the ledger on |
-| **Accounting export** (new) | `/finance/export` | Mock (`ACCOUNTING_EXPORT_MOCK`) | `GET /accounting-export/preview` for the table, `GET /accounting-export` for the CSV. Filters: kind, format (generic, Xero), from/to, project, "only rows not yet exported" (default on → `only_new=1`). Shows the RCTI / SOP badges, "unmapped" for a blank `account_code`, the `exported_at` column, and the `EXPORT_INCLUDES_EXPORTED` warning. Needs `accounts.read`. MYOB/QBO get added to the format list once O4 checks their templates |
+| **Accounting export** (new) | `/finance/export` | Built on v055 (mock off 2026-10-14; Xero shows a prominent EXPORT_FORMAT_UNVERIFIED warning, Past exports from `/history`) | `GET /accounting-export/preview` for the table, `GET /accounting-export` for the CSV. Filters: kind, format (generic, Xero), from/to, project, "only rows not yet exported" (default on → `only_new=1`). Shows the RCTI / SOP badges, "unmapped" for a blank `account_code`, the `exported_at` column, and the `EXPORT_INCLUDES_EXPORTED` warning. Needs `accounts.read`. MYOB/QBO get added to the format list once O4 checks their templates |
 | Ledger screens: CoA, P&L, Balance Sheet, Expenses, Sales | `/finance/*` | Live, flaggable | Hidden by `NEXT_PUBLIC_ACCOUNTING_SCREENS=off` (nav items removed; bookmarked URLs show a "moved to your accounting system" notice). Flip it together with `FEATURE_TENANT_LEDGER`. Since 2026-10-14 Portal reads `GET /organisation` `features.tenantLedger` (server wins; the env value is only the fallback when no flag comes back; hidden while loading) |
 
 **Portal follow-ups once Server builds:**
@@ -766,7 +766,7 @@ means flipping a flag and checking field names.
   `client_is_owner_occupier`), and project edit → Contract has that setting (default on; switching
   it off asks for confirmation, legal register L10). Was: an RCTI agreements list on the supplier/subcontractor screen (`/builder/subcontractors`
   or the panel).
-- (4) The cost-centre → account-code mapping that feeds `account_code` needs an editor in
+- (4) ✅ Answered by R4 and built: the codes card reads/writes `GET/PUT /accounting-export/settings` (+ `xero_tracking_category`) and `PATCH /cost-centres/:id`. Was: the cost-centre → account-code mapping that feeds `account_code` needs an editor in
   Finance → Settings. **Server: which table holds it?** It isn't named in 13.4.
 - (5) The S18.14 gate shows unmet until xprojman-51 is built.
 

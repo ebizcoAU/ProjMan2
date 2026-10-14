@@ -279,26 +279,37 @@ function CostCentresCard() {
 function ExportCodesCard() {
   const centres = usePortalData(() => costCentresApi.list());
   const [cfg, setCfg] = useState(null);
+  const [serverCentres, setServerCentres] = useState(null); // settings' cost_centres (with export_account_code)
   const [codes, setCodes] = useState({});
   const [err, setErr] = useState(null);
   const [saved, setSaved] = useState(null);
   const [busy, setBusy] = useState(false);
 
+  const loadSettings = () => accountingExportApi.settings().then((res) => {
+    const d = res?.data?.data || {};
+    setCfg(d.settings || null);
+    setServerCentres(d.cost_centres || null);
+  });
   useEffect(() => {
-    accountingExportApi.settings().then((res) => setCfg(res?.data?.data)).catch((e) => setErr(e?.response?.data?.message || e.message));
+    loadSettings().catch((e) => setErr(e?.response?.data?.message || e.message));
   }, []);
-  const list = withExportCodes(centres.data?.data?.cost_centres || []);
+  // GET /accounting-export/settings carries the codes per cost centre; the mock has none, so
+  // it overlays its own on GET /cost-centres.
+  const list = serverCentres || withExportCodes(centres.data?.data?.cost_centres || []);
   useEffect(() => {
     setCodes(Object.fromEntries(list.map((c) => [c.id, c.export_account_code || ''])));
-  }, [centres.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [centres.data, serverCentres]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = async () => {
     setBusy(true); setErr(null); setSaved(null);
     try {
-      await accountingExportApi.saveSettings(cfg);
+      await accountingExportApi.saveSettings({
+        sales_account_code: cfg.sales_account_code || null, bills_account_code: cfg.bills_account_code || null,
+        gst_code_map: cfg.gst_code_map, xero_tracking_category: (cfg.xero_tracking_category || '').trim() || null,
+      });
       const changed = list.filter((c) => (c.export_account_code || '') !== (codes[c.id] || '').trim());
       for (const c of changed) await accountingExportApi.setCostCentreCode(c.id, (codes[c.id] || '').trim() || null);
-      await centres.refetch();
+      await Promise.all([centres.refetch(), loadSettings()]);
       setSaved('Saved');
     } catch (e) { setErr(e?.response?.data?.message || e.message); }
     finally { setBusy(false); }
@@ -309,8 +320,9 @@ function ExportCodesCard() {
   return (
     <PortalCard title="Accounting export codes">
       <div style={{ fontSize: 12.5, color: 'var(--dim)', marginBottom: 12 }}>
-        Codes from your own Xero, MYOB or QuickBooks, used by Finance → Accounting export.
-        {ACCOUNTING_EXPORT_MOCK && ' Mockup: saved in this browser tab only until the export ships.'}
+        Codes from your own Xero, MYOB or QuickBooks, used by Finance → Accounting export. A blank tax code uses
+        the format&rsquo;s default (for Xero: &ldquo;GST on Income&rdquo;, &ldquo;GST on Expenses&rdquo; and so on).
+        {ACCOUNTING_EXPORT_MOCK && ' Mockup: saved in this browser tab only.'}
       </div>
       {err && <div style={{ marginBottom: 10 }}><PortalError message={err} /></div>}
       {!cfg || centres.loading ? <PortalEmpty message="Loading…" /> : (
@@ -339,6 +351,12 @@ function ExportCodesCard() {
               ))}
             </tbody>
           </table>
+          <label style={{ display: 'block', marginBottom: 14 }}><span style={small}>Xero tracking category for the project (optional)</span>
+            <input className="input" maxLength={60} placeholder="e.g. Project" value={cfg.xero_tracking_category || ''} style={{ maxWidth: 260 }}
+              onChange={(e) => setCfg((c) => ({ ...c, xero_tracking_category: e.target.value }))} />
+            <span style={{ display: 'block', fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>
+              The category must already exist in Xero. Blank leaves the tracking columns empty.
+            </span></label>
           <span style={small}>Account code per cost centre (overrides the bills default)</span>
           {list.length === 0 ? <PortalEmpty message="No cost centres yet." /> : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 14 }}>

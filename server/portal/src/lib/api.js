@@ -170,6 +170,12 @@ async function uploadMultipart(path, formData) {
 // <a href=...> can't reach it. Fetch with auth and hand back a Blob the caller turns
 // into an object URL.
 async function fetchAuthedBlob(path) {
+  return (await fetchAuthedFile(path)).blob;
+}
+
+// fetchAuthedBlob plus the response headers (the accounting export's X-Export-* and
+// Content-Disposition, CORS-exposed by the API).
+async function fetchAuthedFile(path) {
   const token = getToken();
   const res = await fetch(`${BASE}/api/v1${path}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -184,9 +190,10 @@ async function fetchAuthedBlob(path) {
     const err = new Error(body.message || `Could not load file (${res.status})`);
     err.code = body.code;
     err.status = res.status;
+    err.response = { status: res.status, data: body };
     throw err;
   }
-  return res.blob();
+  return { blob: await res.blob(), headers: res.headers };
 }
 
 // ── Axios-style HTTP verbs ────────────────────────────────────────────────────
@@ -478,9 +485,22 @@ export const clientClaimsApiReal = {
 // Screens go through lib/accountingExport.js, which serves a mock until Server's R4.
 export const accountingExportApiReal = {
   preview:  (params) => request('GET', `/accounting-export/preview${qs(params || {})}`),
-  download: (params) => fetchAuthedBlob(`/accounting-export${qs(params || {})}`),
+  // Resolves to { blob, filename, exportId, rows, sha256, warnings: [codes] } from the X-Export-* headers.
+  // Downloading stamps the rows exported (the double-post guard); EXPORT_BUSY 409 while another run is going.
+  download: async (params) => {
+    const { blob, headers } = await fetchAuthedFile(`/accounting-export${qs(params || {})}`);
+    const cd = headers.get('Content-Disposition') || '';
+    return {
+      blob, filename: (cd.match(/filename="([^"]+)"/) || [])[1] || null,
+      exportId: headers.get('X-Export-Id') || null, rows: Number(headers.get('X-Export-Rows') || 0),
+      sha256: headers.get('X-Export-Sha256') || null,
+      warnings: (headers.get('X-Export-Warnings') || '').split(',').filter(Boolean),
+    };
+  },
+  history:  ()       => request('GET', '/accounting-export/history'),
   // The builder's own account codes from their accounting package (§13.4), not ProjMan's
-  // chart of accounts: org defaults + GST code map, and a code per cost centre. money.write.
+  // chart of accounts: org defaults + GST code map + Xero tracking category, and a code per
+  // cost centre. GET returns { settings, cost_centres, formats, format_gst_defaults }. money.write.
   settings:          ()           => request('GET',   '/accounting-export/settings'),
   saveSettings:      (body)       => request('PUT',   '/accounting-export/settings', body),
   setCostCentreCode: (ccId, code) => request('PATCH', `/cost-centres/${ccId}`, { export_account_code: code }),
