@@ -103,7 +103,7 @@ function makeInvoice(p, milestone, status, issuedDaysAgo) {
     paid_at: null, payment_reference: null, payment_recorded_by: null, void_reason: null, voided_at: null, voided_by: null,
     has_pdf: status !== 'draft', journal_entry_id: status === 'draft' ? null : nid('je'),
     supersedes_id: null, created_at: issued || daysAgo(1),
-    created_by: { id: 'sys', name: 'System (milestone trigger)' },
+    created_by: { id: null, name: 'System (milestone trigger)' },
   };
   if (status === 'paid') {
     Object.assign(inv, { paid_at: addDays(issued, 9), payment_reference: 'EFT 88213',

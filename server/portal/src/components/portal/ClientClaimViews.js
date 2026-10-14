@@ -71,6 +71,11 @@ export function ClaimTotals({ totals }) {
   );
 }
 
+// R5: created_by.id null = drafted by the milestone trigger ("System (milestone trigger)").
+const isAutoDraft = (inv) => !!inv.created_by && !inv.created_by.id;
+const raisedBy = (inv) => (!inv.created_by ? '—'
+  : isAutoDraft(inv) ? 'Auto-drafted by the milestone trigger' : inv.created_by.name || '—');
+
 export function ClaimTable({ rows, showProject }) {
   if (!rows.length) return <PortalEmpty message="No progress claims yet. A draft appears when a billing milestone is reached." />;
   return (
@@ -95,7 +100,12 @@ export function ClaimTable({ rows, showProject }) {
                 </Link>
                 <span style={{ color: 'var(--dim)', fontSize: 12 }}> · {Number(inv.percentage_of_contract)}%</span>
               </td>
-              <td style={{ ...td, fontFamily: 'var(--fm)', color: inv.claim_number ? 'var(--text)' : 'var(--dim)' }}>{inv.claim_number || 'Draft'}</td>
+              <td style={{ ...td, fontFamily: 'var(--fm)', color: inv.claim_number ? 'var(--text)' : 'var(--dim)' }}>
+                {inv.claim_number || 'Draft'}
+                {isAutoDraft(inv) && <span title="Drafted automatically when the milestone's readiness gates were met"
+                  style={{ marginLeft: 6, fontFamily: 'var(--fb, inherit)', fontSize: 10, fontWeight: 700, color: 'var(--brand)',
+                    border: '1px solid var(--brand)', borderRadius: 999, padding: '0 6px' }}>auto</span>}
+              </td>
               <td style={td}><StatusPill inv={inv} /></td>
               <td style={tdR}>{money(inv.amount_inc_gst)}</td>
               <td style={td}>{d(inv.issued_at)}</td>
@@ -139,7 +149,8 @@ export function PaymentScheduleCard({ projectId, canWrite, onSaved }) {
   const depositIncGst = (data.contract_value * 1.1 * (Number(draft.deposit) || 0)) / 100;
   const depositOver = cap?.amount_inc_gst != null && depositIncGst > cap.amount_inc_gst + 0.005;
   const blocked = depositOver && cap.verified;
-  // Until the R5 milestone triggers draft claims automatically, the PM raises one by hand.
+  // Since R5 the milestone trigger drafts a claim once its gates are met (on the next gate event).
+  // Raising by hand stays for early billing, or a project whose gates were met before R5.
   const raise = async (milestone) => {
     setBusy(true); setErr(null);
     try { await clientClaimsApi.create(projectId, milestone); await load(); onSaved?.(); }
@@ -193,7 +204,8 @@ export function PaymentScheduleCard({ projectId, canWrite, onSaved }) {
                   <td style={td}>
                     {!r.invoice_status && (
                       <button type="button" className="btn btn-ghost" style={{ padding: '1px 8px', fontSize: 12 }}
-                        disabled={busy || dirty} title={dirty ? 'Save the schedule first' : undefined}
+                        disabled={busy || dirty}
+                        title={dirty ? 'Save the schedule first' : 'Drafts are made automatically when the gates are met; raise one now by hand'}
                         onClick={() => raise(r.milestone)}>Raise draft</button>
                     )}
                   </td>
@@ -299,6 +311,7 @@ export function ClaimDetail({ claimId, canWrite }) {
         {fact('Supplier', `${inv.supplier?.name || '—'} · ABN ${inv.supplier?.abn || '—'}`)}
         {fact('Billed', `${Number(inv.percentage_of_contract)}% of ${money(inv.contract_value)}`)}
         {fact('Fires on', MILESTONE_TRIGGER[inv.milestone])}
+        {fact('Raised by', raisedBy(inv))}
         {fact('Issued', d(inv.issued_at))}
         {fact('Due', d(inv.due_at))}
       </div>
