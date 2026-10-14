@@ -398,8 +398,35 @@ export const commercialApi = {
   // Progress-claim workflow (P7a §7.2/§10.6): Builder submits (claims.submit); PM
   // approves/declines then pays (claims.approve). Submit runs the §10.6 claim-freeze.
   submitClaim:  (id, body)            => request('POST', `/projects/${id}/progress-claims`, body),
-  approveClaim: (id, claimId, accept) => request('POST', `/projects/${id}/progress-claims/${claimId}/approve`, { accept }),
+  // extra: { contract_id, retention_withheld } (x43 R3) — set the retention as it's approved.
+  approveClaim: (id, claimId, accept, extra = {}) => request('POST', `/projects/${id}/progress-claims/${claimId}/approve`, { accept, ...extra }),
+  // Pays amount − retention_withheld; the response carries paid_amount.
   payClaim:     (id, claimId, reference) => request('POST', `/projects/${id}/progress-claims/${claimId}/pay`, { reference }),
+  // x43 R3 (v054). SOP payment schedule from the respondent: less than claimed needs a reason
+  // (SCHEDULE_REASON_REQUIRED); after schedule_due_at it only warns (SOP_SCHEDULE_LATE).
+  scheduleClaim: (id, claimId, body) => request('POST', `/projects/${id}/progress-claims/${claimId}/schedule`, body),
+  // RCTI flag: on needs a current agreement with the claimant/supplier (RCTI_NO_AGREEMENT); off always works.
+  setClaimRcti:   (id, claimId, issued) => request('POST', `/projects/${id}/progress-claims/${claimId}/rcti`, { issued }),
+  setInvoiceRcti: (id, invId, issued)   => request('POST', `/projects/${id}/supplier-invoices/${invId}/rcti`, { issued }),
+  contracts:        (id)       => request('GET',  `/projects/${id}/contracts`),
+  retention:        (id)       => request('GET',  `/projects/${id}/retention`),
+  // { contract_id, amount, reason: practical_completion|dlp_end|other, released_at?, note? }
+  releaseRetention: (id, body) => request('POST', `/projects/${id}/retention-releases`, body),
+};
+
+// Security of Payment rules as data (x43 §13.3, v054). Every template is UNVERIFIED until a
+// solicitor reviews it: screens say "warning"/"unverified" and never imply legal validity.
+export const sopApi = {
+  templates: () => request('GET', '/sop-templates'),
+};
+
+// RCTI agreements (x43 §13.3a, v054): the written agreement per counterparty, a supplier
+// (supplier_id) or a progress-claim claimant (party_user_id). No document_id warns
+// RCTI_AGREEMENT_NO_DOCUMENT.
+export const rctiApi = {
+  list:   (q = {}) => request('GET', `/rcti-agreements?${new URLSearchParams(Object.entries(q).filter(([, v]) => v != null && v !== '')).toString()}`),
+  create: (body)   => request('POST', '/rcti-agreements', body),
+  revoke: (agreementId) => request('POST', `/rcti-agreements/${agreementId}/revoke`),
 };
 
 // Quality (P6a) — review reads; field capture rides /sync/push from the app.

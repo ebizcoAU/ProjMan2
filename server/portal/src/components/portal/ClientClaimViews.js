@@ -44,7 +44,7 @@ const lbl = { display: 'block', fontSize: 11, color: 'var(--dim)', fontWeight: 7
 
 // Non-blocking server warnings from the envelope (e.g. DEPOSIT_CAP_UNVERIFIED: the state's
 // cap isn't legally verified yet, so it was shown but not enforced).
-function Warnings({ list }) {
+export function Warnings({ list }) {
   if (!list?.length) return null;
   return list.map((w) => (
     <div key={w.code + w.message} style={{ fontSize: 12, color: 'var(--text)', background: 'var(--s2)', borderLeft: '3px solid var(--amber)',

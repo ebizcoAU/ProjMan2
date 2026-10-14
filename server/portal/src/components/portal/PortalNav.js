@@ -122,6 +122,7 @@ export const CONSOLE_NAV = [
       // Client claims stay either way: the construction record, exported to the books (x43 §13.2).
       { k: 'finance-invoices', href: '/finance/progress-claims', label: 'Progress claims' },
       { k: 'finance-export',   href: '/finance/export', label: 'Accounting export' },
+      { k: 'finance-rcti',     href: '/finance/rcti', label: 'RCTI agreements' },
     ],
   },
 ];

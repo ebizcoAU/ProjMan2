@@ -756,11 +756,12 @@ means flipping a flag and checking field names.
 **Portal follow-ups once Server builds:**
 - (1) ✅ Done 2026-10-14 after O3: Portal labels say "Progress claims", and the mock uses the
   §13.2 shapes (`/client-claims`, `client_claim(s)`, `claim_number`, `CLAIM_*`).
-- (2) Progress Claims (Builder → payer) gains the optional SOP template fields (13.3:
+- (2) ✅ Built 2026-10-14 against the §15 R3 log (not yet live-tested, no logins): Progress Claims (Builder → payer) gains the optional SOP template fields (13.3:
   `sop_state`, reference date, schedule/payment due dates with the `SOP_PERIOD_UNVERIFIED`
   banner, `SOP_TEMPLATE_INCOMPLETE`), plus the RCTI flag (`RCTI_NO_AGREEMENT`) and
   `retention_withheld`.
-- (3) An RCTI agreements list on the supplier/subcontractor screen (`/builder/subcontractors`
+- (3) ✅ Built 2026-10-14 as `/finance/rcti` (Finance nav; supplier or claimant, add with an optional
+  signed copy, revoke); the supplier-invoice RCTI tick sits on the Cost plan tab. Was: an RCTI agreements list on the supplier/subcontractor screen (`/builder/subcontractors`
   or the panel).
 - (4) The cost-centre → account-code mapping that feeds `account_code` needs an editor in
   Finance → Settings. **Server: which table holds it?** It isn't named in 13.4.

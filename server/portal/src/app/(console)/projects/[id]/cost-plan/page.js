@@ -6,15 +6,19 @@
 // page is READ-ONLY and drills down into the source document behind each column. Gated by
 // money.read server-side (columns/rows are simply absent for a non-financial viewer, and
 // under an independent_fixed engagement a Builder's PO/invoice rows never reach the PM).
+// One write here (x43 R3, v054): the RCTI flag on a supplier invoice (po.write), which needs
+// a current RCTI agreement with that supplier; it has no other screen.
 'use client';
 
+import { useState } from 'react';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { PortalCard }    from '@/components/portal/PortalCard';
 import { PortalKpi }     from '@/components/portal/PortalKpi';
 import { PortalEmpty }   from '@/components/portal/PortalEmpty';
 import { PortalError }   from '@/components/portal/PortalError';
 import { usePortalData } from '@/components/portal/usePortalData';
-import { projectsApi, commercialApi } from '@/lib/api';
+import { projectsApi, commercialApi, authApi, rctiApi } from '@/lib/api';
 import { ProjectTabs }   from '../_ProjectTabs';
 
 const COLS = [
@@ -76,15 +80,21 @@ function DocTable({ title, count, columns, rows, renderRow }) {
 
 export default function CostPlanPage() {
   const { id } = useParams();
-  const { data, loading, error } = usePortalData(async () => {
-    const [d, cp, po, inv, cl] = await Promise.all([
+  const [rctiBusy, setRctiBusy] = useState(null);
+  const [rctiErr, setRctiErr] = useState(null);
+  const { data, loading, error, refetch } = usePortalData(async () => {
+    const [d, cp, po, inv, cl, pm, ra] = await Promise.all([
       projectsApi.detail(id),
       commercialApi.costPlan(id).catch(() => null),
       commercialApi.purchaseOrders(id).catch(() => null),
       commercialApi.supplierInvoices(id).catch(() => null),
       commercialApi.progressClaims(id).catch(() => null),
+      authApi.permissions().catch(() => null),
+      rctiApi.list({ current: 1 }).catch(() => null),
     ]);
     return { data: {
+      perms:      pm?.data?.data?.permissions || [],
+      agreements: ra?.data?.data?.rcti_agreements || [],
       project:  d?.data?.data?.project,
       stages:   d?.data?.data?.stages || [],
       lines:    cp?.data?.data?.lines || [],
@@ -111,6 +121,14 @@ export default function CostPlanPage() {
   const pos      = data.data.pos;
   const invoices = data.data.invoices;
   const claims   = data.data.claims;
+  const canRcti  = data.data.perms.includes('po.write');
+  const hasAgreement = (supplierId) => data.data.agreements.some((a) => a.supplier_id && a.supplier_id === supplierId);
+  const toggleRcti = async (inv, issued) => {
+    setRctiBusy(inv.id); setRctiErr(null);
+    try { await commercialApi.setInvoiceRcti(id, inv.id, issued); await refetch(); }
+    catch (err) { setRctiErr(err?.response?.data?.message || err.message); }
+    finally { setRctiBusy(null); }
+  };
   const labourByStage = (sid) => labour?.byStage.find((l) => l.stage_id === sid);
   const seesMoney = stages.some(s => 'estimated_amount' in s) || ('contract_value' in project);
   const stageName = (sid) => { const st = stages.find(s => s.id === sid); return st ? `${st.seq}. ${st.name}` : '—'; };
@@ -247,7 +265,7 @@ export default function CostPlanPage() {
           <DocTable
             title="Supplier invoices" count={invoices.length}
             columns={[{ label: 'Invoice' }, { label: 'Supplier' }, { label: 'Matched PO' }, { label: 'Owner' },
-              { label: 'Status' }, { label: 'Amount', right: true }]}
+              { label: 'Status' }, { label: 'RCTI' }, { label: 'Amount', right: true }]}
             rows={invoices}
             renderRow={(v) => (<>
               <td style={{ ...td, fontFamily: 'var(--fm)' }}>{v.invoice_number}</td>
@@ -255,9 +273,22 @@ export default function CostPlanPage() {
               <td style={{ ...td, color: 'var(--muted)' }}>{v.po_id ? '2-way ✓' : 'direct'}</td>
               <td style={td}><Pill text={v.owner_party} /></td>
               <td style={td}><Pill text={v.status} /></td>
+              <td style={td}>
+                {canRcti && v.supplier_id && (v.rcti_issued || hasAgreement(v.supplier_id)) ? (
+                  <input type="checkbox" checked={!!v.rcti_issued} disabled={rctiBusy === v.id}
+                    title="We issue the tax invoice for this (recipient-created tax invoice)"
+                    onChange={(e) => toggleRcti(v, e.target.checked)} />
+                ) : v.rcti_issued ? 'Yes' : <span style={{ color: 'var(--muted)' }}>—</span>}
+              </td>
               <td style={tdR}>{money(v.amount)}</td>
             </>)}
           />
+          {canRcti && (
+            <div style={{ fontSize: 12, color: 'var(--muted)', margin: '6px 2px' }}>
+              RCTI can be ticked only for a supplier with a current agreement. <Link href="/finance/rcti" style={{ color: 'var(--brand)' }}>RCTI agreements</Link>
+            </div>
+          )}
+          {rctiErr && <div style={{ fontSize: 12, color: 'var(--red)', margin: '6px 2px' }}>{rctiErr}</div>}
           <div style={{ height: 12 }} />
 
           <DocTable
