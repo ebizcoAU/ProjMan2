@@ -6,6 +6,8 @@
 //   POST  /cost-centres         add a cost centre (money.write)
 //   PATCH /cost-centres/:id/account  link/unlink a chart-of-accounts leaf
 //                                     (money.write, xprojman-42 §4 point 2)
+//   PATCH /cost-centres/:id   { export_account_code }  the builder's own account code for the
+//                                     accounting export (money.write, xprojman-43 R4 §13.4)
 
 const router = require('express').Router();
 const { body, validationResult } = require('express-validator');
@@ -14,6 +16,7 @@ const { authenticate } = require('../middleware/auth');
 const { sendError } = require('../services/errors');
 const { audit } = require('../lib/audit');
 const CostingService = require('../services/CostingService');
+const AccountingExportService = require('../services/AccountingExportService');
 
 router.use(authenticate);
 
@@ -62,6 +65,22 @@ router.patch(
         costCentreId: req.params.id, accountId: req.body.account_id || null,
       });
       await audit(req, 'cost_centre.link_account', { entity: 'cost_centres', entityId: req.params.id, detail: result });
+      return res.json({ success: true, data: result });
+    } catch (err) { return sendError(res, err); }
+  }
+);
+
+router.patch(
+  '/:id',
+  [body('export_account_code').optional({ nullable: true }).isString().isLength({ max: 20 })],
+  async (req, res) => {
+    if (validation(req, res)) return;
+    try {
+      const result = await AccountingExportService.setCostCentreCode({
+        orgId: req.auth.orgId, actor: { role: req.auth.role },
+        costCentreId: req.params.id, code: req.body.export_account_code,
+      });
+      await audit(req, 'cost_centre.export_code', { entity: 'cost_centres', entityId: req.params.id, detail: result });
       return res.json({ success: true, data: result });
     } catch (err) { return sendError(res, err); }
   }

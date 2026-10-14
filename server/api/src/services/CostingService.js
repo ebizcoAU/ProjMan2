@@ -59,7 +59,7 @@ async function setRate({ orgId, actor, skillLevel, hourlyRate }) {
 // response: same shape as `suppliers`, not project-level free text) ─────────
 async function listCostCentres({ orgId }) {
   const [rows] = await pool.query(
-    'SELECT id, code, name, linked_account_id FROM cost_centres WHERE org_id = ? AND is_deleted = 0 ORDER BY code',
+    'SELECT id, code, name, linked_account_id, export_account_code FROM cost_centres WHERE org_id = ? AND is_deleted = 0 ORDER BY code',
     [orgId]
   );
   return { cost_centres: rows };
