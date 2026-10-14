@@ -1,10 +1,10 @@
 group-02.md — Team Status Reports (contributions)
 
-Status: 🟡 PARTIAL — App Agent + Server Agent sections only. Per group-01.md
-§11, the full group-02.md is due 2026-08-28 17:00 AEST and is compiled by
-PM / System Architect from each team's weekly report. These sections are
-submitted early at the owner's request; Portal / VeriTrade sections are not
-authored here and should not be inferred from this file until each team
+Status: 🟡 PARTIAL — App Agent + Server Agent + Portal Agent sections only. Per
+group-01.md §11, the full group-02.md is due 2026-08-28 17:00 AEST and is
+compiled by PM / System Architect from each team's weekly report. These
+sections are submitted early at the owner's request; VeriTrade's section is
+not authored here and should not be inferred from this file until that team
 files its own. **Read the Server Agent section below before acting on
 group-01.md §3/§8/§9 or projman-roles.md §9/§10 — it corrects the P10
 "not started" status.**
@@ -85,3 +85,36 @@ group-01.md §3/§8/§9 or projman-roles.md §9/§10 — it corrects the P10
 
 **Risks:**
 1. Status docs (`group-01.md`) asserting build state that contradicts git history — Mitigation: this project has hit this exact pattern before ([[projman2-review-gate]]); recommend a "verify against `git log`" step before a group directive states what is/isn't built, not just what's planned.
+
+---
+
+### Status Report — Portal Team — 2026-08-24 — 09:00 AEST
+
+**Memory ID:** projman2-portal-agent
+**Current Status:** 🟢 On Track
+
+**This Week's Deliverables (Completed):**
+1. Forgot-password flow (`RecoveryModal.js`, xprojman-26) wired into `login/page.js`, plus dev port renumber (portal 4220→5220, API proxy target 4100→5100) — group-01.md §2 — Completed 2026-08-21, commit `61db543`, pushed to `origin/server/p5-site-ops`
+2. Builder Console foundation (group-01.md §5, item 1 "Builder login + role-scoped route groups") — real `builder/` URL segment (not a parenthesised Next.js group, to avoid colliding with the PM console's own `/dashboard`), `(builder)/layout.js` with auth guard + role gate (bounces non-`builder` to `/dashboard` and vice versa), `BuilderNav`/`CONSOLE_NAV`/`BUILDER_NAV` split in `PortalNav.js`, landing dashboard reusing `/projects/dashboard-summary` — Completed 2026-08-23
+3. Job Award response (group-01.md §5, item 2) — moved into `/builder/job-awards`, wired to real endpoints (`jobAwardsApi.pending()` / `.respond()`, not a stub); extracted into `components/portal/JobAwardInbox.js` so the legacy `/job-awards` URL still resolves for anything bookmarked/linked from the PM dashboard — Completed 2026-08-23
+4. Shared topbar/JWT/clock chrome factored out of layout duplication into `components/portal/chrome.js`, reused by both `(console)/layout.js` and `builder/layout.js` — Completed 2026-08-23
+5. `npm run build` clean, both new routes present in the manifest — Completed 2026-08-23
+
+Items 2-5 landed in commit `c33e761` on `server/p5-site-ops` — currently **unpushed** (1 commit ahead of origin), bundled with VeriTrade's port-renumber commit from a concurrent-agent `git add -A`/`git commit -a` sweep on the shared working tree; confirmed via `git show --stat` that all 9 Portal files are correctly present, no work lost, only the commit message doesn't mention Portal.
+
+**Blockers / At-Risk Items:** None. Server P10 and PM2-02 dependencies for the remaining Builder Console items (Cost Plan, Programme/Line-of-Balance, Panel management, Subcontractor register) are already shipped per the Server Agent's correction above — nothing server-side is pending.
+
+**Next Week's Plan (3-5 items):**
+1. Cost Plan view, engagement-mode visibility (`builder_engagement_type`-scoped per portaldesignspecification.md §1.4/§3.1) — group-01.md §5 — 2026-09-04
+2. Programme/Line-of-Balance editing (Builder's own authored schedule; PM's console view stays read-only per §1.3) — group-01.md §5 — 2026-09-04
+3. Panel management (Builder's own Tradie/Foreperson panel) — group-01.md §5 — 2026-09-04
+4. Subcontractor engagement register (step-in-rights visibility to PM, gated on pass-through consent) — group-01.md §5 — 2026-09-04
+5. Push commit `c33e761` to `origin/server/p5-site-ops`
+
+**Dependencies & Needs:** None currently outstanding — all server-side prerequisites (P10, PM2-02) already verified live.
+
+**Changes to Previously Reported Plan:**
+1. This is Portal's first status report filed under the group-NN.md format (`projman-roles.md` §8) — no prior plan to diff against. `group-01.md` §5's "NOT STARTED" status for route groups + Job Award response is now superseded by the two completed items above.
+
+**Risks:**
+1. Working tree shared with concurrent Server/VeriTrade agent sessions — a broad `git add -A`/`git commit -a` from another session can sweep in files staged-but-not-yet-committed by this one (already happened once, see commit `c33e761` above). Mitigation: minimize the gap between `git add` and `git commit`; verify with `git show --stat -1 HEAD` after every commit.
