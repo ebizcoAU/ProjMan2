@@ -1,8 +1,9 @@
-// AccountingGate.js — wraps an accounting page (lib/features.js ACCOUNTING_SCREENS). With the
-// flag off, a bookmarked URL shows where the data lives now instead of the old report.
+// AccountingGate.js — wraps an accounting page (lib/features.js useAccountingScreens, the
+// server's FEATURE_TENANT_LEDGER). With it off, a bookmarked URL shows where the data lives
+// now instead of the old report; while the flag loads, nothing is shown.
 'use client';
 
-import { ACCOUNTING_SCREENS } from '@/lib/features';
+import { useAccountingScreens } from '@/lib/features';
 
 export function AccountingMovedNotice() {
   return (
@@ -20,6 +21,8 @@ export function AccountingMovedNotice() {
 
 export function accountingGate(Page) {
   return function AccountingPage(props) {
-    return ACCOUNTING_SCREENS ? <Page {...props} /> : <AccountingMovedNotice />;
+    const on = useAccountingScreens();
+    if (on == null) return null;
+    return on ? <Page {...props} /> : <AccountingMovedNotice />;
   };
 }

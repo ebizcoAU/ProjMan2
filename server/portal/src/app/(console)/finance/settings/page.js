@@ -24,7 +24,7 @@ import { PortalEmpty }   from '@/components/portal/PortalEmpty';
 import { PortalError }   from '@/components/portal/PortalError';
 import { usePortalData } from '@/components/portal/usePortalData';
 import { organisationApi, costCentresApi, financeApi } from '@/lib/api';
-import { ACCOUNTING_SCREENS } from '@/lib/features';
+import { useAccountingScreens } from '@/lib/features';
 import { accountingExportApi, withExportCodes, GST_TREATMENTS, ACCOUNTING_EXPORT_MOCK } from '@/lib/accountingExport';
 
 const ACC_TYPES = ['asset', 'liability', 'equity', 'revenue', 'expense'];
@@ -363,12 +363,13 @@ function ExportCodesCard() {
 }
 
 export default function FinanceSettingsPage() {
+  const ledgerOn = useAccountingScreens() === true;
   return (
     <div style={{ padding: 20, maxWidth: 720 }}>
       <div style={{ marginBottom: 16 }}>
         <h1 style={{ fontFamily: 'var(--fh)', fontWeight: 800, fontSize: 22, color: 'var(--text)', margin: 0 }}>Finance settings</h1>
         <div style={{ fontSize: 13.5, color: 'var(--dim)', marginTop: 4, maxWidth: '62ch' }}>
-          {ACCOUNTING_SCREENS ? (
+          {ledgerOn ? (
             <>Chart of accounts, cost rates, and cost centres. See the P&amp;L/
             Balance Sheet/Expenses/Sales items in the sidebar for the journal
             reports. Year-end rollover (closing a financial year) isn&rsquo;t
@@ -380,7 +381,7 @@ export default function FinanceSettingsPage() {
         </div>
       </div>
 
-      {ACCOUNTING_SCREENS && <><ChartOfAccountsCard /><div style={{ height: 16 }} /></>}
+      {ledgerOn && <><ChartOfAccountsCard /><div style={{ height: 16 }} /></>}
       <RateCardCard />
       <div style={{ height: 16 }} />
       <CostCentresCard />

@@ -12,7 +12,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
-import { ACCOUNTING_SCREENS } from '@/lib/features';
+import { useAccountingScreens } from '@/lib/features';
 
 // ── Responsive font scale ─────────────────────────────────────────────────────
 function useScreenTier() {
@@ -112,13 +112,12 @@ export const CONSOLE_NAV = [
     group: 'FINANCE',
     items: [
       { k: 'finance-settings', href: '/finance/settings', label: 'Settings' },
-      // User-accounting screens, hidden behind ACCOUNTING_SCREENS (lib/features.js).
-      ...(ACCOUNTING_SCREENS ? [
-        { k: 'finance-pl',       href: '/finance/pnl', label: 'Profit & Loss' },
-        { k: 'finance-bs',       href: '/finance/balance-sheet', label: 'Balance Sheet' },
-        { k: 'finance-expenses', href: '/finance/expenses', label: 'Expenses' },
-        { k: 'finance-sales',    href: '/finance/sales', label: 'Sales' },
-      ] : []),
+      // User-accounting screens: shown only while the server's tenantLedger flag is on
+      // (lib/features.js useAccountingScreens; PortalNav filters `ledger` items).
+      { k: 'finance-pl',       href: '/finance/pnl', label: 'Profit & Loss', ledger: true },
+      { k: 'finance-bs',       href: '/finance/balance-sheet', label: 'Balance Sheet', ledger: true },
+      { k: 'finance-expenses', href: '/finance/expenses', label: 'Expenses', ledger: true },
+      { k: 'finance-sales',    href: '/finance/sales', label: 'Sales', ledger: true },
       // Client claims stay either way: the construction record, exported to the books (x43 §13.2).
       { k: 'finance-invoices', href: '/finance/progress-claims', label: 'Progress claims' },
       { k: 'finance-export',   href: '/finance/export', label: 'Accounting export' },
@@ -243,6 +242,7 @@ export function PortalNav({ userName, role, onLogout, sections = CONSOLE_NAV }) 
   const [collapsed, setCollapsed]         = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const screenTier = useScreenTier();
+  const ledgerOn = useAccountingScreens() === true;
 
   const roleKey   = role || 'org_admin';
   const roleStyle = ROLE_BADGE[roleKey] || ROLE_BADGE.supervisor;
@@ -337,7 +337,7 @@ export function PortalNav({ userName, role, onLogout, sections = CONSOLE_NAV }) 
                   {section.group}
                 </div>
               )}
-              {section.items.map(item => {
+              {section.items.filter(item => !item.ledger || ledgerOn).map(item => {
                 // mock items never show as active (they point to real pages as proxy)
                 const active = !item.mock && isMatch(item.href, item.exact, pathname);
                 return (

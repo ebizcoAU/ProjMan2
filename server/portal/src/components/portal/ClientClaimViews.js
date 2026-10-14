@@ -13,7 +13,7 @@ import { PortalKpi }   from '@/components/portal/PortalKpi';
 import { PortalEmpty } from '@/components/portal/PortalEmpty';
 import { PortalError } from '@/components/portal/PortalError';
 import { usePortalDialog } from '@/components/portal/PortalDialog';
-import { ACCOUNTING_SCREENS } from '@/lib/features';
+import { useAccountingScreens } from '@/lib/features';
 import { Warnings } from '@/components/portal/ClaimWarnings';
 import { ClientClaimCompliance, errText } from '@/components/portal/ProgressClaimViews';
 import {
@@ -239,6 +239,7 @@ export function ClaimDetail({ claimId, canWrite }) {
   const [voidReason, setVoidReason] = useState(null);
   const [warnings, setWarnings] = useState([]);
   const [replacement, setReplacement] = useState(null);
+  const ledgerOn = useAccountingScreens() === true;
 
   const load = useCallback(async () => {
     setErr(null);
@@ -332,7 +333,7 @@ export function ClaimDetail({ claimId, canWrite }) {
         </div>
       )}
       <Warnings list={warnings} />
-      {ACCOUNTING_SCREENS && inv.journal_entry_id && inv.status !== 'draft' && (
+      {ledgerOn && inv.journal_entry_id && inv.status !== 'draft' && (
         <div style={{ fontSize: 12, color: 'var(--dim)', marginBottom: 12 }}>
           Revenue posted to the journal on issue (accrual). See <Link href="/finance/sales" style={{ color: 'var(--brand)' }}>Sales</Link>.
         </div>
