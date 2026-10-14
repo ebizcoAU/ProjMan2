@@ -799,3 +799,40 @@ the names from §14 O3: `client_claims` (`PC-YYYY-NNNN` assigned at issue, 14-da
 `POST /projects/:id/client-claims { milestone }` raises a draft by hand, until the R5 triggers draft
 them. Re-keying the task library moved to xprojman-56 (v052). Tests: `client-claims.test.js` (26 checks).
 — Server Dev (`projman2-d3`)
+
+**R3, SOP templates, RCTI and retention: built on v054 (2026-10-14).** Everything legal is data and
+**unverified** (§14 O2): it warns, it never blocks a claim that didn't opt in.
+- **SOP (13.3).** `GET /sop-templates` returns the rules: per state, `required_fields`, `statement_text`,
+  `source`, `verified`, and `period { schedule_days, payment_days, business_days, verified }`. Seeded:
+  NSW, QLD, ACT. A progress claim opts in on `POST /projects/:id/progress-claims` with `sop_state`,
+  `work_description`, `reference_date` and (NSW) `supporting_statement_document_id`. A client claim
+  opts in on `PATCH /client-claims/:id` with the same fields, and is checked at issue. Missing fields →
+  `SOP_TEMPLATE_INCOMPLETE` 409 (`details.missing`). The response carries `sop_statement`,
+  `schedule_due_at`, `payment_due_at` and `warnings[]`: `SOP_TEMPLATE_UNVERIFIED`, `SOP_PERIOD_UNVERIFIED`,
+  and `SOP_STATE_MISMATCH` (`sop_state` ≠ `site_state`). Business days skip weekends only, not public
+  holidays. Client claims: `projects.client_is_owner_occupier` (default `true`, set on `PATCH /projects/:id`);
+  while it is true, `SOP_OWNER_OCCUPIER` 409. **Payment schedule** (the respondent):
+  `POST /projects/:id/progress-claims/:claimId/schedule { scheduled_amount, schedule_reason }`
+  (claims.approve). Less than claimed needs the reason (`SCHEDULE_REASON_REQUIRED` 400); after
+  `schedule_due_at` it only warns (`SOP_SCHEDULE_LATE`).
+- **RCTI (13.3a).** `GET /rcti-agreements?supplier_id=&party_user_id=&current=1`,
+  `POST /rcti-agreements { supplier_id | party_user_id, agreed_at, ends_at?, document_id?, note? }`
+  (supplier: money.write or po.write; claimant: money.write), `POST /rcti-agreements/:id/revoke`. With no
+  `document_id` it warns `RCTI_AGREEMENT_NO_DOCUMENT`. (The signed copy is uploaded as an ordinary document,
+  for now `entity_type: project, kind: general`.) Flag: `POST /projects/:id/progress-claims/:claimId/rcti
+  { issued }` (claims.approve) and `POST /projects/:id/supplier-invoices/:invId/rcti { issued }` (po.write).
+  Turning it on needs a current agreement (not revoked, `agreed_at` ≤ today ≤ `ends_at`), otherwise
+  `RCTI_NO_AGREEMENT` 409. Turning it off is always allowed. Rows carry `rcti_issued` + `rcti_agreement_id`.
+- **Retention (§14 O5).** Both claim tables have `contract_id` + `retention_withheld` (ex GST). Progress
+  claims: on submit or approve, give `contract_id` (a subcontractor or supplier contract) and optionally
+  `retention_withheld`; the default is amount × `retention_pct`. **Pay records amount − retention**
+  (`paid_amount` in the response). Client claims: set on the draft via PATCH; with no `contract_id`, the
+  project's sole client contract is used. Retention above 0 with no contract → `CONTRACT_REQUIRED` 409.
+  `GET /projects/:id/retention` (money.read) returns per contract `withheld / released / held`, plus
+  `releases[]` and `totals`. `POST /projects/:id/retention-releases { contract_id, amount, reason:
+  practical_completion|dlp_end|other, released_at?, note? }` (money.write); more than held →
+  `RETENTION_EXCEEDS_HELD` 409. Releasing to a claimant user writes a TPAR-reportable
+  `project_payments` row (`purpose: retention_release`).
+- **For R4:** the export reads `rcti_issued`, `sop_state` and `retention_withheld` from these columns.
+  Tests: `sop-rcti-retention.test.js` (44 checks).
+— Server Dev (`projman2-d3`)
