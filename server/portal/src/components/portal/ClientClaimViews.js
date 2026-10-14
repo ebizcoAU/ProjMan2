@@ -14,6 +14,8 @@ import { PortalEmpty } from '@/components/portal/PortalEmpty';
 import { PortalError } from '@/components/portal/PortalError';
 import { usePortalDialog } from '@/components/portal/PortalDialog';
 import { ACCOUNTING_SCREENS } from '@/lib/features';
+import { Warnings } from '@/components/portal/ClaimWarnings';
+import { ClientClaimCompliance, errText } from '@/components/portal/ProgressClaimViews';
 import {
   clientClaimsApi, CLIENT_CLAIMS_MOCK, MILESTONES, MILESTONE_LABEL, MILESTONE_TRIGGER,
 } from '@/lib/clientClaims';
@@ -42,15 +44,6 @@ const td = { padding: '8px 12px', color: 'var(--text)', fontSize: 13, borderTop:
 const tdR = { ...td, textAlign: 'right', fontFamily: 'var(--fm)' };
 const lbl = { display: 'block', fontSize: 11, color: 'var(--dim)', fontWeight: 700, marginBottom: 4 };
 
-// Non-blocking server warnings from the envelope (e.g. DEPOSIT_CAP_UNVERIFIED: the state's
-// cap isn't legally verified yet, so it was shown but not enforced).
-export function Warnings({ list }) {
-  if (!list?.length) return null;
-  return list.map((w) => (
-    <div key={w.code + w.message} style={{ fontSize: 12, color: 'var(--text)', background: 'var(--s2)', borderLeft: '3px solid var(--amber)',
-      borderRadius: 4, padding: '6px 10px', margin: '8px 0' }}>{w.message}</div>
-  ));
-}
 const capText = (cap, state) => (!cap ? `no deposit cap on file for ${state || 'this site'}`
   : `deposit cap ${cap.rule}${cap.verified ? '' : ' (unverified, not enforced)'}`);
 
@@ -265,7 +258,15 @@ export function ClaimDetail({ claimId, canWrite }) {
       setEdit(null); setPay(null); setVoidReason(null);
       await load();
     }
-    catch (e) { setActionErr(errMsg(e)); }
+    catch (e) { setActionErr(errText(e)); }
+    finally { setBusy(false); }
+  };
+
+  // SOP / retention PATCH (x43 R3); errText spells out SOP_TEMPLATE_INCOMPLETE's missing fields.
+  const saveR3 = async (body) => {
+    setBusy(true); setActionErr(null);
+    try { const res = await clientClaimsApi.patch(inv.id, body); setWarnings(res?.data?.warnings || []); await load(); return true; }
+    catch (e) { setActionErr(errText(e)); return false; }
     finally { setBusy(false); }
   };
 
@@ -309,6 +310,9 @@ export function ClaimDetail({ claimId, canWrite }) {
         </tbody>
       </table>
       {inv.variation_note && <div style={{ fontSize: 13, color: 'var(--dim)', marginBottom: 12 }}>Variation: {inv.variation_note}</div>}
+      {(inv.status === 'draft' || inv.sop_state || Number(inv.retention_withheld) > 0) && (
+        <ClientClaimCompliance inv={inv} canWrite={canWrite} busy={busy} save={saveR3} />
+      )}
 
       {inv.status === 'paid' && (
         <div style={{ fontSize: 13, color: 'var(--text)', marginBottom: 12 }}>

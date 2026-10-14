@@ -761,7 +761,10 @@ means flipping a flag and checking field names.
   banner, `SOP_TEMPLATE_INCOMPLETE`), plus the RCTI flag (`RCTI_NO_AGREEMENT`) and
   `retention_withheld`.
 - (3) ✅ Built 2026-10-14 as `/finance/rcti` (Finance nav; supplier or claimant, add with an optional
-  signed copy, revoke); the supplier-invoice RCTI tick sits on the Cost plan tab. Was: an RCTI agreements list on the supplier/subcontractor screen (`/builder/subcontractors`
+  signed copy, revoke); the supplier-invoice RCTI tick sits on the Cost plan tab.
+  Client claims (R3) also built: SOP + retention on the draft in the claim detail (SOP hidden while
+  `client_is_owner_occupier`), and project edit → Contract has that setting (default on; switching
+  it off asks for confirmation, legal register L10). Was: an RCTI agreements list on the supplier/subcontractor screen (`/builder/subcontractors`
   or the panel).
 - (4) The cost-centre → account-code mapping that feeds `account_code` needs an editor in
   Finance → Settings. **Server: which table holds it?** It isn't named in 13.4.

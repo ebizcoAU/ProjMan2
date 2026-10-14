@@ -183,6 +183,10 @@ const mock = {
     const inv = findInv(iid);
     if (!inv) return fail(404, 'NOT_FOUND', 'Claim not found');
     if (inv.status !== 'draft') return fail(409, 'CLAIM_FROZEN', 'Only a draft claim can be edited');
+    // R3 fields (SOP, retention) are stored as given; the mock checks none of them.
+    const { amount_ex_gst: _a, variation_note: _v, ...r3 } = body;
+    Object.assign(inv, r3);
+    if (body.amount_ex_gst === undefined) return ok(inv);
     const exGst = round2(Number(body.amount_ex_gst));
     if (!(exGst > 0)) return fail(400, 'VALIDATION_ERROR', 'amount_ex_gst must be greater than 0');
     const gst = gstOn(exGst);

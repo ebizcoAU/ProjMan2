@@ -15,7 +15,7 @@ import { PortalEmpty }   from '@/components/portal/PortalEmpty';
 import { PortalError }   from '@/components/portal/PortalError';
 import { usePortalData } from '@/components/portal/usePortalData';
 import { projectsApi, commercialApi, authApi, sopApi, rctiApi } from '@/lib/api';
-import { Warnings }      from '@/components/portal/ClientClaimViews';
+import { Warnings }      from '@/components/portal/ClaimWarnings';
 import { SopFields, RetentionFields, retentionBody, ClaimBadges, ClaimExtras, RetentionCard, errText }
   from '@/components/portal/ProgressClaimViews';
 import { ProjectTabs }   from '../_ProjectTabs';

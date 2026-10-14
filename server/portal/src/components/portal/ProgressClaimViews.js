@@ -7,12 +7,12 @@
 // suggest a claim is legally valid because it used a template.
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { PortalCard } from '@/components/portal/PortalCard';
 import { PortalEmpty } from '@/components/portal/PortalEmpty';
-import { Warnings } from '@/components/portal/ClientClaimViews';
-import { commercialApi, documentsApi } from '@/lib/api';
+import { Warnings } from '@/components/portal/ClaimWarnings';
+import { commercialApi, documentsApi, projectsApi, sopApi } from '@/lib/api';
 
 export const money = (v) => (v == null || v === '' ? '—'
   : Number(v).toLocaleString('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 2 }));
@@ -364,5 +364,119 @@ export function RetentionCard({ projectId, retention, canRelease, onDone }) {
       )}
       {err && <div style={{ color: 'var(--red)', fontSize: 12, marginTop: 8 }}>{err}</div>}
     </PortalCard>
+  );
+}
+
+/**
+ * Client claims (x43 R3): SOP + retention on a draft (PATCH /client-claims/:id), shown read-only
+ * once issued. SOP only when the project's client is not an owner-occupier (SOP_OWNER_OCCUPIER);
+ * the statement and due dates are set at issue. Retention is against the client contract (with
+ * none picked, the project's sole client contract is used, else CONTRACT_REQUIRED).
+ * save(body) runs the PATCH and reloads the claim.
+ */
+export function ClientClaimCompliance({ inv, canWrite, save, busy }) {
+  const [ctx, setCtx] = useState(null); // { ownerOcc, siteState, templates, contracts }
+  const [edit, setEdit] = useState(null);
+  const isDraft = inv.status === 'draft';
+
+  useEffect(() => {
+    if (!isDraft || !canWrite) return;
+    let live = true;
+    Promise.all([
+      projectsApi.detail(inv.project_id).catch(() => null),
+      sopApi.templates().catch(() => null),
+      commercialApi.contracts(inv.project_id).catch(() => null),
+    ]).then(([d, t, c]) => {
+      if (!live) return;
+      const p = d?.data?.data?.project || {};
+      setCtx({
+        ownerOcc: p.client_is_owner_occupier == null ? true : !!Number(p.client_is_owner_occupier),
+        siteState: inv.site_state || p.site_state || null,
+        templates: t?.data?.data?.sop_templates || [],
+        contracts: (c?.data?.data?.contracts || []).filter((x) => x.party_type === 'client'),
+      });
+    });
+    return () => { live = false; };
+  }, [inv.project_id, inv.site_state, isDraft, canWrite]);
+
+  const hasSop = !!inv.sop_state;
+  const hasRet = Number(inv.retention_withheld) > 0;
+  const box = { fontSize: 13, color: 'var(--text)', background: 'var(--s2)', borderRadius: 8, padding: '10px 12px', margin: '12px 0' };
+
+  const start = () => setEdit({
+    sop: { sop_state: inv.sop_state || '', work_description: inv.work_description || '', reference_date: inv.reference_date || '',
+      supporting_statement_document_id: inv.supporting_statement_document_id || null,
+      supporting_statement_name: inv.supporting_statement_document_id ? 'already attached' : '' },
+    ret: { contract_id: inv.contract_id || '', retention_withheld: hasRet ? String(inv.retention_withheld) : '' },
+  });
+  const submit = async () => {
+    const { sop, ret } = edit;
+    const ok = await save({
+      sop_state: sop.sop_state || '', work_description: sop.work_description.trim(),
+      reference_date: sop.reference_date || '', supporting_statement_document_id: sop.supporting_statement_document_id || '',
+      contract_id: ret.contract_id || '', retention_withheld: ret.retention_withheld === '' ? 0 : Number(ret.retention_withheld),
+    });
+    if (ok) setEdit(null);
+  };
+
+  return (
+    <div style={box}>
+      <div style={{ fontWeight: 700, marginBottom: 4 }}>Security of Payment and retention</div>
+      {hasSop ? (
+        <>
+          <div>SOP template: {inv.sop_state} (unverified)</div>
+          <SopNotice />
+          {inv.sop_statement && <div><em>“{inv.sop_statement}”</em></div>}
+          {inv.work_description && <div><span style={{ color: 'var(--dim)' }}>Work:</span> {inv.work_description}</div>}
+          <div><span style={{ color: 'var(--dim)' }}>Reference date:</span> {auDate(inv.reference_date)}</div>
+          {inv.schedule_due_at
+            ? <div><span style={{ color: 'var(--dim)' }}>Payment schedule due:</span> {auDate(inv.schedule_due_at)} · <span style={{ color: 'var(--dim)' }}>Payment due:</span> {auDate(inv.payment_due_at)} <span style={{ color: 'var(--amber)' }}>(unverified periods, a guide only)</span></div>
+            : <div style={{ color: 'var(--muted)' }}>The statement and due dates are added when the claim is issued.</div>}
+        </>
+      ) : <div style={{ color: 'var(--muted)' }}>Not an SOP claim.</div>}
+      <div style={{ marginTop: 6 }}>
+        {hasRet ? `Retention withheld: ${money(inv.retention_withheld)} (ex GST), held against the client contract.` : <span style={{ color: 'var(--muted)' }}>No retention withheld.</span>}
+      </div>
+
+      {canWrite && isDraft && !edit && (
+        <button className="btn btn-ghost" style={{ marginTop: 8 }} disabled={busy || !ctx} onClick={start}>
+          {ctx ? 'Edit SOP and retention' : 'Loading…'}
+        </button>
+      )}
+      {edit && ctx && (
+        <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
+          {ctx.ownerOcc ? (
+            <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+              SOP templates are off: this project's client is set as an owner-occupier, and the Security of Payment Acts
+              don't apply to residential contracts with one. If the client is a developer, investor or business, change it
+              in <Link href={`/projects/${inv.project_id}/edit`} style={{ color: 'var(--brand)' }}>project edit → Contract</Link>.
+            </div>
+          ) : (
+            <SopFields templates={ctx.templates} siteState={ctx.siteState} value={edit.sop} projectId={inv.project_id}
+              onChange={(sop) => setEdit((e) => ({ ...e, sop }))} />
+          )}
+          {ctx.contracts.length > 0 ? (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div>
+                <label style={lbl}>Client contract</label>
+                <select className="input" value={edit.ret.contract_id} onChange={(e) => setEdit((x) => ({ ...x, ret: { ...x.ret, contract_id: e.target.value } }))}>
+                  <option value="">{ctx.contracts.length === 1 ? 'The client contract' : 'Pick one'}</option>
+                  {ctx.contracts.map((c) => <option key={c.id} value={c.id}>{contractLabel(c)}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>Retention withheld (ex GST)</label>
+                <input className="input" type="number" min="0" step="0.01" value={edit.ret.retention_withheld} style={{ width: 150 }} placeholder="0.00"
+                  onChange={(e) => setEdit((x) => ({ ...x, ret: { ...x.ret, retention_withheld: e.target.value } }))} />
+              </div>
+            </div>
+          ) : <div style={{ fontSize: 12, color: 'var(--muted)' }}>No client contract on this project, so no retention can be withheld.</div>}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-primary" disabled={busy} onClick={submit}>Save draft</button>
+            <button className="btn btn-ghost" disabled={busy} onClick={() => setEdit(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

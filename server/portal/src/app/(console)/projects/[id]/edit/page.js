@@ -265,6 +265,7 @@ export default function EditProjectPage() {
   const [error, setError] = useState(null);
   const [msg, setMsg] = useState(null);
   const [mapRefresh, setMapRefresh] = useState(0);
+  const { confirm } = usePortalDialog();
 
   // Seed the form once, from the loaded project — never overwrite a user's in-progress edits.
   // client_tier/source/dwelling_type/budget_from/budget_to/site_area/zoning_code have no
@@ -290,6 +291,8 @@ export default function EditProjectPage() {
         due_date: dateOnly(proj.due_date),
         contract_value: proj.contract_value ?? '',
         contract_type: proj.contract_type || '',
+        // x43 R3 (v054): default on. Off unlocks SOP claim templates against the client.
+        client_is_owner_occupier: proj.client_is_owner_occupier == null ? true : !!Number(proj.client_is_owner_occupier),
       });
     }
   }, [proj, form]);
@@ -327,6 +330,8 @@ export default function EditProjectPage() {
         body.contract_value = form.contract_value === '' ? null : parseFloat(form.contract_value);
       }
       if (form.contract_type !== (proj.contract_type || '')) body.contract_type = form.contract_type || null;
+      const wasOwnerOcc = proj.client_is_owner_occupier == null ? true : !!Number(proj.client_is_owner_occupier);
+      if (form.client_is_owner_occupier !== wasOwnerOcc) body.client_is_owner_occupier = form.client_is_owner_occupier;
 
       let custBody = {};
       const origCustomer = customers.find((c) => c.id === form.customer_id);
@@ -444,6 +449,30 @@ export default function EditProjectPage() {
                       <option value="fixed_price">Fixed price</option>
                       <option value="cost_plus">Cost plus</option>
                     </select>
+                  </Field>
+                  <Field label="Client" full
+                    hint="Security of Payment Acts don't apply to residential building contracts with an owner-occupier, so SOP claim templates stay off for this project's client claims while this is set.">
+                    {form.client_is_owner_occupier ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 14, color: 'var(--text)' }}>✓ The client's own home (owner-occupier)</span>
+                        <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }}
+                          onClick={async () => {
+                            const ok = await confirm(
+                              'Only change this if the client will not live in the home: a developer, an investor or a business. '
+                              + 'Turning it off lets Security of Payment claim templates be used on claims to this client. '
+                              + 'Those templates are unverified (no solicitor has reviewed them yet), and using one against a homeowner '
+                              + 'could be unlawful. If you are unsure, get legal advice first.',
+                              { title: 'Client is not an owner-occupier?', confirmLabel: 'Yes, not an owner-occupier' });
+                            if (ok) setForm((f) => ({ ...f, client_is_owner_occupier: false }));
+                          }}>The client is not an owner-occupier…</button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 14, color: 'var(--amber)', fontWeight: 700 }}>Not an owner-occupier (developer, investor or business): SOP templates allowed</span>
+                        <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }}
+                          onClick={() => setForm((f) => ({ ...f, client_is_owner_occupier: true }))}>Set back to owner-occupier</button>
+                      </div>
+                    )}
                   </Field>
                 </div>
               </>

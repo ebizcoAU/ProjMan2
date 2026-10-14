@@ -11,7 +11,7 @@ import { PortalCard }    from '@/components/portal/PortalCard';
 import { PortalEmpty }   from '@/components/portal/PortalEmpty';
 import { PortalError }   from '@/components/portal/PortalError';
 import { usePortalData } from '@/components/portal/usePortalData';
-import { Warnings }      from '@/components/portal/ClientClaimViews';
+import { Warnings }      from '@/components/portal/ClaimWarnings';
 import { auDate, errText } from '@/components/portal/ProgressClaimViews';
 import { authApi, commercialApi, introductionsApi, documentsApi, rctiApi } from '@/lib/api';
 
