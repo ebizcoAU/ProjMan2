@@ -59,6 +59,14 @@ Xero / MYOB / QBO     MAVEN (+AURA, AI IVR) ── tradie's own POS, quotes,
    - **ACT** (2009 Act s15): work, amount, and the Act statement (MEDIUM-LOW).
    - **Owner-occupier / resident-owner contracts are excluded in all three.** SOP claims are sub → builder and builder → developer, never tradie/builder → homeowner. Build this as an **optional per-state claim template**, not the default invoice.
 
+**§4.1 item 1 confirmed in code** (Nexus backend via `nexus-86`, 2026-10-14): **no general partner API exists.** No API keys and no OAuth/OIDC let a third party read or write a MAVEN business or link accounts. The nearby surfaces don't fit ProjMan:
+- (a) Inbound food-delivery order webhooks for a fixed provider list (per-provider shared secret). ProjMan can't use these without new code.
+- (b) An owner-driven bank-statement CSV upload, which is not system-to-system.
+- (c) An outbound Xero/QuickBooks CSV export from MAVEN accounting, with AU overlays. A Xero OAuth module exists but is dormant (Nexus Owner ruling "xero b", 2026-10-02). There is no MYOB support.
+- (d) The developer/external/internal routes are tooling, not partner surfaces.
+
+So F1–F4 need a **new, consented API on the Nexus side** when the tradie flow is scheduled. ProjMan builds nothing against MAVEN until then.
+
 **Connector ownership** (who builds the Xero/MYOB connectors): open for the Owner. Nexus leans: ProjMan for builders now (the CSV in x43 re-scope), MAVEN for tradies later.
 
 ## 5. Sequencing
