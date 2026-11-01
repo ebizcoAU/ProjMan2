@@ -4,6 +4,7 @@ import { Reveal } from "@/components/Reveal";
 import { StageExplorer } from "@/components/StageExplorer";
 import { Icon } from "@/components/Icon";
 import { caseStudy } from "@/lib/data";
+import { SiteOfficeSplit } from "@/components/SiteOfficeSplit";
 
 export const metadata: Metadata = {
   title: "How It Works",
@@ -34,7 +35,7 @@ const flow = [
     step: "04",
     title: "Work",
     icon: "map-pin" as const,
-    copy: "Daily on-site evidence capture — tick the task, and the app geolocates, timestamps, and hashes the record automatically.",
+    copy: "Daily on-site evidence capture: tick the task on site, and the server timestamps and hashes the record when it syncs.",
   },
   {
     step: "05",
@@ -88,6 +89,9 @@ export default function HowItWorksPage() {
           </div>
         </div>
       </section>
+
+      {/* On site / In the office (x53 X1, x57) */}
+      <SiteOfficeSplit />
 
       <section className="section bg-navy-50">
         <div className="container-page">

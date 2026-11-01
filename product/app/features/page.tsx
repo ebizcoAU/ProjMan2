@@ -6,6 +6,7 @@ import { ModuleGrid } from "@/components/ModuleGrid";
 import { StageExplorer } from "@/components/StageExplorer";
 import { Icon } from "@/components/Icon";
 import { features } from "@/lib/data";
+import { SiteOfficeSplit } from "@/components/SiteOfficeSplit";
 
 export const metadata: Metadata = {
   title: "Features",
@@ -85,6 +86,9 @@ export default function FeaturesPage() {
         </div>
       </section>
 
+      {/* On site / In the office (x53 X1, x57) */}
+      <SiteOfficeSplit className="section bg-white" />
+
       <section className="section">
         <div className="container-page">
           <Reveal className="mx-auto max-w-2xl text-center">
@@ -98,12 +102,12 @@ export default function FeaturesPage() {
                 copy: "Every completed stage can emit a portable, verified credential straight to a worker's VeriTrade profile.",
               },
               {
-                title: "Accounting & payroll",
-                copy: "Progress claims and variations sync with your finance stack, so approvals don't mean double entry.",
+                title: "Accounting",
+                copy: "Coming soon: export your progress claims as a CSV for Xero, MYOB or QuickBooks. Your accounting system keeps the books and issues the tax invoices.",
               },
               {
                 title: "Open API",
-                copy: "Enterprise customers get full API access to integrate ProjMan into their own reporting and BI tools.",
+                copy: "On the roadmap: API access for Enterprise customers' own reporting and BI tools.",
               },
             ].map((c) => (
               <div key={c.title} className="card">

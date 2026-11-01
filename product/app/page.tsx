@@ -6,6 +6,7 @@ import { StageExplorer } from "@/components/StageExplorer";
 import { StatBadge } from "@/components/StatBadge";
 import { FeatureCard } from "@/components/FeatureCard";
 import { Testimonials } from "@/components/Testimonials";
+import { SiteOfficeSplit } from "@/components/SiteOfficeSplit";
 import { features, stats, company, platformModules } from "@/lib/data";
 
 export const metadata: Metadata = {
@@ -142,6 +143,9 @@ export default function HomePage() {
           </Reveal>
         </div>
       </section>
+
+      {/* On site / In the office (x53 X1, x57) */}
+      <SiteOfficeSplit className="section pt-0" />
 
       {/* Problem / Solution */}
       <section className="section bg-navy-50">
