@@ -7,7 +7,7 @@ import { company } from "@/lib/data";
 export const metadata: Metadata = {
   title: "VeriTrade",
   description:
-    "VeriTrade is Australia's first B2B professional network for trades — evidence-based profiles built from verified work history, not reviews.",
+    "VeriTrade is a B2B professional network for trades: profiles built from verified work history, not reviews.",
 };
 
 const profileHighlights = [

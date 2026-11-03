@@ -19,26 +19,20 @@ export const metadata: Metadata = {
     template: "%s | ProjMan",
   },
   description:
-    "ProjMan is a complete construction project management platform — site diaries, checklists, scheduling, documents, drawings, defects, RFIs, submittals, permits, safety & OHS, National Construction Code compliance, and an AI assistant — built on the 18-Stage Construction Lifecycle with multi-party verified, immutable on-site evidence.",
+    "ProjMan is project management for building and construction, built on the 18-Stage Construction Lifecycle: site diaries, checklists, hold points and NCC checkpoints, documents, defects and inspections, with tamper-evident site records verified by more than one party.",
   keywords: [
     "construction project management software",
     "site diary software",
-    "construction RFI and submittal management",
     "defects management construction",
     "construction scheduling software",
     "verifiable credentials construction",
-    "RPL automation",
     "construction workforce integrity",
-    "trade certification platform",
-    "construction compliance software",
-    "National Construction Code compliance software",
     "project management for builders",
-    "skilled migrant employment platform",
   ],
   openGraph: {
     title: "ProjMan | Project Management for Building & Construction",
     description:
-      "The complete construction project management platform — site diaries to permits — with the industry's only immutable, multi-party verified evidence trail built in.",
+      "Construction project management on the 18-Stage Lifecycle, with tamper-evident site records verified by more than one party.",
     url: siteUrl,
     siteName: "ProjMan",
     locale: "en_AU",
@@ -48,7 +42,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "ProjMan | Project Management for Building & Construction",
     description:
-      "Site diaries, scheduling, documents, drawings, defects, RFIs, permits, safety & OHS and NCC compliance — one platform, verified as it happens.",
+      "Site diaries, checklists, hold points, documents and defects: one platform, verified as it happens.",
   },
   icons: {
     icon: "/favicon.svg",

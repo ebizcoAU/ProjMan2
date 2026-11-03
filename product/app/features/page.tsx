@@ -11,7 +11,7 @@ import { SiteOfficeSplit } from "@/components/SiteOfficeSplit";
 export const metadata: Metadata = {
   title: "Features",
   description:
-    "ProjMan is a complete construction project management platform — site diaries, checklists, scheduling, documents, drawings, defects, RFIs, submittals, permits, safety & OHS, National Construction Code compliance, and an AI assistant — plus an immutable, multi-party verified evidence layer no other platform has.",
+    "ProjMan is project management for building and construction, built on the 18-Stage Construction Lifecycle: site diaries, checklists, hold points and NCC checkpoints, documents, defects and inspections, with tamper-evident site records verified by more than one party.",
 };
 
 export default function FeaturesPage() {

@@ -12,7 +12,7 @@ import { features, stats, company, platformModules } from "@/lib/data";
 export const metadata: Metadata = {
   title: "Project Management Software for Building & Construction",
   description:
-    "ProjMan is the project management platform for building and construction — site diaries, scheduling, documents, drawings, defects, RFIs, permits, safety & OHS, and NCC compliance in one system, with the industry's only immutable, multi-party verified evidence trail.",
+    "ProjMan is project management for building and construction, built on the 18-Stage Construction Lifecycle: site diaries, checklists, hold points and NCC checkpoints, documents, defects and inspections, with tamper-evident site records verified by more than one party.",
 };
 
 const partnerLogos = ["Tier-1 Builders", "RTOs", "State Government", "VeriTrade", "Industry Bodies"];
@@ -27,13 +27,12 @@ const jsonLd = {
   "@type": "SoftwareApplication",
   name: "ProjMan",
   applicationCategory: "BusinessApplication",
-  operatingSystem: "Web, iOS, Android",
+  operatingSystem: "Web",
   description:
-    "ProjMan is a complete construction project management platform — site diaries, checklists, scheduling, documents, drawings, defects, RFIs, submittals, permits, safety & OHS, National Construction Code compliance, and an AI assistant — built on the 18-Stage Construction Lifecycle with multi-party verified, immutable on-site evidence.",
+    "ProjMan is project management for building and construction, built on the 18-Stage Construction Lifecycle: site diaries, checklists, hold points and NCC checkpoints, documents, defects and inspections, with tamper-evident site records verified by more than one party.",
   publisher: {
     "@type": "Organization",
     name: company.legalName,
-    email: company.companyEmail,
     address: company.address,
   },
   offers: {

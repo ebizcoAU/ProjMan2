@@ -8,7 +8,7 @@ import { blogPosts, caseStudy, leadMagnets } from "@/lib/data";
 export const metadata: Metadata = {
   title: "Resources",
   description:
-    "Case studies, whitepapers, guides, and industry insights on construction workforce integrity, RPL transformation, and verifiable credentials.",
+    "Guides and articles on construction site records, worker credentials and the 18-Stage Lifecycle.",
 };
 
 const faqItems = [
