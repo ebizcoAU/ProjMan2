@@ -5,9 +5,9 @@ export const company = {
   pmTagline: "One Platform to Run Every Construction Project",
   tagline: "Build Tomorrow's Workforce. Today.",
   valueProposition:
-    "ProjMan is the project management platform for building and construction — site diaries, scheduling, documents, drawings, defects, RFIs, submittals, permits, safety & OHS, and National Construction Code compliance, all in one system — backed by the only immutable, multi-party verified evidence trail in the industry.",
+    "ProjMan is project management for building and construction, built on the 18-Stage Construction Lifecycle: site diaries, checklists, hold points and NCC checkpoints, documents, defects and inspections, backed by tamper-evident site records verified by more than one party.",
   differentiator:
-    "ProjMan transforms the construction lifecycle into an immutable instrument of workforce integrity, replacing subjective employer testimony with multi-party verified on-site evidence.",
+    "ProjMan turns the construction lifecycle into a tamper-evident record of workforce integrity, replacing subjective employer testimony with multi-party verified on-site evidence.",
   email: "hello@projman.com.au",
   supportEmail: "support@projman.com.au",
   companyEmail: "ebizco.au@gmail.com",
@@ -249,8 +249,8 @@ export const roles: {
       "Track all 18 stages across every project, catch compliance gaps before they cost you, and turn progress claims into a five-minute task instead of a five-day scramble.",
     bullets: [
       "18-stage project tracking with hold-point alerts",
-      "AI assistant for NCC-aware compliance checks and document search",
-      "RFIs, submittals, and permits tracked to close-out",
+      "Defects and inspections tracked to close-out",
+      "RFIs, submittals and permits (coming soon)",
       "Real-time budget monitoring against the cost plan",
     ],
     cta: { label: "See PM features", href: "/features" },
@@ -285,7 +285,7 @@ export const roles: {
     id: "Government & Regulators",
     headline: "Workforce integrity you can actually audit",
     description:
-      "Immutable, multi-party verified evidence gives regulators and program owners a defensible audit trail for public infrastructure and licensing integrity.",
+      "Tamper-evident, multi-party verified evidence gives regulators and program owners a defensible audit trail for public infrastructure and licensing integrity.",
     bullets: [
       "Audit-ready compliance trails, stage by stage",
       "Workforce and licence verification at scale",
@@ -327,16 +327,15 @@ export const platformModules: PlatformModule[] = [
   { title: "SDS", copy: "Safety Data Sheet register for every chemical and material on site.", icon: "alert-triangle" },
   { title: "Drawings", copy: "Drawing register with revision control, markups, and superseded tracking.", icon: "image" },
   { title: "Defects", copy: "Defect register with photo evidence and multi-party close-out sign-off.", icon: "bug" },
-  { title: "RFI", copy: "Request for Information workflow with tracked, timestamped responses.", icon: "help-circle" },
-  { title: "Submittals", copy: "Submittal register for materials and shop drawing approvals.", icon: "upload" },
-  { title: "Permits", copy: "Permit-to-work register and issuance workflow, hold-point aware.", icon: "stamp" },
+  { title: "RFI", copy: "Coming soon: Request for Information workflow with tracked, timestamped responses.", icon: "help-circle" },
+  { title: "Submittals", copy: "Coming soon: submittal register for materials and shop drawing approvals.", icon: "upload" },
+  { title: "Permits", copy: "Coming soon: permit-to-work register and issuance workflow, hold-point aware.", icon: "stamp" },
   { title: "Workflow", copy: "Configurable approval workflows across every register on the platform.", icon: "workflow" },
   { title: "Messages", copy: "In-context project messaging, tied directly to tasks and stages.", icon: "message" },
   { title: "Pre-qualification", copy: "Subcontractor and supplier pre-qualification, kept current automatically.", icon: "user-check" },
   { title: "Emergency Evacuation", copy: "Evacuation plans, drills, and emergency contacts, always up to date.", icon: "siren" },
   { title: "Safety & OHS", copy: "WHS management, incident reporting, and hazard register in one place.", icon: "shield-check" },
   { title: "National Construction Code", copy: "NCC-aware compliance checks built into hold points, per jurisdiction.", icon: "gate" },
-  { title: "AI Assistant", copy: "An AI assistant across the platform for compliance, scheduling, and document search.", icon: "bot" },
 ];
 
 export type Feature = {
@@ -366,16 +365,16 @@ export const features: Feature[] = [
   },
   {
     slug: "evidence",
-    title: "Immutable Evidence Capture",
-    short: "Geolocated, timestamped, hashed — evidence that can't be edited after the fact.",
+    title: "Tamper-Evident Evidence Capture",
+    short: "Timestamped and hashed, so a change shows up as a new version, not a silent edit.",
     detail:
-      "Every tick is captured with GPS location, a server timestamp, and a cryptographic hash. Once recorded, it's permanent. That's what makes the evidence usable for RPL, disputes, and regulatory audits.",
+      "Every tick gets a server timestamp and a cryptographic hash. A correction is saved as a new version linked to the one it replaces, so the history stays visible. That's what makes the evidence useful for claims, disputes and audits.",
     icon: "fingerprint",
   },
   {
     slug: "veritrade",
     title: "VeriTrade Integration",
-    short: "Australia's first B2B professional network built entirely on verified work.",
+    short: "A B2B professional network built on verified work.",
     detail:
       "Every completed project automatically emits a portable, verified credential to the tradesperson's VeriTrade profile — a searchable, evidence-backed professional network for the whole industry.",
     icon: "network",
@@ -533,7 +532,7 @@ export const blogPosts = [
     title: "The $10,000 RPL Barrier: What's Broken and How to Fix It",
     excerpt:
       "Recognition of Prior Learning should reward experience. Instead, it often prices experienced workers out entirely.",
-    category: "Whitepaper",
+    category: "Article",
   },
   {
     slug: "verifiable-credentials-future",
@@ -558,7 +557,7 @@ export const blogPosts = [
     slug: "economic-case-verifiable-pathways",
     title: "The Economic Case for Verifiable Career Pathways",
     excerpt: "Modelling the cost of credentialing friction across a national trades workforce.",
-    category: "Whitepaper",
+    category: "Article",
   },
 ];
 
@@ -566,10 +565,6 @@ export const leadMagnets = [
   {
     title: "The 18-Stage Construction Lifecycle Framework",
     format: "PDF Guide",
-  },
-  {
-    title: "How to Slash RPL Costs by 90%",
-    format: "Whitepaper",
   },
   {
     title: "Construction Workforce Integrity Checklist",

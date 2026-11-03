@@ -26,10 +26,9 @@ export default function FeaturesPage() {
             Every register a construction project needs, in one platform
           </h1>
           <p className="lede mx-auto mt-4 max-w-2xl text-navy-200">
-            Site diaries, checklists, scheduling, documents, drawings, defects, RFIs, submittals,
-            permits, safety and OHS, National Construction Code compliance, and an AI assistant —
-            run day to day, on top of the industry&rsquo;s only immutable, multi-party verified
-            evidence layer.
+            Site diaries, checklists, hold points and NCC checkpoints, documents, drawings,
+            defects and inspections, run day to day on a tamper-evident record verified by more
+            than one party. RFIs, submittals and permits are coming soon.
           </p>
         </div>
       </section>
@@ -38,7 +37,7 @@ export default function FeaturesPage() {
         <div className="container-page">
           <Reveal className="mx-auto max-w-2xl text-center">
             <span className="eyebrow">The complete platform</span>
-            <h2 className="h2 mt-4">21 modules, one project record</h2>
+            <h2 className="h2 mt-4">20 modules, one project record</h2>
             <p className="lede mt-4">
               No separate tools for diaries, drawings, and defects. Every register talks to the
               same project, the same stage, and the same evidence trail.
@@ -54,7 +53,7 @@ export default function FeaturesPage() {
         <div className="container-page">
           <Reveal className="mx-auto max-w-2xl text-center">
             <span className="eyebrow">What makes ProjMan different</span>
-            <h2 className="h2 mt-4">The verification layer nobody else has</h2>
+            <h2 className="h2 mt-4">The verification layer</h2>
             <p className="lede mt-4">
               These are the capabilities that turn day-to-day project management into a
               defensible, portable record of workforce integrity.

@@ -49,7 +49,7 @@ export default function VeriTradePage() {
               LinkedIn for tradies — built on proof, not testimony.
             </h1>
             <p className="lede mt-4 text-navy-200">
-              Australia&rsquo;s first B2B professional network for trades. Every profile is built
+              A B2B professional network for trades. Every profile is built
               from verified, multi-party work history captured directly from real projects —
               not a star rating or a written review.
             </p>

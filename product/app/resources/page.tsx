@@ -1,8 +1,6 @@
-import Link from "next/link";
 import type { Metadata } from "next";
 import { Reveal } from "@/components/Reveal";
 import { Faq } from "@/components/Faq";
-import { Icon } from "@/components/Icon";
 import { blogPosts, caseStudy, leadMagnets } from "@/lib/data";
 
 export const metadata: Metadata = {
@@ -21,8 +19,8 @@ const faqItems = [
     a: "Instead of one person's word being the record, work is confirmed by a hierarchy: the tradie ticks it, a Foreperson or Supervisor verifies it, and an Inspector attests it at hold points — so no single party can fabricate a record alone.",
   },
   {
-    q: "How is evidence made immutable?",
-    a: "Every tick is captured with a GPS location, a server-side timestamp, and a cryptographic hash. Once written, the record can't be silently edited — any change is itself evidenced.",
+    q: "How is evidence made tamper-evident?",
+    a: "Every record gets a server-side timestamp and a cryptographic hash. A correction is saved as a new version linked to the one it replaces, so a change is visible, never a silent edit.",
   },
   {
     q: "Is VeriTrade a separate product?",
@@ -42,8 +40,8 @@ export default function ResourcesPage() {
             Thinking behind the platform
           </h1>
           <p className="lede mx-auto mt-4 max-w-2xl text-navy-200">
-            Case studies, research, and practical guides on workforce integrity, RPL
-            transformation, and verifiable credentials.
+            Guides and articles on construction site records, worker credentials and the
+            18-Stage Lifecycle.
           </p>
         </div>
       </section>
@@ -72,8 +70,7 @@ export default function ResourcesPage() {
                   <h3 className="h3 mt-4">{post.title}</h3>
                   <p className="mt-2 flex-1 text-sm text-navy-500">{post.excerpt}</p>
                   <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-orange-600">
-                    Read more
-                    <Icon name="arrow" className="h-4 w-4" />
+                    Coming soon
                   </span>
                 </article>
               </Reveal>
@@ -86,7 +83,7 @@ export default function ResourcesPage() {
         <div className="container-page">
           <Reveal className="mx-auto max-w-2xl text-center">
             <span className="eyebrow">Free resources</span>
-            <h2 className="h2 mt-4">Guides & whitepapers</h2>
+            <h2 className="h2 mt-4">Guides (coming soon)</h2>
           </Reveal>
           <div className="mt-12 grid gap-4 sm:grid-cols-2">
             {leadMagnets.map((lm) => (
@@ -100,9 +97,7 @@ export default function ResourcesPage() {
                   </p>
                   <p className="mt-1 font-semibold text-navy-800">{lm.title}</p>
                 </div>
-                <Link href="/contact" className="btn-outline shrink-0 px-4 py-2 text-sm">
-                  Get it
-                </Link>
+                <span className="shrink-0 text-sm font-semibold text-navy-400">Coming soon</span>
               </div>
             ))}
           </div>

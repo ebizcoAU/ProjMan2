@@ -152,7 +152,7 @@ export default function AboutPage() {
               ProjMan is developed and operated by {company.legalName}, an Australian software
               development company delivering web, mobile, automation, and embedded systems since{" "}
               {company.tradingSince}. That engineering track record underpins ProjMan&apos;s approach
-              to immutable evidence and verified identity.
+              to tamper-evident evidence and verified identity.
             </p>
             <p className="mt-4 text-sm text-navy-400">
               {company.address} · {company.phone}

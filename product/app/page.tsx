@@ -70,10 +70,9 @@ export default function HomePage() {
               {company.pmTagline}
             </h1>
             <p className="mt-6 text-lg leading-relaxed text-navy-200 sm:text-xl">
-              Site diaries, scheduling, documents, drawings, defects, RFIs, permits, safety
-              &amp; OHS, and National Construction Code compliance — mapped to an 18-stage
-              lifecycle, with an AI assistant and the industry&rsquo;s only immutable,
-              multi-party verified evidence trail built in.
+              Site diaries, checklists, hold points and NCC checkpoints, documents, defects and
+              inspections — mapped to an 18-stage lifecycle, with a tamper-evident site record,
+              verified by more than one party, built in.
             </p>
             <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
               <Link href="/contact" className="btn-primary px-7 py-3.5 text-base">
@@ -106,9 +105,9 @@ export default function HomePage() {
             <span className="eyebrow">One platform, every register</span>
             <h2 className="h2 mt-4">Everything under one roof</h2>
             <p className="lede mt-4">
-              Site diaries, checklists, scheduling, documents, drawings, defects, RFIs,
-              submittals, permits, safety &amp; OHS, National Construction Code compliance, and
-              an AI assistant — 21 modules, one project record.
+              Site diaries, checklists, scheduling, documents, drawings, defects, hold points and
+              NCC checkpoints, with RFIs, submittals and permits coming soon — 20 modules, one
+              project record.
             </p>
           </Reveal>
           <Reveal delay={0.1} className="mx-auto mt-8 flex max-w-4xl flex-wrap justify-center gap-2">
@@ -165,10 +164,10 @@ export default function HomePage() {
               <h3 className="h3 mt-4">One project record, verified as it happens</h3>
               <p className="mt-3 text-navy-600">
                 Every stage runs through ProjMan&rsquo;s registers — diaries, checklists,
-                drawings, defects, RFIs, permits — and every completion is confirmed by a
+                drawings, defects — and every completion is confirmed by a
                 multi-party tick-verify chain: Tradie ticks it, Foreperson verifies it,
                 Supervisor confirms it, Inspector attests it at hold points. That builds trust
-                between the people on-site, and leaves a geolocated, timestamped, immutable
+                between the people on-site, and leaves a timestamped, tamper-evident
                 record for compliance, claims, and disputes — with credentialing evidence for
                 RPL as a bonus, not the point.
               </p>
