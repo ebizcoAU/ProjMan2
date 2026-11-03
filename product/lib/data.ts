@@ -69,7 +69,7 @@ export const stages: Stage[] = [
     summary:
       "Project Manager creates the project — client details, site address, and scope are captured as the single source of truth.",
     tradieAction: "N/A — project owner action",
-    evidence: "Signed engagement record, site geolocation anchor",
+    evidence: "Signed engagement record (site GPS anchor: coming soon)",
   },
   {
     number: 2,
@@ -123,7 +123,7 @@ export const stages: Stage[] = [
     summary:
       "Site is fenced, serviced, and safety plans are activated before ground is broken.",
     tradieAction: "Crew tick site induction and WHS sign-on",
-    evidence: "Geolocated induction record, safety plan acceptance",
+    evidence: "Induction record, safety plan acceptance (GPS location: coming soon)",
   },
   {
     number: 8,
@@ -140,8 +140,8 @@ export const stages: Stage[] = [
     name: "Excavation & Earthworks",
     phase: "Construction",
     summary: "Site cut, fill, and drainage preparation are completed and evidenced.",
-    tradieAction: "Tradie ticks task completion with geo-stamped photos",
-    evidence: "Geolocated photo evidence, timestamp",
+    tradieAction: "Tradie ticks task completion with photos",
+    evidence: "Photo evidence, timestamp (GPS location: coming soon)",
   },
   {
     number: 10,
@@ -186,7 +186,7 @@ export const stages: Stage[] = [
     phase: "Construction",
     summary: "External walls, roof, windows, and doors close the building envelope.",
     tradieAction: "Crew tick trade-by-trade completion",
-    evidence: "Geolocated evidence per trade package",
+    evidence: "Evidence per trade package (GPS location: coming soon)",
   },
   {
     number: 15,
@@ -272,7 +272,7 @@ export const roles: {
     id: "Tradesperson",
     headline: "A career history nobody can dispute",
     description:
-      "Every tick you make is geolocated, timestamped, and verified by the people who watched you do the work. That record follows you, not your last employer.",
+      "Every tick you make is timestamped and verified by the people who watched you do the work (GPS location: coming soon). That record follows you, not your last employer.",
     bullets: [
       "Portable digital identity across every project",
       "Verified work history, not employer testimony",
@@ -397,10 +397,10 @@ export const features: Feature[] = [
   },
   {
     slug: "geolocation",
-    title: "Geolocated Task Evidence",
-    short: "Proof of presence, not just proof of a claim.",
+    title: "GPS Location (Coming soon)",
+    short: "Coming soon: evidence photos anchored to the site's location.",
     detail:
-      "Every evidence capture is anchored to the site's geolocation, so a tick can't be made from off-site. It's a structural guardrail against fabricated records, not a policy that relies on trust.",
+      "Coming soon: each evidence capture will record where it was taken, so it can be checked against the site's location. Today, every capture is timestamped and hashed by the server.",
     icon: "map-pin",
   },
   {

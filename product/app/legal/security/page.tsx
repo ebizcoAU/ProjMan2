@@ -11,9 +11,10 @@ export default function SecurityPage() {
   return (
     <LegalPage title="Security" updated="1 September 2026">
       <p>
-        Evidence integrity is the core promise of ProjMan. Every capture is geolocated,
-        timestamped, and cryptographically hashed at the point of creation, so records cannot be
-        silently altered after the fact.
+        Evidence integrity is the core promise of ProjMan. Every capture is timestamped and
+        cryptographically hashed by the server, and a correction is saved as a new version linked
+        to the one it replaces, so changes are visible rather than silent. GPS location on
+        captures is coming soon.
       </p>
       <p>
         Access to project and evidence data is governed by role-based permissions, with
