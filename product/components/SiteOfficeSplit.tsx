@@ -28,7 +28,7 @@ const columns = [
       "Review site evidence and quality records",
       "Manage progress claims and the programme",
       "See every project on one dashboard",
-      "Export to Xero, MYOB or QuickBooks (CSV), coming soon",
+      "Accounting runs through TalkPOS, with import/export to Xero, MYOB and QuickBooks. Coming soon.",
     ],
   },
 ];

@@ -103,7 +103,7 @@ export default function FeaturesPage() {
               },
               {
                 title: "Accounting",
-                copy: "Coming soon: export your progress claims as a CSV for Xero, MYOB or QuickBooks. Your accounting system keeps the books and issues the tax invoices.",
+                copy: "Accounting runs through TalkPOS, with import/export to Xero, MYOB and QuickBooks. Coming soon.",
               },
               {
                 title: "Open API",
