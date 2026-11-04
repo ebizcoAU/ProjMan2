@@ -8,9 +8,9 @@ export const company = {
     "ProjMan is project management for building and construction, built on the 18-Stage Construction Lifecycle: site diaries, checklists, hold points and NCC checkpoints, documents, defects and inspections, backed by tamper-evident site records verified by more than one party.",
   differentiator:
     "ProjMan turns the construction lifecycle into a tamper-evident record of workforce integrity, replacing subjective employer testimony with multi-party verified on-site evidence.",
-  email: "hello@projman.com.au",
-  supportEmail: "support@projman.com.au",
-  companyEmail: "ebizco.au@gmail.com",
+  email: "admin@projman.com.au",
+  supportEmail: "admin@projman.com.au",
+  companyEmail: "admin@projman.com.au",
   phone: "+61 4 1278 3132",
   address: "Unit 1/9 Boag Rd, Morley WA 6062, Australia",
 };
