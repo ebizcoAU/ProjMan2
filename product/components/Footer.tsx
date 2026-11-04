@@ -9,13 +9,12 @@ export function Footer() {
         <div className="lg:col-span-2">
           <Link href="/" className="flex items-center gap-2 font-extrabold text-white">
             <Image
-              src="/brand/projman-logo.png"
-              alt=""
-              width={138}
+              src="/brand/projman-wordmark.png"
+              alt="ProjMan"
+              width={560}
               height={160}
-              className="h-9 w-auto rounded-md"
+              className="h-14 w-auto"
             />
-            <span className="text-lg">ProjMan</span>
           </Link>
           <p className="mt-4 max-w-xs text-sm leading-relaxed text-navy-200">
             {company.valueProposition}

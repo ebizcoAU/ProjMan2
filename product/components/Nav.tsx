@@ -15,14 +15,13 @@ export function Nav() {
       <div className="container-page flex h-16 items-center justify-between">
         <Link href="/" className="flex items-center gap-2 font-extrabold text-navy-800">
           <Image
-            src="/brand/projman-logo.png"
-            alt=""
-            width={138}
+            src="/brand/projman-wordmark-badge.png"
+            alt="ProjMan"
+            width={560}
             height={160}
             priority
-            className="h-9 w-auto rounded-md"
+            className="h-11 w-auto rounded-md"
           />
-          <span className="text-lg">ProjMan</span>
         </Link>
 
         <nav className="hidden items-center gap-1 lg:flex" aria-label="Primary">
