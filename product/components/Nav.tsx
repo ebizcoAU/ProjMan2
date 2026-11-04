@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
@@ -13,9 +14,14 @@ export function Nav() {
     <header className="sticky top-0 z-50 border-b border-navy-100 bg-white/90 backdrop-blur">
       <div className="container-page flex h-16 items-center justify-between">
         <Link href="/" className="flex items-center gap-2 font-extrabold text-navy-800">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-500 text-sm text-white">
-            P
-          </span>
+          <Image
+            src="/brand/projman-logo.png"
+            alt=""
+            width={138}
+            height={160}
+            priority
+            className="h-9 w-auto rounded-md"
+          />
           <span className="text-lg">ProjMan</span>
         </Link>
 

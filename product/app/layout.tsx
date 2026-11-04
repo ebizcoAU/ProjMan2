@@ -44,9 +44,6 @@ export const metadata: Metadata = {
     description:
       "Site diaries, checklists, hold points, documents and defects: one platform, verified as it happens.",
   },
-  icons: {
-    icon: "/favicon.svg",
-  },
 };
 
 export default function RootLayout({

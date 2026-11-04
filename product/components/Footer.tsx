@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { company, footerLinks } from "@/lib/data";
 
@@ -7,9 +8,13 @@ export function Footer() {
       <div className="container-page grid gap-10 py-16 sm:grid-cols-2 lg:grid-cols-6">
         <div className="lg:col-span-2">
           <Link href="/" className="flex items-center gap-2 font-extrabold text-white">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-500 text-sm text-white">
-              P
-            </span>
+            <Image
+              src="/brand/projman-logo.png"
+              alt=""
+              width={138}
+              height={160}
+              className="h-9 w-auto rounded-md"
+            />
             <span className="text-lg">ProjMan</span>
           </Link>
           <p className="mt-4 max-w-xs text-sm leading-relaxed text-navy-200">
