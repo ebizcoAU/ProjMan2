@@ -10,7 +10,7 @@ const inter = Inter({
   display: "swap",
 });
 
-const siteUrl = "https://projman.ebizco.com.au";
+const siteUrl = "https://projman.com.au";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
