@@ -62,8 +62,11 @@ body {
   @apply text-xl font-bold text-navy-800;
 }
 
-.lede {
-  @apply text-lg leading-relaxed text-navy-500 sm:text-xl;
+/* In the components layer so a colour utility on the element (e.g. text-navy-200 on dark heroes) wins. */
+@layer components {
+  .lede {
+    @apply text-lg leading-relaxed text-navy-500 sm:text-xl;
+  }
 }
 
 .stat-number {
