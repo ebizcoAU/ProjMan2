@@ -13,7 +13,7 @@ export function RoleTabs({ initial }: { initial?: Role }) {
   return (
     <div>
       <div
-        className="grid grid-cols-2 gap-2 rounded-2xl border border-navy-100 bg-navy-50 p-1.5 sm:inline-flex sm:flex-wrap sm:justify-center sm:rounded-full"
+        className="grid auto-rows-fr grid-cols-2 gap-2 rounded-2xl border border-navy-100 bg-navy-50 p-1.5 sm:inline-flex sm:flex-wrap sm:justify-center sm:rounded-full"
         role="tablist"
         aria-label="Select your role"
       >
@@ -23,7 +23,7 @@ export function RoleTabs({ initial }: { initial?: Role }) {
             role="tab"
             aria-selected={active === r.id}
             onClick={() => setActive(r.id)}
-            className={`rounded-xl px-3 py-2 text-center text-sm font-semibold transition-colors sm:rounded-full sm:px-4 ${
+            className={`flex items-center justify-center rounded-xl px-3 py-2 text-center text-sm font-semibold transition-colors sm:rounded-full sm:px-4 ${
               active === r.id
                 ? "bg-orange-500 text-white shadow-card"
                 : "text-navy-600 hover:text-navy-900"
