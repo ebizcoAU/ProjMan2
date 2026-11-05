@@ -232,6 +232,7 @@ export type Role =
   | "Project Manager"
   | "Builder"
   | "Tradesperson"
+  | "Homeowners & Clients"
   | "Government & Regulators"
   | "Investors";
 
@@ -280,6 +281,20 @@ export const roles: {
       "Free VeriTrade profile for the life of your career",
     ],
     cta: { label: "Build your portfolio", href: "/veritrade" },
+  },
+  {
+    id: "Homeowners & Clients",
+    headline: "Follow your home build, stage by stage",
+    description:
+      "Your builder adds you to the project, and your build appears in the ProjMan app: how far it is, stage by stage as the work is verified, plus the decisions waiting for you, payments and the papers for your home.",
+    bullets: [
+      "Progress across the 18 stages (done, underway or to come), with independent checks",
+      "Changes to accept or decline, with the price effect shown before you decide",
+      "Your contract, claims and milestones in one place (payments are made outside the app)",
+      "When you pay for materials, compare the quotes, cheapest first, and choose one",
+      "Approvals, shared drawings and site photos, certificates and your handover pack",
+    ],
+    cta: { label: "Ask about your build", href: "/contact" },
   },
   {
     id: "Government & Regulators",
