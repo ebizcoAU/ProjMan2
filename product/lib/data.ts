@@ -11,7 +11,7 @@ export const company = {
   email: "admin@projman.com.au",
   supportEmail: "admin@projman.com.au",
   companyEmail: "admin@projman.com.au",
-  phone: "+61 4 1278 3132",
+  phone: "+61 412 783 123",
   address: "Unit 1/9 Boag Rd, Morley WA 6062, Australia",
 };
 

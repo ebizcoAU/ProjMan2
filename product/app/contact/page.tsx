@@ -14,7 +14,7 @@ const contactMethods = [
   { icon: "clock" as const, label: "Response time", value: "Within 1 business day" },
   { icon: "map-pin" as const, label: "Office", value: company.address },
   { icon: "network" as const, label: "Email", value: company.email },
-  { icon: "shield-check" as const, label: "Phone", value: company.phone },
+  { icon: "shield-check" as const, label: "Phone / WhatsApp / Zalo", value: company.phone },
 ];
 
 export default function ContactPage() {
